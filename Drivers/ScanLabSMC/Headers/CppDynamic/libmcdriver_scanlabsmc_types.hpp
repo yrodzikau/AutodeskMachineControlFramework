@@ -154,6 +154,10 @@ typedef void * LibMCDriver_ScanLabSMC_pvoid;
 #define LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE 1046 /** Linear power values are incomplete. */
 #define LIBMCDRIVER_SCANLABSMC_ERROR_NONLINEARPOWERVALUESAREINCOMPLETE 1047 /** Nonlinear power values are incomplete. */
 #define LIBMCDRIVER_SCANLABSMC_ERROR_INTERPOLATIONDATAISNOTINCREASING 1048 /** Interpolation data is not increasing. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED 1049 /** RecordSet is not allowed. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET 1050 /** Invalid Record Set. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH 1051 /** Invalid Record Set. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP 1052 /** Invalid Record Set. */
 
 /*************************************************************************************************************************
  Error strings for LibMCDriver_ScanLabSMC
@@ -220,6 +224,10 @@ inline const char * LIBMCDRIVER_SCANLABSMC_GETERRORSTRING (LibMCDriver_ScanLabSM
     case LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE: return "Linear power values are incomplete.";
     case LIBMCDRIVER_SCANLABSMC_ERROR_NONLINEARPOWERVALUESAREINCOMPLETE: return "Nonlinear power values are incomplete.";
     case LIBMCDRIVER_SCANLABSMC_ERROR_INTERPOLATIONDATAISNOTINCREASING: return "Interpolation data is not increasing.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED: return "RecordSet is not allowed.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET: return "Invalid Record Set.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH: return "Invalid Record Set.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP: return "Invalid Record Set.";
     default: return "unknown error";
   }
 }
@@ -265,6 +273,22 @@ namespace LibMCDriver_ScanLabSMC {
     Unknown = 0,
     Version_0_8 = 8,
     Version_0_9 = 9
+  };
+  
+  enum class eSMCRecordSet : LibMCDriver_ScanLabSMC_int32 {
+    HeadAPosition = 0,
+    HeadBPosition = 1,
+    LaserSwitches = 2,
+    SetPositions = 3,
+    ActPositions = 4,
+    Empty = 5
+  };
+  
+  enum class eSMCTransformationStep : LibMCDriver_ScanLabSMC_int32 {
+    Workspace = 0,
+    Aligned = 1,
+    Corrected = 2,
+    Rtc = 3
   };
   
   enum class eJobCharacteristic : LibMCDriver_ScanLabSMC_int32 {
@@ -352,6 +376,8 @@ typedef LibMCDriver_ScanLabSMC::eBlendMode eLibMCDriver_ScanLabSMCBlendMode;
 typedef LibMCDriver_ScanLabSMC::eDynamicViolationReaction eLibMCDriver_ScanLabSMCDynamicViolationReaction;
 typedef LibMCDriver_ScanLabSMC::eWarnLevel eLibMCDriver_ScanLabSMCWarnLevel;
 typedef LibMCDriver_ScanLabSMC::eSMCConfigVersion eLibMCDriver_ScanLabSMCSMCConfigVersion;
+typedef LibMCDriver_ScanLabSMC::eSMCRecordSet eLibMCDriver_ScanLabSMCSMCRecordSet;
+typedef LibMCDriver_ScanLabSMC::eSMCTransformationStep eLibMCDriver_ScanLabSMCSMCTransformationStep;
 typedef LibMCDriver_ScanLabSMC::eJobCharacteristic eLibMCDriver_ScanLabSMCJobCharacteristic;
 typedef LibMCDriver_ScanLabSMC::sPoint2D sLibMCDriver_ScanLabSMCPoint2D;
 typedef LibMCDriver_ScanLabSMC::sHatch2D sLibMCDriver_ScanLabSMCHatch2D;

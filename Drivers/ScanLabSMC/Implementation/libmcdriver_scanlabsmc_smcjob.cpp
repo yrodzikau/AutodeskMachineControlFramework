@@ -141,3 +141,23 @@ LibMCDriver_ScanLabSMC_double CSMCJob::GetJobDuration()
 {
     return m_pJobInstance->GetJobDuration ();
 }
+
+void CSMCJob::StartRecord(const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetA, const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetB)
+{
+    m_pJobInstance->StartRecord(eRecordSetA, eRecordSetB);
+}
+
+void CSMCJob::StopRecord() 
+{
+    m_pJobInstance->StopRecord();
+}
+
+std::string CSMCJob::GetRecordAbsoluteFilePath()
+{
+    return m_pJobInstance->GetRecordAbsoluteFilePath();
+}
+
+void CSMCJob::GetRecord(const std::string& sDatasetPath, const LibMCDriver_ScanLabSMC::eSMCTransformationStep eStep)
+{
+    m_pJobInstance->GetRecord(sDatasetPath, eStep);
+}

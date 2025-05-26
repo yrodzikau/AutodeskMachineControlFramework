@@ -236,6 +236,10 @@ public:
 			case LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE: return "LINEARPOWERVALUESAREINCOMPLETE";
 			case LIBMCDRIVER_SCANLABSMC_ERROR_NONLINEARPOWERVALUESAREINCOMPLETE: return "NONLINEARPOWERVALUESAREINCOMPLETE";
 			case LIBMCDRIVER_SCANLABSMC_ERROR_INTERPOLATIONDATAISNOTINCREASING: return "INTERPOLATIONDATAISNOTINCREASING";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED: return "RECORDSETISNOTALLOWED";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET: return "INVALIDRECORDSET";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH: return "INVALIDDATASETPATH";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP: return "INVALIDTRANSFORMATIONSTEP";
 		}
 		return "UNKNOWN";
 	}
@@ -302,6 +306,10 @@ public:
 			case LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE: return "Linear power values are incomplete.";
 			case LIBMCDRIVER_SCANLABSMC_ERROR_NONLINEARPOWERVALUESAREINCOMPLETE: return "Nonlinear power values are incomplete.";
 			case LIBMCDRIVER_SCANLABSMC_ERROR_INTERPOLATIONDATAISNOTINCREASING: return "Interpolation data is not increasing.";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED: return "RecordSet is not allowed.";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET: return "Invalid Record Set.";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH: return "Invalid Record Set.";
+			case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP: return "Invalid Record Set.";
 		}
 		return "unknown error";
 	}
@@ -540,6 +548,10 @@ public:
 	inline void LoadSimulationData(classParam<LibMCEnv::CDataTable> pSimulationDataTable);
 	inline LibMCDriver_ScanLabSMC_double GetJobCharacteristic(const eJobCharacteristic eValueType);
 	inline LibMCDriver_ScanLabSMC_double GetJobDuration();
+	inline void StartRecord(const eSMCRecordSet eRecordSetA, const eSMCRecordSet eRecordSetB);
+	inline void StopRecord();
+	inline std::string GetRecordAbsoluteFilePath();
+	inline void GetRecord(const std::string & sDatasetPath, const eSMCTransformationStep eStep);
 };
 	
 /*************************************************************************************************************************
@@ -778,6 +790,10 @@ public:
 		pWrapperTable->m_SMCJob_LoadSimulationData = nullptr;
 		pWrapperTable->m_SMCJob_GetJobCharacteristic = nullptr;
 		pWrapperTable->m_SMCJob_GetJobDuration = nullptr;
+		pWrapperTable->m_SMCJob_StartRecord = nullptr;
+		pWrapperTable->m_SMCJob_StopRecord = nullptr;
+		pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath = nullptr;
+		pWrapperTable->m_SMCJob_GetRecord = nullptr;
 		pWrapperTable->m_SMCConfiguration_SetDynamicViolationReaction = nullptr;
 		pWrapperTable->m_SMCConfiguration_GetDynamicViolationReaction = nullptr;
 		pWrapperTable->m_SMCConfiguration_SetWarnLevel = nullptr;
@@ -1067,6 +1083,42 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_SMCJob_GetJobDuration == nullptr)
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_SMCJob_StartRecord = (PLibMCDriver_ScanLabSMCSMCJob_StartRecordPtr) GetProcAddress(hLibrary, "libmcdriver_scanlabsmc_smcjob_startrecord");
+		#else // _WIN32
+		pWrapperTable->m_SMCJob_StartRecord = (PLibMCDriver_ScanLabSMCSMCJob_StartRecordPtr) dlsym(hLibrary, "libmcdriver_scanlabsmc_smcjob_startrecord");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_SMCJob_StartRecord == nullptr)
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_SMCJob_StopRecord = (PLibMCDriver_ScanLabSMCSMCJob_StopRecordPtr) GetProcAddress(hLibrary, "libmcdriver_scanlabsmc_smcjob_stoprecord");
+		#else // _WIN32
+		pWrapperTable->m_SMCJob_StopRecord = (PLibMCDriver_ScanLabSMCSMCJob_StopRecordPtr) dlsym(hLibrary, "libmcdriver_scanlabsmc_smcjob_stoprecord");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_SMCJob_StopRecord == nullptr)
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath = (PLibMCDriver_ScanLabSMCSMCJob_GetRecordAbsoluteFilePathPtr) GetProcAddress(hLibrary, "libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath");
+		#else // _WIN32
+		pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath = (PLibMCDriver_ScanLabSMCSMCJob_GetRecordAbsoluteFilePathPtr) dlsym(hLibrary, "libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath == nullptr)
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_SMCJob_GetRecord = (PLibMCDriver_ScanLabSMCSMCJob_GetRecordPtr) GetProcAddress(hLibrary, "libmcdriver_scanlabsmc_smcjob_getrecord");
+		#else // _WIN32
+		pWrapperTable->m_SMCJob_GetRecord = (PLibMCDriver_ScanLabSMCSMCJob_GetRecordPtr) dlsym(hLibrary, "libmcdriver_scanlabsmc_smcjob_getrecord");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_SMCJob_GetRecord == nullptr)
 			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -1637,6 +1689,22 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_SMCJob_GetJobDuration == nullptr) )
 			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdriver_scanlabsmc_smcjob_startrecord", (void**)&(pWrapperTable->m_SMCJob_StartRecord));
+		if ( (eLookupError != 0) || (pWrapperTable->m_SMCJob_StartRecord == nullptr) )
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdriver_scanlabsmc_smcjob_stoprecord", (void**)&(pWrapperTable->m_SMCJob_StopRecord));
+		if ( (eLookupError != 0) || (pWrapperTable->m_SMCJob_StopRecord == nullptr) )
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath", (void**)&(pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath));
+		if ( (eLookupError != 0) || (pWrapperTable->m_SMCJob_GetRecordAbsoluteFilePath == nullptr) )
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdriver_scanlabsmc_smcjob_getrecord", (void**)&(pWrapperTable->m_SMCJob_GetRecord));
+		if ( (eLookupError != 0) || (pWrapperTable->m_SMCJob_GetRecord == nullptr) )
+			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdriver_scanlabsmc_smcconfiguration_setdynamicviolationreaction", (void**)&(pWrapperTable->m_SMCConfiguration_SetDynamicViolationReaction));
 		if ( (eLookupError != 0) || (pWrapperTable->m_SMCConfiguration_SetDynamicViolationReaction == nullptr) )
 			return LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -2104,6 +2172,49 @@ public:
 		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_GetJobDuration(m_pHandle, &resultJobDuration));
 		
 		return resultJobDuration;
+	}
+	
+	/**
+	* CSMCJob::StartRecord - Triggers the recording start of RTC6 board signals.
+	* @param[in] eRecordSetA - The signal sets to be recorded by the RTC6 board.
+	* @param[in] eRecordSetB - The signal sets to be recorded by the RTC6 board.
+	*/
+	void CSMCJob::StartRecord(const eSMCRecordSet eRecordSetA, const eSMCRecordSet eRecordSetB)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_StartRecord(m_pHandle, eRecordSetA, eRecordSetB));
+	}
+	
+	/**
+	* CSMCJob::StopRecord - Triggers the recording stop of RTC6 board signals.
+	*/
+	void CSMCJob::StopRecord()
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_StopRecord(m_pHandle));
+	}
+	
+	/**
+	* CSMCJob::GetRecordAbsoluteFilePath - Returns absolute file path of the Recording.
+	* @return Absolute file path of the Recording.
+	*/
+	std::string CSMCJob::GetRecordAbsoluteFilePath()
+	{
+		LibMCDriver_ScanLabSMC_uint32 bytesNeededAbsoluteFilePath = 0;
+		LibMCDriver_ScanLabSMC_uint32 bytesWrittenAbsoluteFilePath = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_GetRecordAbsoluteFilePath(m_pHandle, 0, &bytesNeededAbsoluteFilePath, nullptr));
+		std::vector<char> bufferAbsoluteFilePath(bytesNeededAbsoluteFilePath);
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_GetRecordAbsoluteFilePath(m_pHandle, bytesNeededAbsoluteFilePath, &bytesWrittenAbsoluteFilePath, &bufferAbsoluteFilePath[0]));
+		
+		return std::string(&bufferAbsoluteFilePath[0]);
+	}
+	
+	/**
+	* CSMCJob::GetRecord - Exports the recording as a file.
+	* @param[in] sDatasetPath - Absolute or relative path and filename.
+	* @param[in] eStep - The transformations to be applied to RTC signal values.
+	*/
+	void CSMCJob::GetRecord(const std::string & sDatasetPath, const eSMCTransformationStep eStep)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_GetRecord(m_pHandle, sDatasetPath.c_str(), eStep));
 	}
 	
 	/**

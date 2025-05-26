@@ -284,6 +284,45 @@ LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlab
 */
 LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getjobduration(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC_double * pJobDuration);
 
+/**
+* Triggers the recording start of RTC6 board signals.
+*
+* @param[in] pSMCJob - SMCJob instance.
+* @param[in] eRecordSetA - The signal sets to be recorded by the RTC6 board.
+* @param[in] eRecordSetB - The signal sets to be recorded by the RTC6 board.
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_startrecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetA, LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetB);
+
+/**
+* Triggers the recording stop of RTC6 board signals.
+*
+* @param[in] pSMCJob - SMCJob instance.
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_stoprecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob);
+
+/**
+* Returns absolute file path of the Recording.
+*
+* @param[in] pSMCJob - SMCJob instance.
+* @param[in] nAbsoluteFilePathBufferSize - size of the buffer (including trailing 0)
+* @param[out] pAbsoluteFilePathNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pAbsoluteFilePathBuffer -  buffer of Absolute file path of the Recording., may be NULL
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, const LibMCDriver_ScanLabSMC_uint32 nAbsoluteFilePathBufferSize, LibMCDriver_ScanLabSMC_uint32* pAbsoluteFilePathNeededChars, char * pAbsoluteFilePathBuffer);
+
+/**
+* Exports the recording as a file.
+*
+* @param[in] pSMCJob - SMCJob instance.
+* @param[in] pDatasetPath - Absolute or relative path and filename.
+* @param[in] eStep - The transformations to be applied to RTC signal values.
+* @return error code or 0 (success)
+*/
+LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getrecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, const char * pDatasetPath, LibMCDriver_ScanLabSMC::eSMCTransformationStep eStep);
+
 /*************************************************************************************************************************
  Class definition for SMCConfiguration
 **************************************************************************************************************************/
