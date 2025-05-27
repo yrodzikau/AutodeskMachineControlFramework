@@ -104,6 +104,13 @@ public:
 
 	double GetJobDuration();
 
+	void StartRecord(const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetA, const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetB);
+
+	void StopRecord();
+
+	std::string GetRecordAbsoluteFilePath();
+
+	void GetRecord(const std::string& sDatasetPath, const LibMCDriver_ScanLabSMC::eSMCTransformationStep eStep);
 
 };
 

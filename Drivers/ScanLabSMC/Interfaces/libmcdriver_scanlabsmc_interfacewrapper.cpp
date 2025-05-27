@@ -705,6 +705,129 @@ LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getjobduration(LibMCD
 	}
 }
 
+LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_startrecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, eLibMCDriver_ScanLabSMCSMCRecordSet eRecordSetA, eLibMCDriver_ScanLabSMCSMCRecordSet eRecordSetB)
+{
+	IBase* pIBaseClass = (IBase *)pSMCJob;
+
+	try {
+		ISMCJob* pISMCJob = dynamic_cast<ISMCJob*>(pIBaseClass);
+		if (!pISMCJob)
+			throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
+		
+		pISMCJob->StartRecord(eRecordSetA, eRecordSetB);
+
+		return LIBMCDRIVER_SCANLABSMC_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabSMCInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabSMCException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_stoprecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob)
+{
+	IBase* pIBaseClass = (IBase *)pSMCJob;
+
+	try {
+		ISMCJob* pISMCJob = dynamic_cast<ISMCJob*>(pIBaseClass);
+		if (!pISMCJob)
+			throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
+		
+		pISMCJob->StopRecord();
+
+		return LIBMCDRIVER_SCANLABSMC_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabSMCInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabSMCException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, const LibMCDriver_ScanLabSMC_uint32 nAbsoluteFilePathBufferSize, LibMCDriver_ScanLabSMC_uint32* pAbsoluteFilePathNeededChars, char * pAbsoluteFilePathBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pSMCJob;
+
+	try {
+		if ( (!pAbsoluteFilePathBuffer) && !(pAbsoluteFilePathNeededChars) )
+			throw ELibMCDriver_ScanLabSMCInterfaceException (LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+		std::string sAbsoluteFilePath("");
+		ISMCJob* pISMCJob = dynamic_cast<ISMCJob*>(pIBaseClass);
+		if (!pISMCJob)
+			throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pAbsoluteFilePathBuffer == nullptr);
+		if (isCacheCall) {
+			sAbsoluteFilePath = pISMCJob->GetRecordAbsoluteFilePath();
+
+			pISMCJob->_setCache (new ParameterCache_1<std::string> (sAbsoluteFilePath));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pISMCJob->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
+			cache->retrieveData (sAbsoluteFilePath);
+			pISMCJob->_setCache (nullptr);
+		}
+		
+		if (pAbsoluteFilePathNeededChars)
+			*pAbsoluteFilePathNeededChars = (LibMCDriver_ScanLabSMC_uint32) (sAbsoluteFilePath.size()+1);
+		if (pAbsoluteFilePathBuffer) {
+			if (sAbsoluteFilePath.size() >= nAbsoluteFilePathBufferSize)
+				throw ELibMCDriver_ScanLabSMCInterfaceException (LIBMCDRIVER_SCANLABSMC_ERROR_BUFFERTOOSMALL);
+			for (size_t iAbsoluteFilePath = 0; iAbsoluteFilePath < sAbsoluteFilePath.size(); iAbsoluteFilePath++)
+				pAbsoluteFilePathBuffer[iAbsoluteFilePath] = sAbsoluteFilePath[iAbsoluteFilePath];
+			pAbsoluteFilePathBuffer[sAbsoluteFilePath.size()] = 0;
+		}
+		return LIBMCDRIVER_SCANLABSMC_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabSMCInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabSMCException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_getrecord(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, const char * pDatasetPath, eLibMCDriver_ScanLabSMCSMCTransformationStep eStep)
+{
+	IBase* pIBaseClass = (IBase *)pSMCJob;
+
+	try {
+		if (pDatasetPath == nullptr)
+			throw ELibMCDriver_ScanLabSMCInterfaceException (LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+		std::string sDatasetPath(pDatasetPath);
+		ISMCJob* pISMCJob = dynamic_cast<ISMCJob*>(pIBaseClass);
+		if (!pISMCJob)
+			throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
+		
+		pISMCJob->GetRecord(sDatasetPath, eStep);
+
+		return LIBMCDRIVER_SCANLABSMC_SUCCESS;
+	}
+	catch (ELibMCDriver_ScanLabSMCInterfaceException & Exception) {
+		return handleLibMCDriver_ScanLabSMCException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 
 /*************************************************************************************************************************
  Class implementation for SMCConfiguration
@@ -2201,6 +2324,14 @@ LibMCDriver_ScanLabSMCResult LibMCDriver_ScanLabSMC::Impl::LibMCDriver_ScanLabSM
 		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_getjobcharacteristic;
 	if (sProcName == "libmcdriver_scanlabsmc_smcjob_getjobduration") 
 		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_getjobduration;
+	if (sProcName == "libmcdriver_scanlabsmc_smcjob_startrecord") 
+		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_startrecord;
+	if (sProcName == "libmcdriver_scanlabsmc_smcjob_stoprecord") 
+		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_stoprecord;
+	if (sProcName == "libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath") 
+		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_getrecordabsolutefilepath;
+	if (sProcName == "libmcdriver_scanlabsmc_smcjob_getrecord") 
+		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcjob_getrecord;
 	if (sProcName == "libmcdriver_scanlabsmc_smcconfiguration_setdynamicviolationreaction") 
 		*ppProcAddress = (void*) &libmcdriver_scanlabsmc_smcconfiguration_setdynamicviolationreaction;
 	if (sProcName == "libmcdriver_scanlabsmc_smcconfiguration_getdynamicviolationreaction") 

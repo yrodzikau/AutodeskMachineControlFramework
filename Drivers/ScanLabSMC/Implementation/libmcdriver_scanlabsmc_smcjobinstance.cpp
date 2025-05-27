@@ -648,7 +648,112 @@ double CSMCJobInstance::GetJobDuration()
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_JOBDURATIONHASNOTBEENPARSED);
 
     return m_dJobDuration;
+}
 
+void CSMCJobInstance::StartRecord(const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetA, const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetB)
+{
+    if (eRecordSetA == eRecordSetB)
+    {
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED, "Is not allowed: RecordSetA (" + std::to_string((int32_t)eRecordSetA) + ") == RecordSetB ("+ std::to_string((int32_t)eRecordSetB) +")" );
+    }
+    else if (eRecordSetA == LibMCDriver_ScanLabSMC::eSMCRecordSet::LaserSwitches)
+    {
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED, "Is not allowed: RecordSetA == slsc_RecordSet_LaserSwitches");
+    }
+
+    slsc_RecordSet recordSetA;
+
+    switch (eRecordSetA) {
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::HeadAPosition: 
+        recordSetA = slsc_RecordSet::slsc_RecordSet_HeadAPosition;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::HeadBPosition:
+        recordSetA = slsc_RecordSet::slsc_RecordSet_HeadBPosition;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::LaserSwitches:
+        recordSetA = slsc_RecordSet::slsc_RecordSet_LaserSwitches;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::SetPositions:
+        recordSetA = slsc_RecordSet::slsc_RecordSet_SetPositions;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::ActPositions:
+        recordSetA = slsc_RecordSet::slsc_RecordSet_ActPositions;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::Empty:
+        recordSetA = slsc_RecordSet::slsc_RecordSet_Empty;
+        break;
+    default:
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET, "Invalid record Set A: " + std::to_string((int32_t)eRecordSetA));
+    }   
+    
+    slsc_RecordSet recordSetB;
+
+    switch (eRecordSetB) {
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::HeadAPosition:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_HeadAPosition;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::HeadBPosition:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_HeadBPosition;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::LaserSwitches:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_LaserSwitches;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::SetPositions:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_SetPositions;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::ActPositions:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_ActPositions;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCRecordSet::Empty:
+        recordSetB = slsc_RecordSet::slsc_RecordSet_Empty;
+        break;
+    default:
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET, "Invalid record Set A: " + std::to_string((int32_t)eRecordSetB));
+    }
+    
+    m_pSDK->slsc_job_start_record(m_pContextHandle->getHandle(), recordSetA, recordSetB);
+}
+
+void CSMCJobInstance::StopRecord()
+{
+    m_pSDK->slsc_job_stop_record(m_pContextHandle->getHandle());
+}
+
+std::string CSMCJobInstance::GetRecordAbsoluteFilePath()
+{
+    std::string sSimulationDirectory = m_pWorkingDirectory->GetAbsoluteFilePath() + "/";
+    if (!m_sSimulationSubDirectory.empty())
+        sSimulationDirectory += m_sSimulationSubDirectory + "/";
+
+    return sSimulationDirectory + "LogRecord" + std::to_string((int32_t)m_JobID) + ".txt";
+}
+
+void CSMCJobInstance::GetRecord(const std::string& sDatasetPath, const LibMCDriver_ScanLabSMC::eSMCTransformationStep eStep)
+{
+    if (sDatasetPath.empty()) {
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+    }
+
+    slsc_TransformationStep step;
+
+    switch (eStep) {
+    case LibMCDriver_ScanLabSMC::eSMCTransformationStep::Workspace:
+        step = slsc_TransformationStep::slsc_TransformationStep_Workspace;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCTransformationStep::Aligned:
+        step = slsc_TransformationStep::slsc_TransformationStep_Aligned;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCTransformationStep::Corrected:
+        step = slsc_TransformationStep::slsc_TransformationStep_Corrected;
+        break;
+    case LibMCDriver_ScanLabSMC::eSMCTransformationStep::Rtc:
+        step = slsc_TransformationStep::slsc_TransformationStep_Rtc;
+        break;
+    default:
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP, "Invalid Transformation Step: " + std::to_string((int32_t)eStep));
+    }
+
+    m_pSDK->slsc_ctrl_log_record(m_pContextHandle->getHandle(), sDatasetPath.c_str(), step);
 }
 
 void CSMCJobInstance::ReadSimulationFile(LibMCEnv::PDataTable pDataTable)

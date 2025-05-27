@@ -157,6 +157,10 @@ typedef void * LibMCDriver_ScanLabSMC_pvoid;
 #define LIBMCDRIVER_SCANLABSMC_ERROR_EMPTYRTCSERVICEDLLRESOURCENAME 1049 /** Empty RTC Service DLL Resource Name. */
 #define LIBMCDRIVER_SCANLABSMC_ERROR_RTCSERVICERESOURCENOTFOUND 1050 /** RTC Service Resource not found. */
 #define LIBMCDRIVER_SCANLABSMC_ERROR_EMPTYRTCSERVICEDLLRESOURCEDATA 1051 /** Empty RTC Service DLL Resource Data. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED 1052 /** RecordSet is not allowed. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET 1053 /** Invalid Record Set. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH 1054 /** Invalid Record Set. */
+#define LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP 1055 /** Invalid Record Set. */
 
 /*************************************************************************************************************************
  Error strings for LibMCDriver_ScanLabSMC
@@ -226,6 +230,10 @@ inline const char * LIBMCDRIVER_SCANLABSMC_GETERRORSTRING (LibMCDriver_ScanLabSM
     case LIBMCDRIVER_SCANLABSMC_ERROR_EMPTYRTCSERVICEDLLRESOURCENAME: return "Empty RTC Service DLL Resource Name.";
     case LIBMCDRIVER_SCANLABSMC_ERROR_RTCSERVICERESOURCENOTFOUND: return "RTC Service Resource not found.";
     case LIBMCDRIVER_SCANLABSMC_ERROR_EMPTYRTCSERVICEDLLRESOURCEDATA: return "Empty RTC Service DLL Resource Data.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_RECORDSETISNOTALLOWED: return "RecordSet is not allowed.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDRECORDSET: return "Invalid Record Set.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDDATASETPATH: return "Invalid Record Set.";
+    case LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDTRANSFORMATIONSTEP: return "Invalid Record Set.";
     default: return "unknown error";
   }
 }
@@ -272,6 +280,22 @@ namespace LibMCDriver_ScanLabSMC {
     Version_0_8 = 8,
     Version_0_9 = 9,
     Version_1_0 = 10
+  };
+  
+  enum class eSMCRecordSet : LibMCDriver_ScanLabSMC_int32 {
+    HeadAPosition = 0,
+    HeadBPosition = 1,
+    LaserSwitches = 2,
+    SetPositions = 3,
+    ActPositions = 4,
+    Empty = 5
+  };
+  
+  enum class eSMCTransformationStep : LibMCDriver_ScanLabSMC_int32 {
+    Workspace = 0,
+    Aligned = 1,
+    Corrected = 2,
+    Rtc = 3
   };
   
   enum class eJobCharacteristic : LibMCDriver_ScanLabSMC_int32 {
@@ -359,6 +383,8 @@ typedef LibMCDriver_ScanLabSMC::eBlendMode eLibMCDriver_ScanLabSMCBlendMode;
 typedef LibMCDriver_ScanLabSMC::eDynamicViolationReaction eLibMCDriver_ScanLabSMCDynamicViolationReaction;
 typedef LibMCDriver_ScanLabSMC::eWarnLevel eLibMCDriver_ScanLabSMCWarnLevel;
 typedef LibMCDriver_ScanLabSMC::eSMCConfigVersion eLibMCDriver_ScanLabSMCSMCConfigVersion;
+typedef LibMCDriver_ScanLabSMC::eSMCRecordSet eLibMCDriver_ScanLabSMCSMCRecordSet;
+typedef LibMCDriver_ScanLabSMC::eSMCTransformationStep eLibMCDriver_ScanLabSMCSMCTransformationStep;
 typedef LibMCDriver_ScanLabSMC::eJobCharacteristic eLibMCDriver_ScanLabSMCJobCharacteristic;
 typedef LibMCDriver_ScanLabSMC::sPoint2D sLibMCDriver_ScanLabSMCPoint2D;
 typedef LibMCDriver_ScanLabSMC::sHatch2D sLibMCDriver_ScanLabSMCHatch2D;

@@ -103,7 +103,10 @@
 		<error name="EMPTYRTCSERVICEDLLRESOURCENAME" code="1049" description="Empty RTC Service DLL Resource Name." />
 		<error name="RTCSERVICERESOURCENOTFOUND" code="1050" description="RTC Service Resource not found." />
 		<error name="EMPTYRTCSERVICEDLLRESOURCEDATA" code="1051" description="Empty RTC Service DLL Resource Data." />		
-											
+		<error name="RECORDSETISNOTALLOWED" code="1052" description="RecordSet is not allowed." />
+		<error name="INVALIDRECORDSET" code="1053" description="Invalid Record Set." />
+		<error name="INVALIDDATASETPATH" code="1054" description="Invalid Record Set." />
+		<error name="INVALIDTRANSFORMATIONSTEP" code="1055" description="Invalid Record Set." />
 	</errors>
 
 	<struct name="Point2D">
@@ -144,6 +147,22 @@
 	   <option name="Version_0_8" value="8" />
 	   <option name="Version_0_9" value="9" />
 	   <option name="Version_1_0" value="10" />
+	</enum>
+
+	<enum name="SMCRecordSet">
+		<option name="HeadAPosition" value="0" />
+		<option name="HeadBPosition" value="1" />
+		<option name="LaserSwitches" value="2" />
+		<option name="SetPositions" value="3" />
+		<option name="ActPositions" value="4" />
+		<option name="Empty" value="5" />
+	</enum>
+
+	<enum name="SMCTransformationStep">
+		<option name="Workspace" value="0" />
+		<option name="Aligned" value="1" />
+		<option name="Corrected" value="2" />
+		<option name="Rtc" value="3" />
 	</enum>
 
 	<enum name="JobCharacteristic">
@@ -336,6 +355,22 @@ Custom implementation
 			<param name="JobDuration" type="double" pass="return" description="Duration in seconds." />
 		</method>	
 		
+		<method name="StartRecord" description="Triggers the recording start of RTC6 board signals.">
+			<param name="RecordSetA" type="enum" class="SMCRecordSet" pass="in" description="The signal sets to be recorded by the RTC6 board." />
+			<param name="RecordSetB" type="enum" class="SMCRecordSet" pass="in" description="The signal sets to be recorded by the RTC6 board." />
+		</method>
+
+		<method name="StopRecord" description="Triggers the recording stop of RTC6 board signals.">
+		</method>
+
+		<method name="GetRecordAbsoluteFilePath" description="Returns absolute file path of the Recording.">
+			<param name="AbsoluteFilePath" type="string" pass="return" description="Absolute file path of the Recording." />
+		</method>		
+
+		<method name="GetRecord" description="Exports the recording as a file.">
+			<param name="DatasetPath" type="string" pass="in" description="Absolute or relative path and filename."/>
+			<param name="Step" type="enum" class="SMCTransformationStep" pass="in" description="The transformations to be applied to RTC signal values." />
+		</method>		
 
 	</class>
 

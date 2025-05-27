@@ -448,6 +448,31 @@ public:
 	*/
 	virtual LibMCDriver_ScanLabSMC_double GetJobDuration() = 0;
 
+	/**
+	* ISMCJob::StartRecord - Triggers the recording start of RTC6 board signals.
+	* @param[in] eRecordSetA - The signal sets to be recorded by the RTC6 board.
+	* @param[in] eRecordSetB - The signal sets to be recorded by the RTC6 board.
+	*/
+	virtual void StartRecord(const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetA, const LibMCDriver_ScanLabSMC::eSMCRecordSet eRecordSetB) = 0;
+
+	/**
+	* ISMCJob::StopRecord - Triggers the recording stop of RTC6 board signals.
+	*/
+	virtual void StopRecord() = 0;
+
+	/**
+	* ISMCJob::GetRecordAbsoluteFilePath - Returns absolute file path of the Recording.
+	* @return Absolute file path of the Recording.
+	*/
+	virtual std::string GetRecordAbsoluteFilePath() = 0;
+
+	/**
+	* ISMCJob::GetRecord - Exports the recording as a file.
+	* @param[in] sDatasetPath - Absolute or relative path and filename.
+	* @param[in] eStep - The transformations to be applied to RTC signal values.
+	*/
+	virtual void GetRecord(const std::string & sDatasetPath, const LibMCDriver_ScanLabSMC::eSMCTransformationStep eStep) = 0;
+
 };
 
 typedef IBaseSharedPtr<ISMCJob> PISMCJob;
