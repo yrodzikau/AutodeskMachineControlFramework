@@ -309,7 +309,7 @@ namespace Impl {
          * @brief Represents a laser toggle sub-cycle with timing.
          */
         struct SubCycle {
-            bool Toggle;        ///< Toggle state (on/off).
+            uint32_t Toggle;        ///< Toggle state (on/off).
             double TimeOffset;  ///< Time offset from the base timestamp.
         };
 
