@@ -238,7 +238,18 @@ Custom implementation
 			<param name="SecurityMode" type="enum" class="UASecurityMode" pass="in" description="Security mode to use." />
 		</method>
 
+		<method name="EnableEncryptionBin" description="Enables encryption for subsequent connects.">
+			<param name="LocalCertificate" type="basicarray" class="uint8" pass="in" description="Local Certificate Buffer" />
+			<param name="PrivateKey" type="basicarray" class="uint8" pass="in" description="Private Key Buffer" />
+			<param name="SecurityMode" type="enum" class="UASecurityMode" pass="in" description="Security mode to use." />
+		</method>
+
 		<method name="DisableEncryption" description="Enables encryption for subsequent connects.">
+		</method>
+
+		<method name="Connect" description= "Connects anonymously to a OPCUA PLC Controller.">
+			<param name="EndPointURL" type="string" pass="in" description="End point URL to connect to." />
+			<param name="ApplicationURL" type="string" pass="in" description="Application URL to use." />
 		</method>
 
 		<method name="ConnectWithUserName" description= "Connects to a OPCUA PLC Controller.">
@@ -293,6 +304,14 @@ Custom implementation
 			<param name="NameSpace" type="uint32" pass="in" description="Namespace ID" />
 			<param name="NodeName" type="string" pass="in" description="NodeToRead" />
 			<param name="Value" type="string" pass="in" description="Node Value to write" />
+		</method>
+
+		<method name="CallMethodInt32" description="Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.">
+			<param name="NameSpace" type="uint32" pass="in" description="Namespace ID" />
+			<param name="NodeName" type="string" pass="in" description="NodeToRead" />
+			<param name="Method" type="string" pass="in" description="Method to call" />
+			<param name="ArgInt32" type="int32" pass="in" description="Method Argument Int32" />
+			<param name="FeedbackResult" type="string" pass="in" description="Method execution result string" />
 		</method>
 
 	</class>

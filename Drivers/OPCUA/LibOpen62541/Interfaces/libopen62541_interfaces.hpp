@@ -251,9 +251,26 @@ public:
 	virtual void EnableEncryption(const std::string & sLocalCertificate, const std::string & sPrivateKey, const LibOpen62541::eUASecurityMode eSecurityMode) = 0;
 
 	/**
+	* IOPCClient::EnableEncryptionBin - Enables encryption for subsequent connects.
+	* @param[in] nLocalCertificateBufferSize - Number of elements in buffer
+	* @param[in] pLocalCertificateBuffer - Local Certificate Buffer
+	* @param[in] nPrivateKeyBufferSize - Number of elements in buffer
+	* @param[in] pPrivateKeyBuffer - Private Key Buffer
+	* @param[in] eSecurityMode - Security mode to use.
+	*/
+	virtual void EnableEncryptionBin(const LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8 * pLocalCertificateBuffer, const LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8 * pPrivateKeyBuffer, const LibOpen62541::eUASecurityMode eSecurityMode) = 0;
+
+	/**
 	* IOPCClient::DisableEncryption - Enables encryption for subsequent connects.
 	*/
 	virtual void DisableEncryption() = 0;
+
+	/**
+	* IOPCClient::Connect - Connects to the end point with a user name and password.
+	* @param[in] sEndPointURL - End point URL to connect to.
+	* @param[in] sApplicationURL - Application URL to use.
+	*/
+	virtual void Connect(const std::string & sEndPointURL, const std::string & sApplicationURL) = 0;
 
 	/**
 	* IOPCClient::ConnectUserName - Connects to the end point with a user name and password.
@@ -326,6 +343,16 @@ public:
 	* @param[in] sValue - Node Value to write
 	*/
 	virtual void WriteString(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue) = 0;
+
+	/**
+	* IOPCClient::CallMethodInt32 - Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+	* @param[in] nNameSpace - Namespace ID
+	* @param[in] sNodeName - NodeToRead
+	* @param[in] sMethod - Method to call
+	* @param[in] nArgInt32 - Method Argument Int32
+	* @param[in] sFeedbackResult - Method execution result string
+	*/
+	virtual void CallMethodInt32(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibOpen62541_int32 nArgInt32, const std::string & sFeedbackResult) = 0;
 
 };
 

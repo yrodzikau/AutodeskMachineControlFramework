@@ -150,9 +150,32 @@ typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptio
 * Enables encryption for subsequent connects.
 *
 * @param[in] pDriver_OPCUA - Driver_OPCUA instance.
+* @param[in] nLocalCertificateBufferSize - Number of elements in buffer
+* @param[in] pLocalCertificateBuffer - uint8 buffer of Local Certificate Buffer
+* @param[in] nPrivateKeyBufferSize - Number of elements in buffer
+* @param[in] pPrivateKeyBuffer - uint8 buffer of Private Key Buffer
+* @param[in] eSecurityMode - Security mode to use.
+* @return error code or 0 (success)
+*/
+typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptionBinPtr) (LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, LibMCDriver_OPCUA_uint64 nLocalCertificateBufferSize, const LibMCDriver_OPCUA_uint8 * pLocalCertificateBuffer, LibMCDriver_OPCUA_uint64 nPrivateKeyBufferSize, const LibMCDriver_OPCUA_uint8 * pPrivateKeyBuffer, LibMCDriver_OPCUA::eUASecurityMode eSecurityMode);
+
+/**
+* Enables encryption for subsequent connects.
+*
+* @param[in] pDriver_OPCUA - Driver_OPCUA instance.
 * @return error code or 0 (success)
 */
 typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_DisableEncryptionPtr) (LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA);
+
+/**
+* Connects anonymously to a OPCUA PLC Controller.
+*
+* @param[in] pDriver_OPCUA - Driver_OPCUA instance.
+* @param[in] pEndPointURL - End point URL to connect to.
+* @param[in] pApplicationURL - Application URL to use.
+* @return error code or 0 (success)
+*/
+typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_ConnectPtr) (LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, const char * pEndPointURL, const char * pApplicationURL);
 
 /**
 * Connects to a OPCUA PLC Controller.
@@ -255,6 +278,19 @@ typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_WriteDoublePtr)
 */
 typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_WriteStringPtr) (LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, LibMCDriver_OPCUA_uint32 nNameSpace, const char * pNodeName, const char * pValue);
 
+/**
+* Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+*
+* @param[in] pDriver_OPCUA - Driver_OPCUA instance.
+* @param[in] nNameSpace - Namespace ID
+* @param[in] pNodeName - NodeToRead
+* @param[in] pMethod - Method to call
+* @param[in] nArgInt32 - Method Argument Int32
+* @param[in] pFeedbackResult - Method execution result string
+* @return error code or 0 (success)
+*/
+typedef LibMCDriver_OPCUAResult (*PLibMCDriver_OPCUADriver_OPCUA_CallMethodInt32Ptr) (LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, LibMCDriver_OPCUA_uint32 nNameSpace, const char * pNodeName, const char * pMethod, LibMCDriver_OPCUA_int32 nArgInt32, const char * pFeedbackResult);
+
 /*************************************************************************************************************************
  Global functions
 **************************************************************************************************************************/
@@ -340,7 +376,9 @@ typedef struct {
 	PLibMCDriver_OPCUADriver_OPCUA_SetToSimulationModePtr m_Driver_OPCUA_SetToSimulationMode;
 	PLibMCDriver_OPCUADriver_OPCUA_IsSimulationModePtr m_Driver_OPCUA_IsSimulationMode;
 	PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptionPtr m_Driver_OPCUA_EnableEncryption;
+	PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptionBinPtr m_Driver_OPCUA_EnableEncryptionBin;
 	PLibMCDriver_OPCUADriver_OPCUA_DisableEncryptionPtr m_Driver_OPCUA_DisableEncryption;
+	PLibMCDriver_OPCUADriver_OPCUA_ConnectPtr m_Driver_OPCUA_Connect;
 	PLibMCDriver_OPCUADriver_OPCUA_ConnectWithUserNamePtr m_Driver_OPCUA_ConnectWithUserName;
 	PLibMCDriver_OPCUADriver_OPCUA_DisconnectPtr m_Driver_OPCUA_Disconnect;
 	PLibMCDriver_OPCUADriver_OPCUA_IsConnectedPtr m_Driver_OPCUA_IsConnected;
@@ -350,6 +388,7 @@ typedef struct {
 	PLibMCDriver_OPCUADriver_OPCUA_WriteIntegerPtr m_Driver_OPCUA_WriteInteger;
 	PLibMCDriver_OPCUADriver_OPCUA_WriteDoublePtr m_Driver_OPCUA_WriteDouble;
 	PLibMCDriver_OPCUADriver_OPCUA_WriteStringPtr m_Driver_OPCUA_WriteString;
+	PLibMCDriver_OPCUADriver_OPCUA_CallMethodInt32Ptr m_Driver_OPCUA_CallMethodInt32;
 	PLibMCDriver_OPCUAGetVersionPtr m_GetVersion;
 	PLibMCDriver_OPCUAGetLastErrorPtr m_GetLastError;
 	PLibMCDriver_OPCUAReleaseInstancePtr m_ReleaseInstance;

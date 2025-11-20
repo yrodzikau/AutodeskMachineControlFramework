@@ -192,9 +192,35 @@ void CDriver_OPCUA::EnableEncryption(const std::string& sLocalCertificate, const
     m_pClient->EnableEncryption(sLocalCertificate, sPrivateKey, eLibSecurityMode);
 }
 
+void CDriver_OPCUA::EnableEncryptionBin(const LibMCDriver_OPCUA_uint64 nLocalCertificateBufferSize, const LibMCDriver_OPCUA_uint8* pLocalCertificateBuffer, const LibMCDriver_OPCUA_uint64 nPrivateKeyBufferSize, const LibMCDriver_OPCUA_uint8* pPrivateKeyBuffer, const LibMCDriver_OPCUA::eUASecurityMode eSecurityMode)
+{
+    LibOpen62541::eUASecurityMode eLibSecurityMode;
+
+    switch (eSecurityMode) {
+    case LibMCDriver_OPCUA::eUASecurityMode::Sign:
+        eLibSecurityMode = LibOpen62541::eUASecurityMode::Sign;
+        break;
+    case LibMCDriver_OPCUA::eUASecurityMode::SignAndEncrypt:
+        eLibSecurityMode = LibOpen62541::eUASecurityMode::SignAndEncrypt;
+        break;
+    default:
+        eLibSecurityMode = LibOpen62541::eUASecurityMode::None;
+    }
+
+	LibOpen62541::CInputVector<LibOpen62541_uint8> LocalCertificateBuffer(pLocalCertificateBuffer, nLocalCertificateBufferSize);
+    LibOpen62541::CInputVector<LibOpen62541_uint8> PrivateKeyBuffer(pPrivateKeyBuffer, nPrivateKeyBufferSize);
+
+    m_pClient->EnableEncryptionBin(LocalCertificateBuffer, PrivateKeyBuffer, eLibSecurityMode);
+}
+
 bool CDriver_OPCUA::IsConnected()
 {
     return m_pClient->IsConnected();
+}
+
+void CDriver_OPCUA::Connect(const std::string& sEndPointURL, const std::string& sApplicationURL)
+{
+	m_pClient->Connect(sEndPointURL, sApplicationURL);
 }
 
 void CDriver_OPCUA::ConnectWithUserName(const std::string& sEndPointURL, const std::string& sUsername, const std::string& sPassword, const std::string& sApplicationURL)
@@ -323,4 +349,7 @@ void CDriver_OPCUA::WriteString(const LibMCDriver_OPCUA_uint32 nNameSpace, const
     m_pClient->WriteString(nNameSpace, sNodeName, sValue);
 }
 
-
+void CDriver_OPCUA::CallMethodInt32(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string& sNodeName, const std::string& sMethod, const LibMCDriver_OPCUA_int32 nArgInt32, const std::string& sFeedbackResult)
+{
+    m_pClient->CallMethodInt32(nNameSpace, sNodeName, sMethod, nArgInt32, sFeedbackResult);
+}

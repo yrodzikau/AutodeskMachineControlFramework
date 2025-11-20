@@ -561,7 +561,9 @@ public:
 	inline void SetToSimulationMode();
 	inline bool IsSimulationMode();
 	inline void EnableEncryption(const std::string & sLocalCertificate, const std::string & sPrivateKey, const eUASecurityMode eSecurityMode);
+	inline void EnableEncryptionBin(const CInputVector<LibMCDriver_OPCUA_uint8> & LocalCertificateBuffer, const CInputVector<LibMCDriver_OPCUA_uint8> & PrivateKeyBuffer, const eUASecurityMode eSecurityMode);
 	inline void DisableEncryption();
+	inline void Connect(const std::string & sEndPointURL, const std::string & sApplicationURL);
 	inline void ConnectWithUserName(const std::string & sEndPointURL, const std::string & sUsername, const std::string & sPassword, const std::string & sApplicationURL);
 	inline void Disconnect();
 	inline bool IsConnected();
@@ -571,6 +573,7 @@ public:
 	inline void WriteInteger(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const eUAIntegerType eNodeType, const LibMCDriver_OPCUA_int64 nValue);
 	inline void WriteDouble(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const eUADoubleType eNodeType, const LibMCDriver_OPCUA_double dValue);
 	inline void WriteString(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue);
+	inline void CallMethodInt32(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibMCDriver_OPCUA_int32 nArgInt32, const std::string & sFeedbackResult);
 };
 	
 	/**
@@ -704,7 +707,9 @@ public:
 		pWrapperTable->m_Driver_OPCUA_SetToSimulationMode = nullptr;
 		pWrapperTable->m_Driver_OPCUA_IsSimulationMode = nullptr;
 		pWrapperTable->m_Driver_OPCUA_EnableEncryption = nullptr;
+		pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin = nullptr;
 		pWrapperTable->m_Driver_OPCUA_DisableEncryption = nullptr;
+		pWrapperTable->m_Driver_OPCUA_Connect = nullptr;
 		pWrapperTable->m_Driver_OPCUA_ConnectWithUserName = nullptr;
 		pWrapperTable->m_Driver_OPCUA_Disconnect = nullptr;
 		pWrapperTable->m_Driver_OPCUA_IsConnected = nullptr;
@@ -714,6 +719,7 @@ public:
 		pWrapperTable->m_Driver_OPCUA_WriteInteger = nullptr;
 		pWrapperTable->m_Driver_OPCUA_WriteDouble = nullptr;
 		pWrapperTable->m_Driver_OPCUA_WriteString = nullptr;
+		pWrapperTable->m_Driver_OPCUA_CallMethodInt32 = nullptr;
 		pWrapperTable->m_GetVersion = nullptr;
 		pWrapperTable->m_GetLastError = nullptr;
 		pWrapperTable->m_ReleaseInstance = nullptr;
@@ -853,12 +859,30 @@ public:
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin = (PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptionBinPtr) GetProcAddress(hLibrary, "libmcdriver_opcua_driver_opcua_enableencryptionbin");
+		#else // _WIN32
+		pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin = (PLibMCDriver_OPCUADriver_OPCUA_EnableEncryptionBinPtr) dlsym(hLibrary, "libmcdriver_opcua_driver_opcua_enableencryptionbin");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin == nullptr)
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_Driver_OPCUA_DisableEncryption = (PLibMCDriver_OPCUADriver_OPCUA_DisableEncryptionPtr) GetProcAddress(hLibrary, "libmcdriver_opcua_driver_opcua_disableencryption");
 		#else // _WIN32
 		pWrapperTable->m_Driver_OPCUA_DisableEncryption = (PLibMCDriver_OPCUADriver_OPCUA_DisableEncryptionPtr) dlsym(hLibrary, "libmcdriver_opcua_driver_opcua_disableencryption");
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_Driver_OPCUA_DisableEncryption == nullptr)
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_Driver_OPCUA_Connect = (PLibMCDriver_OPCUADriver_OPCUA_ConnectPtr) GetProcAddress(hLibrary, "libmcdriver_opcua_driver_opcua_connect");
+		#else // _WIN32
+		pWrapperTable->m_Driver_OPCUA_Connect = (PLibMCDriver_OPCUADriver_OPCUA_ConnectPtr) dlsym(hLibrary, "libmcdriver_opcua_driver_opcua_connect");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_Driver_OPCUA_Connect == nullptr)
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -940,6 +964,15 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_Driver_OPCUA_WriteString == nullptr)
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_Driver_OPCUA_CallMethodInt32 = (PLibMCDriver_OPCUADriver_OPCUA_CallMethodInt32Ptr) GetProcAddress(hLibrary, "libmcdriver_opcua_driver_opcua_callmethodint32");
+		#else // _WIN32
+		pWrapperTable->m_Driver_OPCUA_CallMethodInt32 = (PLibMCDriver_OPCUADriver_OPCUA_CallMethodInt32Ptr) dlsym(hLibrary, "libmcdriver_opcua_driver_opcua_callmethodint32");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_Driver_OPCUA_CallMethodInt32 == nullptr)
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -1057,8 +1090,16 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_EnableEncryption == nullptr) )
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_enableencryptionbin", (void**)&(pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin));
+		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_EnableEncryptionBin == nullptr) )
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_disableencryption", (void**)&(pWrapperTable->m_Driver_OPCUA_DisableEncryption));
 		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_DisableEncryption == nullptr) )
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_connect", (void**)&(pWrapperTable->m_Driver_OPCUA_Connect));
+		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_Connect == nullptr) )
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_connectwithusername", (void**)&(pWrapperTable->m_Driver_OPCUA_ConnectWithUserName));
@@ -1095,6 +1136,10 @@ public:
 		
 		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_writestring", (void**)&(pWrapperTable->m_Driver_OPCUA_WriteString));
 		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_WriteString == nullptr) )
+			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdriver_opcua_driver_opcua_callmethodint32", (void**)&(pWrapperTable->m_Driver_OPCUA_CallMethodInt32));
+		if ( (eLookupError != 0) || (pWrapperTable->m_Driver_OPCUA_CallMethodInt32 == nullptr) )
 			return LIBMCDRIVER_OPCUA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcdriver_opcua_getversion", (void**)&(pWrapperTable->m_GetVersion));
@@ -1248,11 +1293,32 @@ public:
 	}
 	
 	/**
+	* CDriver_OPCUA::EnableEncryptionBin - Enables encryption for subsequent connects.
+	* @param[in] LocalCertificateBuffer - Local Certificate Buffer
+	* @param[in] PrivateKeyBuffer - Private Key Buffer
+	* @param[in] eSecurityMode - Security mode to use.
+	*/
+	void CDriver_OPCUA::EnableEncryptionBin(const CInputVector<LibMCDriver_OPCUA_uint8> & LocalCertificateBuffer, const CInputVector<LibMCDriver_OPCUA_uint8> & PrivateKeyBuffer, const eUASecurityMode eSecurityMode)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_Driver_OPCUA_EnableEncryptionBin(m_pHandle, (LibMCDriver_OPCUA_uint64)LocalCertificateBuffer.size(), LocalCertificateBuffer.data(), (LibMCDriver_OPCUA_uint64)PrivateKeyBuffer.size(), PrivateKeyBuffer.data(), eSecurityMode));
+	}
+	
+	/**
 	* CDriver_OPCUA::DisableEncryption - Enables encryption for subsequent connects.
 	*/
 	void CDriver_OPCUA::DisableEncryption()
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_Driver_OPCUA_DisableEncryption(m_pHandle));
+	}
+	
+	/**
+	* CDriver_OPCUA::Connect - Connects anonymously to a OPCUA PLC Controller.
+	* @param[in] sEndPointURL - End point URL to connect to.
+	* @param[in] sApplicationURL - Application URL to use.
+	*/
+	void CDriver_OPCUA::Connect(const std::string & sEndPointURL, const std::string & sApplicationURL)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_Driver_OPCUA_Connect(m_pHandle, sEndPointURL.c_str(), sApplicationURL.c_str()));
 	}
 	
 	/**
@@ -1367,6 +1433,19 @@ public:
 	void CDriver_OPCUA::WriteString(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue)
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_Driver_OPCUA_WriteString(m_pHandle, nNameSpace, sNodeName.c_str(), sValue.c_str()));
+	}
+	
+	/**
+	* CDriver_OPCUA::CallMethodInt32 - Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+	* @param[in] nNameSpace - Namespace ID
+	* @param[in] sNodeName - NodeToRead
+	* @param[in] sMethod - Method to call
+	* @param[in] nArgInt32 - Method Argument Int32
+	* @param[in] sFeedbackResult - Method execution result string
+	*/
+	void CDriver_OPCUA::CallMethodInt32(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibMCDriver_OPCUA_int32 nArgInt32, const std::string & sFeedbackResult)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_Driver_OPCUA_CallMethodInt32(m_pHandle, nNameSpace, sNodeName.c_str(), sMethod.c_str(), nArgInt32, sFeedbackResult.c_str()));
 	}
 
 } // namespace LibMCDriver_OPCUA

@@ -100,7 +100,11 @@ public:
 
 	void EnableEncryption(const std::string& sLocalCertificate, const std::string& sPrivateKey, const LibMCDriver_OPCUA::eUASecurityMode eSecurityMode) override;
 
+	void EnableEncryptionBin(const LibMCDriver_OPCUA_uint64 nLocalCertificateBufferSize, const LibMCDriver_OPCUA_uint8* pLocalCertificateBuffer, const LibMCDriver_OPCUA_uint64 nPrivateKeyBufferSize, const LibMCDriver_OPCUA_uint8* pPrivateKeyBuffer, const LibMCDriver_OPCUA::eUASecurityMode eSecurityMode) override;
+
 	void DisableEncryption() override;
+
+	void Connect(const std::string& sEndPointURL, const std::string& sApplicationURL);
 
 	void ConnectWithUserName(const std::string& sEndPointURL, const std::string& sUsername, const std::string& sPassword, const std::string& sApplicationURL) override;
 
@@ -119,6 +123,8 @@ public:
 	void WriteDouble(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string& sNodeName, const LibMCDriver_OPCUA::eUADoubleType eNodeType, const LibMCDriver_OPCUA_double dValue) override;
 
 	void WriteString(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string& sNodeName, const std::string& sValue) override;
+		
+	void CallMethodInt32(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string& sNodeName, const std::string& sMethod, const LibMCDriver_OPCUA_int32 nArgInt32, const std::string& sFeedbackResult) override;
 
 };
 

@@ -182,6 +182,7 @@ public:
 			case LIBOPEN62541_ERROR_OPCUAVARIANTDATAISNULL: return "OPCUAVARIANTDATAISNULL";
 			case LIBOPEN62541_ERROR_OPCUASTRINGDATAISNULL: return "OPCUASTRINGDATAISNULL";
 			case LIBOPEN62541_ERROR_OPCUAWRITEINTEGEROUTOFBOUNDS: return "OPCUAWRITEINTEGEROUTOFBOUNDS";
+			case LIBOPEN62541_ERROR_COULDNOTCALLMETHOD: return "COULDNOTCALLMETHOD";
 		}
 		return "UNKNOWN";
 	}
@@ -211,6 +212,7 @@ public:
 			case LIBOPEN62541_ERROR_OPCUAVARIANTDATAISNULL: return "OPCUA Variant data is null.";
 			case LIBOPEN62541_ERROR_OPCUASTRINGDATAISNULL: return "OPCUA String data is null.";
 			case LIBOPEN62541_ERROR_OPCUAWRITEINTEGEROUTOFBOUNDS: return "OPCUA Write integer out of bounds.";
+			case LIBOPEN62541_ERROR_COULDNOTCALLMETHOD: return "Could not call method.";
 		}
 		return "unknown error";
 	}
@@ -405,7 +407,9 @@ public:
 	}
 	
 	inline void EnableEncryption(const std::string & sLocalCertificate, const std::string & sPrivateKey, const eUASecurityMode eSecurityMode);
+	inline void EnableEncryptionBin(const CInputVector<LibOpen62541_uint8> & LocalCertificateBuffer, const CInputVector<LibOpen62541_uint8> & PrivateKeyBuffer, const eUASecurityMode eSecurityMode);
 	inline void DisableEncryption();
+	inline void Connect(const std::string & sEndPointURL, const std::string & sApplicationURL);
 	inline void ConnectUserName(const std::string & sEndPointURL, const std::string & sUsername, const std::string & sPassword, const std::string & sApplicationURL);
 	inline void Disconnect();
 	inline bool IsConnected();
@@ -415,6 +419,7 @@ public:
 	inline void WriteInteger(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const eUAIntegerType eNodeType, const LibOpen62541_int64 nValue);
 	inline void WriteDouble(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const eUADoubleType eNodeType, const LibOpen62541_double dValue);
 	inline void WriteString(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue);
+	inline void CallMethodInt32(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibOpen62541_int32 nArgInt32, const std::string & sFeedbackResult);
 };
 	
 	/**
@@ -514,7 +519,9 @@ public:
 		
 		pWrapperTable->m_LibraryHandle = nullptr;
 		pWrapperTable->m_OPCClient_EnableEncryption = nullptr;
+		pWrapperTable->m_OPCClient_EnableEncryptionBin = nullptr;
 		pWrapperTable->m_OPCClient_DisableEncryption = nullptr;
+		pWrapperTable->m_OPCClient_Connect = nullptr;
 		pWrapperTable->m_OPCClient_ConnectUserName = nullptr;
 		pWrapperTable->m_OPCClient_Disconnect = nullptr;
 		pWrapperTable->m_OPCClient_IsConnected = nullptr;
@@ -524,6 +531,7 @@ public:
 		pWrapperTable->m_OPCClient_WriteInteger = nullptr;
 		pWrapperTable->m_OPCClient_WriteDouble = nullptr;
 		pWrapperTable->m_OPCClient_WriteString = nullptr;
+		pWrapperTable->m_OPCClient_CallMethodInt32 = nullptr;
 		pWrapperTable->m_GetVersion = nullptr;
 		pWrapperTable->m_GetLastError = nullptr;
 		pWrapperTable->m_AcquireInstance = nullptr;
@@ -590,12 +598,30 @@ public:
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_OPCClient_EnableEncryptionBin = (PLibOpen62541OPCClient_EnableEncryptionBinPtr) GetProcAddress(hLibrary, "libopen62541_opcclient_enableencryptionbin");
+		#else // _WIN32
+		pWrapperTable->m_OPCClient_EnableEncryptionBin = (PLibOpen62541OPCClient_EnableEncryptionBinPtr) dlsym(hLibrary, "libopen62541_opcclient_enableencryptionbin");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OPCClient_EnableEncryptionBin == nullptr)
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_OPCClient_DisableEncryption = (PLibOpen62541OPCClient_DisableEncryptionPtr) GetProcAddress(hLibrary, "libopen62541_opcclient_disableencryption");
 		#else // _WIN32
 		pWrapperTable->m_OPCClient_DisableEncryption = (PLibOpen62541OPCClient_DisableEncryptionPtr) dlsym(hLibrary, "libopen62541_opcclient_disableencryption");
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_OPCClient_DisableEncryption == nullptr)
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_OPCClient_Connect = (PLibOpen62541OPCClient_ConnectPtr) GetProcAddress(hLibrary, "libopen62541_opcclient_connect");
+		#else // _WIN32
+		pWrapperTable->m_OPCClient_Connect = (PLibOpen62541OPCClient_ConnectPtr) dlsym(hLibrary, "libopen62541_opcclient_connect");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OPCClient_Connect == nullptr)
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -680,6 +706,15 @@ public:
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_OPCClient_CallMethodInt32 = (PLibOpen62541OPCClient_CallMethodInt32Ptr) GetProcAddress(hLibrary, "libopen62541_opcclient_callmethodint32");
+		#else // _WIN32
+		pWrapperTable->m_OPCClient_CallMethodInt32 = (PLibOpen62541OPCClient_CallMethodInt32Ptr) dlsym(hLibrary, "libopen62541_opcclient_callmethodint32");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_OPCClient_CallMethodInt32 == nullptr)
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_GetVersion = (PLibOpen62541GetVersionPtr) GetProcAddress(hLibrary, "libopen62541_getversion");
 		#else // _WIN32
 		pWrapperTable->m_GetVersion = (PLibOpen62541GetVersionPtr) dlsym(hLibrary, "libopen62541_getversion");
@@ -753,8 +788,16 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_EnableEncryption == nullptr) )
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libopen62541_opcclient_enableencryptionbin", (void**)&(pWrapperTable->m_OPCClient_EnableEncryptionBin));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_EnableEncryptionBin == nullptr) )
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libopen62541_opcclient_disableencryption", (void**)&(pWrapperTable->m_OPCClient_DisableEncryption));
 		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_DisableEncryption == nullptr) )
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libopen62541_opcclient_connect", (void**)&(pWrapperTable->m_OPCClient_Connect));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_Connect == nullptr) )
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libopen62541_opcclient_connectusername", (void**)&(pWrapperTable->m_OPCClient_ConnectUserName));
@@ -791,6 +834,10 @@ public:
 		
 		eLookupError = (*pLookup)("libopen62541_opcclient_writestring", (void**)&(pWrapperTable->m_OPCClient_WriteString));
 		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_WriteString == nullptr) )
+			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libopen62541_opcclient_callmethodint32", (void**)&(pWrapperTable->m_OPCClient_CallMethodInt32));
+		if ( (eLookupError != 0) || (pWrapperTable->m_OPCClient_CallMethodInt32 == nullptr) )
 			return LIBOPEN62541_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libopen62541_getversion", (void**)&(pWrapperTable->m_GetVersion));
@@ -842,11 +889,32 @@ public:
 	}
 	
 	/**
+	* COPCClient::EnableEncryptionBin - Enables encryption for subsequent connects.
+	* @param[in] LocalCertificateBuffer - Local Certificate Buffer
+	* @param[in] PrivateKeyBuffer - Private Key Buffer
+	* @param[in] eSecurityMode - Security mode to use.
+	*/
+	void COPCClient::EnableEncryptionBin(const CInputVector<LibOpen62541_uint8> & LocalCertificateBuffer, const CInputVector<LibOpen62541_uint8> & PrivateKeyBuffer, const eUASecurityMode eSecurityMode)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_OPCClient_EnableEncryptionBin(m_pHandle, (LibOpen62541_uint64)LocalCertificateBuffer.size(), LocalCertificateBuffer.data(), (LibOpen62541_uint64)PrivateKeyBuffer.size(), PrivateKeyBuffer.data(), eSecurityMode));
+	}
+	
+	/**
 	* COPCClient::DisableEncryption - Enables encryption for subsequent connects.
 	*/
 	void COPCClient::DisableEncryption()
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_OPCClient_DisableEncryption(m_pHandle));
+	}
+	
+	/**
+	* COPCClient::Connect - Connects to the end point with a user name and password.
+	* @param[in] sEndPointURL - End point URL to connect to.
+	* @param[in] sApplicationURL - Application URL to use.
+	*/
+	void COPCClient::Connect(const std::string & sEndPointURL, const std::string & sApplicationURL)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_OPCClient_Connect(m_pHandle, sEndPointURL.c_str(), sApplicationURL.c_str()));
 	}
 	
 	/**
@@ -961,6 +1029,19 @@ public:
 	void COPCClient::WriteString(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue)
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_OPCClient_WriteString(m_pHandle, nNameSpace, sNodeName.c_str(), sValue.c_str()));
+	}
+	
+	/**
+	* COPCClient::CallMethodInt32 - Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+	* @param[in] nNameSpace - Namespace ID
+	* @param[in] sNodeName - NodeToRead
+	* @param[in] sMethod - Method to call
+	* @param[in] nArgInt32 - Method Argument Int32
+	* @param[in] sFeedbackResult - Method execution result string
+	*/
+	void COPCClient::CallMethodInt32(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibOpen62541_int32 nArgInt32, const std::string & sFeedbackResult)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_OPCClient_CallMethodInt32(m_pHandle, nNameSpace, sNodeName.c_str(), sMethod.c_str(), nArgInt32, sFeedbackResult.c_str()));
 	}
 
 } // namespace LibOpen62541

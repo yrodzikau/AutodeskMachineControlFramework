@@ -397,6 +397,34 @@ LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_enableencryption(LibMCDri
 	}
 }
 
+LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_enableencryptionbin(LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, LibMCDriver_OPCUA_uint64 nLocalCertificateBufferSize, const LibMCDriver_OPCUA_uint8 * pLocalCertificateBuffer, LibMCDriver_OPCUA_uint64 nPrivateKeyBufferSize, const LibMCDriver_OPCUA_uint8 * pPrivateKeyBuffer, eLibMCDriver_OPCUAUASecurityMode eSecurityMode)
+{
+	IBase* pIBaseClass = (IBase *)pDriver_OPCUA;
+
+	try {
+		if ( (!pLocalCertificateBuffer) && (nLocalCertificateBufferSize>0))
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		if ( (!pPrivateKeyBuffer) && (nPrivateKeyBufferSize>0))
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		IDriver_OPCUA* pIDriver_OPCUA = dynamic_cast<IDriver_OPCUA*>(pIBaseClass);
+		if (!pIDriver_OPCUA)
+			throw ELibMCDriver_OPCUAInterfaceException(LIBMCDRIVER_OPCUA_ERROR_INVALIDCAST);
+		
+		pIDriver_OPCUA->EnableEncryptionBin(nLocalCertificateBufferSize, pLocalCertificateBuffer, nPrivateKeyBufferSize, pPrivateKeyBuffer, eSecurityMode);
+
+		return LIBMCDRIVER_OPCUA_SUCCESS;
+	}
+	catch (ELibMCDriver_OPCUAInterfaceException & Exception) {
+		return handleLibMCDriver_OPCUAException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_disableencryption(LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA)
 {
 	IBase* pIBaseClass = (IBase *)pDriver_OPCUA;
@@ -407,6 +435,36 @@ LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_disableencryption(LibMCDr
 			throw ELibMCDriver_OPCUAInterfaceException(LIBMCDRIVER_OPCUA_ERROR_INVALIDCAST);
 		
 		pIDriver_OPCUA->DisableEncryption();
+
+		return LIBMCDRIVER_OPCUA_SUCCESS;
+	}
+	catch (ELibMCDriver_OPCUAInterfaceException & Exception) {
+		return handleLibMCDriver_OPCUAException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_connect(LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, const char * pEndPointURL, const char * pApplicationURL)
+{
+	IBase* pIBaseClass = (IBase *)pDriver_OPCUA;
+
+	try {
+		if (pEndPointURL == nullptr)
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		if (pApplicationURL == nullptr)
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		std::string sEndPointURL(pEndPointURL);
+		std::string sApplicationURL(pApplicationURL);
+		IDriver_OPCUA* pIDriver_OPCUA = dynamic_cast<IDriver_OPCUA*>(pIBaseClass);
+		if (!pIDriver_OPCUA)
+			throw ELibMCDriver_OPCUAInterfaceException(LIBMCDRIVER_OPCUA_ERROR_INVALIDCAST);
+		
+		pIDriver_OPCUA->Connect(sEndPointURL, sApplicationURL);
 
 		return LIBMCDRIVER_OPCUA_SUCCESS;
 	}
@@ -700,6 +758,39 @@ LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_writestring(LibMCDriver_O
 	}
 }
 
+LibMCDriver_OPCUAResult libmcdriver_opcua_driver_opcua_callmethodint32(LibMCDriver_OPCUA_Driver_OPCUA pDriver_OPCUA, LibMCDriver_OPCUA_uint32 nNameSpace, const char * pNodeName, const char * pMethod, LibMCDriver_OPCUA_int32 nArgInt32, const char * pFeedbackResult)
+{
+	IBase* pIBaseClass = (IBase *)pDriver_OPCUA;
+
+	try {
+		if (pNodeName == nullptr)
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		if (pMethod == nullptr)
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		if (pFeedbackResult == nullptr)
+			throw ELibMCDriver_OPCUAInterfaceException (LIBMCDRIVER_OPCUA_ERROR_INVALIDPARAM);
+		std::string sNodeName(pNodeName);
+		std::string sMethod(pMethod);
+		std::string sFeedbackResult(pFeedbackResult);
+		IDriver_OPCUA* pIDriver_OPCUA = dynamic_cast<IDriver_OPCUA*>(pIBaseClass);
+		if (!pIDriver_OPCUA)
+			throw ELibMCDriver_OPCUAInterfaceException(LIBMCDRIVER_OPCUA_ERROR_INVALIDCAST);
+		
+		pIDriver_OPCUA->CallMethodInt32(nNameSpace, sNodeName, sMethod, nArgInt32, sFeedbackResult);
+
+		return LIBMCDRIVER_OPCUA_SUCCESS;
+	}
+	catch (ELibMCDriver_OPCUAInterfaceException & Exception) {
+		return handleLibMCDriver_OPCUAException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 
 
 /*************************************************************************************************************************
@@ -733,8 +824,12 @@ LibMCDriver_OPCUAResult LibMCDriver_OPCUA::Impl::LibMCDriver_OPCUA_GetProcAddres
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_issimulationmode;
 	if (sProcName == "libmcdriver_opcua_driver_opcua_enableencryption") 
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_enableencryption;
+	if (sProcName == "libmcdriver_opcua_driver_opcua_enableencryptionbin") 
+		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_enableencryptionbin;
 	if (sProcName == "libmcdriver_opcua_driver_opcua_disableencryption") 
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_disableencryption;
+	if (sProcName == "libmcdriver_opcua_driver_opcua_connect") 
+		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_connect;
 	if (sProcName == "libmcdriver_opcua_driver_opcua_connectwithusername") 
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_connectwithusername;
 	if (sProcName == "libmcdriver_opcua_driver_opcua_disconnect") 
@@ -753,6 +848,8 @@ LibMCDriver_OPCUAResult LibMCDriver_OPCUA::Impl::LibMCDriver_OPCUA_GetProcAddres
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_writedouble;
 	if (sProcName == "libmcdriver_opcua_driver_opcua_writestring") 
 		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_writestring;
+	if (sProcName == "libmcdriver_opcua_driver_opcua_callmethodint32") 
+		*ppProcAddress = (void*) &libmcdriver_opcua_driver_opcua_callmethodint32;
 	if (sProcName == "libmcdriver_opcua_getversion") 
 		*ppProcAddress = (void*) &libmcdriver_opcua_getversion;
 	if (sProcName == "libmcdriver_opcua_getlasterror") 
