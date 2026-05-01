@@ -299,7 +299,9 @@
 		<error name="INVALIDFRAMEDURATION" code="10259" description="Invalid frame duration." />	
 		<error name="INVALIDPAUSETOLERANCE" code="10260" description="Invalid pause tolerance." />	
 		<error name="INVALIDFRAMECACHEDURATION" code="10261" description="Invalid frame cache duration." />	
-		<error name="VIDEOSTREAMFRAMEENCODINGERROR" code="10262" description="Video stream frame encoding error." />	
+		<error name="VIDEOSTREAMFRAMEENCODINGERROR" code="10262" description="Video stream frame encoding error." />
+		<error name="SEGMENTISNOTOFTYPEPOLYLINE" code="10263" description="Segment is not of type polyline." />	
+		<error name="COULDNOTEVALUATEPOLYLINES" code="10264" description="Could not evaluate polyline profiles." />	
 		
 		
 	</errors>
@@ -2214,6 +2216,20 @@
 			<param name="ValueType" type="enum" class="ToolpathProfileValueType" pass="in" description="Enum to query for. MUST NOT be custom. Fails if value type does not exist." />
 			<param name="CountArray" type="basicarray" class="uint32" pass="out" description="Number of subinterpolation values per hatch. Will contain HatchCount elements." />
 			<param name="EvaluationData" type="structarray" class="Hatch2DSubInterpolationData" pass="out" description="Evaluated data on evaluation points for the full segment, in hatch order. Will contain the sum of CountArray elements." />
+		</method>
+
+		<method name="EvaluateTypedPolyLineProfileModifier" description="Evaluates a typed profile value with its modifier factors. Fails if segment type is not polyline.">
+			<param name="SegmentIndex" type="uint32" pass="in" description="Index. Must be between 0 and Count - 1." />
+			<param name="ValueType" type="enum" class="ToolpathProfileValueType" pass="in" description="Enum to query for. MUST NOT be custom. Fails if value type does not exist." />
+			<param name="EvaluationData1" type="basicarray" class="double" pass="out" description="Evaluated data at the start vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2." />
+			<param name="EvaluationData2" type="basicarray" class="double" pass="out" description="Evaluated data at the end vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2." />
+		</method>
+
+		<method name="EvaluateTypedPolyLineProfileInterpolation" description="Evaluates the subinterpolation values with its modifier factors. Fails if segment type is not polyline.">
+			<param name="SegmentIndex" type="uint32" pass="in" description="Index. Must be between 0 and Count - 1." />
+			<param name="ValueType" type="enum" class="ToolpathProfileValueType" pass="in" description="Enum to query for. MUST NOT be custom. Fails if value type does not exist." />
+			<param name="CountArray" type="basicarray" class="uint32" pass="out" description="Number of subinterpolation values per polyline edge. Will contain (PointCount - 1) elements when PointCount is at least 2." />
+			<param name="EvaluationData" type="structarray" class="Hatch2DSubInterpolationData" pass="out" description="Evaluated data on evaluation points for the full segment, in edge order. Will contain the sum of CountArray elements." />
 		</method>
 
 

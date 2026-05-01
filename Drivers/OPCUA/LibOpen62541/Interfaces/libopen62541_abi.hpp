@@ -79,9 +79,32 @@ LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_enableencryption
 * Enables encryption for subsequent connects.
 *
 * @param[in] pOPCClient - OPCClient instance.
+* @param[in] nLocalCertificateBufferSize - Number of elements in buffer
+* @param[in] pLocalCertificateBuffer - uint8 buffer of Local Certificate Buffer
+* @param[in] nPrivateKeyBufferSize - Number of elements in buffer
+* @param[in] pPrivateKeyBuffer - uint8 buffer of Private Key Buffer
+* @param[in] eSecurityMode - Security mode to use.
+* @return error code or 0 (success)
+*/
+LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_enableencryptionbin(LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8 * pLocalCertificateBuffer, LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8 * pPrivateKeyBuffer, LibOpen62541::eUASecurityMode eSecurityMode);
+
+/**
+* Enables encryption for subsequent connects.
+*
+* @param[in] pOPCClient - OPCClient instance.
 * @return error code or 0 (success)
 */
 LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_disableencryption(LibOpen62541_OPCClient pOPCClient);
+
+/**
+* Connects to the end point with a user name and password.
+*
+* @param[in] pOPCClient - OPCClient instance.
+* @param[in] pEndPointURL - End point URL to connect to.
+* @param[in] pApplicationURL - Application URL to use.
+* @return error code or 0 (success)
+*/
+LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_connect(LibOpen62541_OPCClient pOPCClient, const char * pEndPointURL, const char * pApplicationURL);
 
 /**
 * Connects to the end point with a user name and password.
@@ -183,6 +206,19 @@ LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_writedouble(LibO
 * @return error code or 0 (success)
 */
 LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_writestring(LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint32 nNameSpace, const char * pNodeName, const char * pValue);
+
+/**
+* Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+*
+* @param[in] pOPCClient - OPCClient instance.
+* @param[in] nNameSpace - Namespace ID
+* @param[in] pNodeName - NodeToRead
+* @param[in] pMethod - Method to call
+* @param[in] nArgInt32 - Method Argument Int32
+* @param[in] pFeedbackResult - Method execution result string
+* @return error code or 0 (success)
+*/
+LIBOPEN62541_DECLSPEC LibOpen62541Result libopen62541_opcclient_callmethodint32(LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint32 nNameSpace, const char * pNodeName, const char * pMethod, LibOpen62541_int32 nArgInt32, const char * pFeedbackResult);
 
 /*************************************************************************************************************************
  Global functions

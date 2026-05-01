@@ -43,8 +43,9 @@ using namespace LibOpen62541::Impl;
 **************************************************************************************************************************/
 
 COPCClient::COPCClient()
-	: m_Client (nullptr),
-	m_SecurityMode (LibOpen62541::eUASecurityMode::None) 
+	: m_Client (nullptr)
+	, m_bUseBinaryEncryption(false)
+	, m_SecurityMode (LibOpen62541::eUASecurityMode::None) 
 {
 
 }
@@ -64,12 +65,128 @@ void COPCClient::EnableEncryption(const std::string& sLocalCertificate, const st
 	m_SecurityMode = eSecurityMode;
 }
 
+void COPCClient::EnableEncryptionBin(const LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8* pLocalCertificateBuffer, const LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8* pPrivateKeyBuffer, const LibOpen62541::eUASecurityMode eSecurityMode)
+{
+	m_certBuffer.assign(pLocalCertificateBuffer,pLocalCertificateBuffer + nLocalCertificateBufferSize);
+	m_keyBuffer.assign(pPrivateKeyBuffer,pPrivateKeyBuffer + nPrivateKeyBufferSize);
+	m_bUseBinaryEncryption = true;
+	m_SecurityMode = eSecurityMode;
+}
+
 void COPCClient::DisableEncryption()
 {
 	m_sCertificate = "";
 	m_sPrivateKey = "";
 	m_SecurityMode = LibOpen62541::eUASecurityMode::None;
 }
+
+void COPCClient::Connect(const std::string& sEndPointURL, const std::string& sApplicationURL)
+{
+	UA_StatusCode statusCode;
+
+	// Clean up any existing client instance
+	if (m_Client != nullptr) {
+		UA_Client_delete(m_Client);
+		m_Client = nullptr;
+	}
+
+	// Create new OPC UA client
+	m_Client = UA_Client_new();
+	if (m_Client == nullptr)
+		throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_COULDNOTCREATEOPCUACLIENT);
+
+	try {
+		// Get client configuration
+		UA_ClientConfig* pConfig = UA_Client_getConfig(m_Client);
+
+		// Initialize default configuration
+		UA_ClientConfig_setDefault(pConfig);
+
+		// Configure logging to stdout
+		//pConfig->logging = (UA_Logger*)&UA_Log_Stdout_;
+
+		// Apply selected security mode
+		switch (m_SecurityMode) {
+		case LibOpen62541::eUASecurityMode::None:
+			pConfig->securityMode = UA_MESSAGESECURITYMODE_NONE;
+			break;
+		case LibOpen62541::eUASecurityMode::Sign:
+			pConfig->securityMode = UA_MESSAGESECURITYMODE_SIGN;
+			break;
+		case LibOpen62541::eUASecurityMode::SignAndEncrypt:
+			pConfig->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+			break;
+		default:
+			throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_INVALIDSECURITYMODE, "invalid security mode");
+		}
+
+		// Set application URI
+		UA_String_clear(&pConfig->clientDescription.applicationUri);
+		pConfig->clientDescription.applicationUri = UA_STRING_ALLOC(sApplicationURL.c_str());
+
+		// If encryption is enabled (Basic256Sha256 etc.)
+		if (m_bUseBinaryEncryption) {
+
+			UA_ByteString certificate;
+			certificate.length = static_cast<UA_Int32>(m_certBuffer.size());
+			certificate.data = (UA_Byte*)UA_malloc(certificate.length);
+			memcpy(certificate.data, m_certBuffer.data(), certificate.length);
+
+			UA_ByteString privateKey;
+			privateKey.length = static_cast<UA_Int32>(m_keyBuffer.size());
+			privateKey.data = (UA_Byte*)UA_malloc(privateKey.length);
+			memcpy(privateKey.data, m_keyBuffer.data(), privateKey.length);
+
+			// Configure encryption
+			statusCode = UA_ClientConfig_setDefaultEncryption(
+				pConfig,
+				certificate,
+				privateKey,
+				nullptr, 0, //trustList, 1,
+				nullptr, 0
+			);
+
+			UA_ByteString_clear(&certificate);
+			UA_ByteString_clear(&privateKey);
+		}
+		else if (!m_sCertificate.empty()) {
+
+			auto certificateString = UA_String_fromChars(m_sCertificate.c_str());
+			auto privateKeyString = UA_String_fromChars(m_sPrivateKey.c_str());
+
+			statusCode = UA_ClientConfig_setDefaultEncryption(
+				pConfig,
+				certificateString,
+				privateKeyString,
+				nullptr, 0,   // trust list
+				nullptr, 0    // issuer list
+			);
+
+			UA_String_clear(&certificateString);
+			UA_String_clear(&privateKeyString);
+		}
+		else {
+			statusCode = UA_ClientConfig_setDefault(pConfig);
+		}
+
+		if (statusCode != UA_STATUSCODE_GOOD)
+			throw ELibOpen62541InterfaceException(
+				LIBOPEN62541_ERROR_COULDNOTSENDOPCUACLIENTCONFIG,
+				"could not configure OPC UA client (" + std::to_string(statusCode) + ")");
+
+		// Connect anonymously
+		statusCode = UA_Client_connect(m_Client, sEndPointURL.c_str());
+		if (statusCode != UA_STATUSCODE_GOOD)
+			throw ELibOpen62541InterfaceException(
+				LIBOPEN62541_ERROR_COULDNOTCONNECT,
+				"could not connect to OPC UA endpoint " + sEndPointURL + " (" + std::to_string(statusCode) + ")");
+	}
+	catch (...) {
+		Disconnect();
+		throw;
+	}
+}
+
 
 void COPCClient::ConnectUserName(const std::string & sEndPointURL, const std::string & sUsername, const std::string & sPassword, const std::string & sApplicationURL)
 {
@@ -603,3 +720,65 @@ void COPCClient::WriteString(const LibOpen62541_uint32 nNameSpace, const std::st
 
 }
 
+void COPCClient::CallMethodInt32(const LibOpen62541_uint32 nNameSpace, const std::string& sNodeName, const std::string& sMethod, const LibOpen62541_int32 nArgInt32, const std::string& sFeedbackResult)
+{
+	if (m_Client == nullptr)
+		throw ELibOpen62541InterfaceException(
+			LIBOPEN62541_ERROR_NOTCONNECTED,
+			"OPCUA client is not connected");
+
+	std::vector<char> objectBuffer(sNodeName.begin(), sNodeName.end());
+	objectBuffer.push_back(0);
+	std::vector<char> methodBuffer(sMethod.begin(), sMethod.end());
+	methodBuffer.push_back(0);
+
+	UA_NodeId objectId = UA_NODEID_STRING(nNameSpace, objectBuffer.data());
+	UA_NodeId methodId = UA_NODEID_STRING(nNameSpace, methodBuffer.data());
+
+	// --- Input arguments ---
+	UA_Variant inputArguments[2];
+	UA_Variant_init(&inputArguments[0]);
+	UA_Variant_init(&inputArguments[1]);
+
+	// 1) Int32
+	UA_Int32 stateValue = (UA_Int32)nArgInt32;
+	UA_Variant_setScalarCopy(&inputArguments[0], &stateValue, &UA_TYPES[UA_TYPES_INT32]);
+
+	// 2) ByteString
+	UA_ByteString byteString;
+	byteString.length = (UA_Int32)sFeedbackResult.size();
+	byteString.data = (UA_Byte*)UA_malloc(byteString.length);
+	memcpy(byteString.data, sFeedbackResult.data(), byteString.length);
+
+	UA_Variant_setScalarCopy(&inputArguments[1], &byteString, &UA_TYPES[UA_TYPES_BYTESTRING]);
+
+	UA_ByteString_clear(&byteString); // free temp buffer
+
+	// --- Call method ---
+	size_t outputSize = 0;
+	UA_Variant* output = nullptr;
+
+	UA_StatusCode status = UA_Client_call(
+		m_Client,
+		objectId,
+		methodId,
+		2,
+		inputArguments,
+		&outputSize,
+		&output);
+
+	// cleanup input arguments (VERY IMPORTANT)
+	UA_Variant_clear(&inputArguments[0]);
+	UA_Variant_clear(&inputArguments[1]);
+
+	if (status != UA_STATUSCODE_GOOD) {
+		throw ELibOpen62541InterfaceException(
+			LIBOPEN62541_ERROR_COULDNOTCALLMETHOD,
+			"Could not call method " + sMethod +
+			" (" + std::to_string(status) + ")");
+	}
+
+	if (output != nullptr) {
+		UA_Array_delete(output, outputSize, &UA_TYPES[UA_TYPES_VARIANT]);
+	}
+}

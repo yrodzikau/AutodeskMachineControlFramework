@@ -117,6 +117,7 @@ typedef void * LibOpen62541_pvoid;
 #define LIBOPEN62541_ERROR_OPCUAVARIANTDATAISNULL 1019 /** OPCUA Variant data is null. */
 #define LIBOPEN62541_ERROR_OPCUASTRINGDATAISNULL 1020 /** OPCUA String data is null. */
 #define LIBOPEN62541_ERROR_OPCUAWRITEINTEGEROUTOFBOUNDS 1021 /** OPCUA Write integer out of bounds. */
+#define LIBOPEN62541_ERROR_COULDNOTCALLMETHOD 1022 /** Could not call method. */
 
 /*************************************************************************************************************************
  Error strings for LibOpen62541
@@ -146,6 +147,7 @@ inline const char * LIBOPEN62541_GETERRORSTRING (LibOpen62541Result nErrorCode) 
     case LIBOPEN62541_ERROR_OPCUAVARIANTDATAISNULL: return "OPCUA Variant data is null.";
     case LIBOPEN62541_ERROR_OPCUASTRINGDATAISNULL: return "OPCUA String data is null.";
     case LIBOPEN62541_ERROR_OPCUAWRITEINTEGEROUTOFBOUNDS: return "OPCUA Write integer out of bounds.";
+    case LIBOPEN62541_ERROR_COULDNOTCALLMETHOD: return "Could not call method.";
     default: return "unknown error";
   }
 }

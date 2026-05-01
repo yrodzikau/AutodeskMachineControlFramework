@@ -3439,6 +3439,38 @@ typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileModifie
 typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileInterpolationPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, const LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, const LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer);
 
 /**
+* Evaluates a typed profile value with its modifier factors. Fails if segment type is not polyline.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+* @param[in] nEvaluationData1BufferSize - Number of elements in buffer
+* @param[out] pEvaluationData1NeededCount - will be filled with the count of the written elements, or needed buffer size.
+* @param[out] pEvaluationData1Buffer - double  buffer of Evaluated data at the start vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+* @param[in] nEvaluationData2BufferSize - Number of elements in buffer
+* @param[out] pEvaluationData2NeededCount - will be filled with the count of the written elements, or needed buffer size.
+* @param[out] pEvaluationData2Buffer - double  buffer of Evaluated data at the end vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileModifierPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, const LibMCEnv_uint64 nEvaluationData1BufferSize, LibMCEnv_uint64* pEvaluationData1NeededCount, LibMCEnv_double * pEvaluationData1Buffer, const LibMCEnv_uint64 nEvaluationData2BufferSize, LibMCEnv_uint64* pEvaluationData2NeededCount, LibMCEnv_double * pEvaluationData2Buffer);
+
+/**
+* Evaluates the subinterpolation values with its modifier factors. Fails if segment type is not polyline.
+*
+* @param[in] pToolpathLayer - ToolpathLayer instance.
+* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+* @param[in] nCountArrayBufferSize - Number of elements in buffer
+* @param[out] pCountArrayNeededCount - will be filled with the count of the written elements, or needed buffer size.
+* @param[out] pCountArrayBuffer - uint32  buffer of Number of subinterpolation values per polyline edge. Will contain (PointCount - 1) elements when PointCount is at least 2.
+* @param[in] nEvaluationDataBufferSize - Number of elements in buffer
+* @param[out] pEvaluationDataNeededCount - will be filled with the count of the written elements, or needed buffer size.
+* @param[out] pEvaluationDataBuffer - Hatch2DSubInterpolationData  buffer of Evaluated data on evaluation points for the full segment, in edge order. Will contain the sum of CountArray elements.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileInterpolationPtr) (LibMCEnv_ToolpathLayer pToolpathLayer, LibMCEnv_uint32 nSegmentIndex, LibMCEnv::eToolpathProfileValueType eValueType, const LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, const LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer);
+
+/**
 * Retrieves the layers Z Value in units.
 *
 * @param[in] pToolpathLayer - ToolpathLayer instance.
@@ -11978,6 +12010,8 @@ typedef struct {
 	PLibMCEnvToolpathLayer_GetSegmentHatchDataInMMPtr m_ToolpathLayer_GetSegmentHatchDataInMM;
 	PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileModifierPtr m_ToolpathLayer_EvaluateTypedHatchProfileModifier;
 	PLibMCEnvToolpathLayer_EvaluateTypedHatchProfileInterpolationPtr m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation;
+	PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileModifierPtr m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier;
+	PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileInterpolationPtr m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation;
 	PLibMCEnvToolpathLayer_GetZValuePtr m_ToolpathLayer_GetZValue;
 	PLibMCEnvToolpathLayer_GetZValueInMMPtr m_ToolpathLayer_GetZValueInMM;
 	PLibMCEnvToolpathLayer_GetUnitsPtr m_ToolpathLayer_GetUnits;

@@ -358,6 +358,49 @@ namespace AMC {
 						}
 					}
 
+#if USEALLMODIFICATIONFACTORS
+					for (uint32_t nFactorIndex = 0; nFactorIndex < 3; nFactorIndex++) {
+#else
+					for (uint32_t nFactorIndex = 0; nFactorIndex < 1; nFactorIndex++) {
+#endif
+						Lib3MF::eToolpathProfileModificationFactor factorType = Lib3MF::eToolpathProfileModificationFactor::Unknown;
+						uint32_t factorFlag = 0;
+						switch (nFactorIndex) {
+						case 0: factorType = Lib3MF::eToolpathProfileModificationFactor::FactorF;
+							factorFlag = TOOLPATHSEGMENTOVERRIDEFACTOR_F;
+							break;
+						case 1: factorType = Lib3MF::eToolpathProfileModificationFactor::FactorG;
+							factorFlag = TOOLPATHSEGMENTOVERRIDEFACTOR_G;
+							break;
+						case 2: factorType = Lib3MF::eToolpathProfileModificationFactor::FactorH;
+							factorFlag = TOOLPATHSEGMENTOVERRIDEFACTOR_H;
+							break;
+						}
+
+						if (p3MFLayer->SegmentHasModificationFactors(segment.m_3MFSegmentIndex, factorType)) {
+
+							segment.m_HasOverrideFactors |= factorFlag;
+
+							std::vector<double> pointFactors;
+							p3MFLayer->GetSegmentPointModificationFactors(segment.m_3MFSegmentIndex, factorType, pointFactors);
+
+							if ((uint32_t)pointFactors.size() != segment.m_PointCount)
+								throw ELibMCCustomException(LIBMC_ERROR_INVALIDPOINTOVERRIDECOUNT, m_sDebugName);
+
+							if (pointFactors.size() > 0) {
+
+								auto pSrcOverride = &pointFactors[0];
+								auto pDstOverride = &m_OverrideFactors.at(segment.m_PointStartIndex);
+
+								for (uint32_t nPointIndex = 0; nPointIndex < segment.m_PointCount; nPointIndex++) {
+									pDstOverride->m_dFactors[nFactorIndex] = *pSrcOverride;
+									pSrcOverride++;
+									pDstOverride++;
+								}
+							}
+						}
+					}
+
 					break;
 				}
 
@@ -1131,6 +1174,67 @@ namespace AMC {
 
 		}
 
+	}
+
+	void CToolpathLayerData::getPolylineEdgeModificationFactors(uint32_t nSegmentIndex, uint32_t nEdgeIndex, LibMCEnv::eToolpathProfileModificationFactor eModificationFactor, double& dFactor1, double& dFactor2)
+	{
+		if (nSegmentIndex >= m_Segments.size())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDSEGMENTINDEX, m_sDebugName);
+
+		auto pSegment = &m_Segments[nSegmentIndex];
+		if (pSegment->m_Type != LibMCEnv::eToolpathSegmentType::Polyline)
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDSEGMENTINDEX, m_sDebugName);
+
+		if (pSegment->m_PointCount < 2 || nEdgeIndex >= pSegment->m_PointCount - 1)
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDSEGMENTINDEX, m_sDebugName);
+
+		uint32_t nPointIndex = pSegment->m_PointStartIndex + nEdgeIndex;
+
+		switch (eModificationFactor) {
+		case LibMCEnv::eToolpathProfileModificationFactor::FactorF: {
+			dFactor1 = m_OverrideFactors.at(nPointIndex).m_dFactors[0];
+			dFactor2 = m_OverrideFactors.at(nPointIndex + 1).m_dFactors[0];
+			break;
+		}
+		case LibMCEnv::eToolpathProfileModificationFactor::FactorG: {
+			dFactor1 = m_OverrideFactors.at(nPointIndex).m_dFactors[1];
+			dFactor2 = m_OverrideFactors.at(nPointIndex + 1).m_dFactors[1];
+			break;
+		}
+		case LibMCEnv::eToolpathProfileModificationFactor::FactorH: {
+			dFactor1 = m_OverrideFactors.at(nPointIndex).m_dFactors[2];
+			dFactor2 = m_OverrideFactors.at(nPointIndex + 1).m_dFactors[2];
+			break;
+		}
+		default:
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDOVERRIDEFACTORINDEX, std::to_string((int)eModificationFactor));
+		}
+	}
+
+	void CToolpathLayerData::getPolylineEdgeSubinterpolationData(const uint32_t nSegmentIndex, const uint32_t nEdgeIndex, uint32_t& nSubInterpolationCount, Lib3MF::sHatchModificationInterpolationData*& pSubInterpolationData)
+	{
+		if (nSegmentIndex >= m_Segments.size())
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDSEGMENTINDEX, m_sDebugName);
+
+		auto pSegment = &m_Segments[nSegmentIndex];
+		if (pSegment->m_Type != LibMCEnv::eToolpathSegmentType::Polyline)
+			throw ELibMCCustomException(LIBMC_ERROR_INVALIDSEGMENTINDEX, m_sDebugName);
+
+		if (pSegment->m_PointCount < 2 || nEdgeIndex >= pSegment->m_PointCount - 1) {
+			nSubInterpolationCount = 0;
+			pSubInterpolationData = nullptr;
+			return;
+		}
+
+		uint32_t nPointIndex = pSegment->m_PointStartIndex + nEdgeIndex;
+		nSubInterpolationCount = m_OverrideFactors.at(nPointIndex).m_nSubInterpolationCount;
+		if (nSubInterpolationCount > 0) {
+			uint32_t nSubInterpolationOffset = m_OverrideFactors.at(nPointIndex).m_nSubInterpolationOffset;
+			pSubInterpolationData = &m_InterpolationData.at(nSubInterpolationOffset);
+		}
+		else {
+			pSubInterpolationData = nullptr;
+		}
 	}
 
 

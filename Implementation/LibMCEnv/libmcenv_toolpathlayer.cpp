@@ -566,6 +566,202 @@ void CToolpathLayer::EvaluateTypedHatchProfileInterpolation(const LibMCEnv_uint3
 		}
 
 	}
+	else {
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SEGMENTISNOTOFTYPEHATCH);
+	}
+
+}
+
+void CToolpathLayer::EvaluateTypedPolyLineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nEvaluationData1BufferSize, LibMCEnv_uint64* pEvaluationData1NeededCount, LibMCEnv_double* pEvaluationData1Buffer, LibMCEnv_uint64 nEvaluationData2BufferSize, LibMCEnv_uint64* pEvaluationData2NeededCount, LibMCEnv_double* pEvaluationData2Buffer)
+{
+	auto segmentType = m_pToolpathLayerData->getSegmentType(nSegmentIndex);
+	if (segmentType == LibMCEnv::eToolpathSegmentType::Polyline) {
+
+		uint64_t nNeededPointCount = m_pToolpathLayerData->getSegmentPointCount(nSegmentIndex);
+		uint64_t nNeededEdgeCount = (nNeededPointCount >= 2) ? (nNeededPointCount - 1) : 0;
+
+		if (pEvaluationData1NeededCount != nullptr)
+			*pEvaluationData1NeededCount = nNeededEdgeCount;
+		if (pEvaluationData2NeededCount != nullptr)
+			*pEvaluationData2NeededCount = nNeededEdgeCount;
+
+		if ((pEvaluationData1Buffer != nullptr) && (pEvaluationData2Buffer != nullptr)) {
+
+			std::string sValueName = AMC::CToolpathLayerData::getValueNameByType(eValueType);
+
+			auto pProfile = m_pToolpathLayerData->getSegmentProfile(nSegmentIndex);
+			LibMCEnv::eToolpathProfileModificationType modificationType = pProfile->getModificationType("", sValueName);
+
+			switch (modificationType) {
+				case LibMCEnv::eToolpathProfileModificationType::NoModification: {
+					double dBaseValue = pProfile->getDoubleValue("", sValueName);
+					for (uint64_t nEdgeIndex = 0; nEdgeIndex < nNeededEdgeCount; nEdgeIndex++) {
+						pEvaluationData1Buffer[nEdgeIndex] = dBaseValue;
+						pEvaluationData2Buffer[nEdgeIndex] = dBaseValue;
+					}
+					break;
+				}
+
+				case LibMCEnv::eToolpathProfileModificationType::ConstantModification:
+				case LibMCEnv::eToolpathProfileModificationType::LinearModification:
+				case LibMCEnv::eToolpathProfileModificationType::NonlinearModification: {
+
+					if (nEvaluationData1BufferSize < nNeededEdgeCount)
+						throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_BUFFERTOOSMALL);
+					if (nEvaluationData2BufferSize < nNeededEdgeCount)
+						throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_BUFFERTOOSMALL);
+
+					LibMCEnv::eToolpathProfileModificationFactor modificationFactor = LibMCEnv::eToolpathProfileModificationFactor::Unknown;
+					double dMinValue = 0.0;
+					double dMaxValue = 0.0;
+					pProfile->getModificationInformation("", sValueName, modificationFactor, dMinValue, dMaxValue);
+
+					for (uint64_t nEdgeIndex = 0; nEdgeIndex < nNeededEdgeCount; nEdgeIndex++) {
+						double dFactor1 = 0.0;
+						double dFactor2 = 0.0;
+						m_pToolpathLayerData->getPolylineEdgeModificationFactors(nSegmentIndex, (uint32_t)nEdgeIndex, modificationFactor, dFactor1, dFactor2);
+
+						if (dFactor1 < 0.0)
+							dFactor1 = 0.0;
+						if (dFactor1 > 1.0)
+							dFactor1 = 1.0;
+						if (dFactor2 < 0.0)
+							dFactor2 = 0.0;
+						if (dFactor2 > 1.0)
+							dFactor2 = 1.0;
+
+						pEvaluationData1Buffer[nEdgeIndex] = (1.0 - dFactor1) * dMinValue + dFactor1 * dMaxValue;
+						pEvaluationData2Buffer[nEdgeIndex] = (1.0 - dFactor2) * dMinValue + dFactor2 * dMaxValue;
+					}
+					break;
+				}
+
+			}
+		}
+		else {
+			if ((pEvaluationData1Buffer != nullptr) || (pEvaluationData2Buffer != nullptr)) {
+				throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_COULDNOTEVALUATEPOLYLINES);
+			}
+		}
+
+	}
+
+	else {
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE);
+	}
+
+}
+
+void CToolpathLayer::EvaluateTypedPolyLineProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32* pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData* pEvaluationDataBuffer)
+{
+	auto segmentType = m_pToolpathLayerData->getSegmentType(nSegmentIndex);
+	if (segmentType == LibMCEnv::eToolpathSegmentType::Polyline) {
+
+		uint64_t nNeededPointCount = m_pToolpathLayerData->getSegmentPointCount(nSegmentIndex);
+		uint64_t nNeededEdgeCount = (nNeededPointCount >= 2) ? (nNeededPointCount - 1) : 0;
+
+		uint32_t nTotalSubinterpolationCount = m_pToolpathLayerData->getSegmentTotalSubinterpolationCount(nSegmentIndex);
+
+		if (pCountArrayNeededCount != nullptr)
+			*pCountArrayNeededCount = nNeededEdgeCount;
+		if (pEvaluationDataNeededCount != nullptr)
+			*pEvaluationDataNeededCount = nTotalSubinterpolationCount;
+
+		if ((pCountArrayBuffer != nullptr) && (pEvaluationDataBuffer != nullptr)) {
+
+			std::string sValueName = AMC::CToolpathLayerData::getValueNameByType(eValueType);
+
+			auto pProfile = m_pToolpathLayerData->getSegmentProfile(nSegmentIndex);
+			LibMCEnv::eToolpathProfileModificationType modificationType = pProfile->getModificationType("", sValueName);
+
+			switch (modificationType) {
+			case LibMCEnv::eToolpathProfileModificationType::NoModification: {
+				if (nTotalSubinterpolationCount != 0)
+					throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SUBINTERPOLATIONDATAONNOMODIFICATION);
+				break;
+			}
+
+			case LibMCEnv::eToolpathProfileModificationType::ConstantModification: {
+				if (nTotalSubinterpolationCount != 0)
+					throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SUBINTERPOLATIONDATAONCONSTANTMODIFICATION);
+				break;
+			}
+
+			case LibMCEnv::eToolpathProfileModificationType::LinearModification: {
+				if (nTotalSubinterpolationCount != 0)
+					throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SUBINTERPOLATIONDATAONLINEARMODIFICATION);
+				break;
+			}
+
+			case LibMCEnv::eToolpathProfileModificationType::NonlinearModification: {
+
+				if (nCountArrayBufferSize < nNeededEdgeCount)
+					throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_BUFFERTOOSMALL);
+				if (nEvaluationDataBufferSize < nTotalSubinterpolationCount)
+					throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_BUFFERTOOSMALL);
+
+				LibMCEnv::eToolpathProfileModificationFactor modificationFactor = LibMCEnv::eToolpathProfileModificationFactor::Unknown;
+				double dMinValue = 0.0;
+				double dMaxValue = 0.0;
+				pProfile->getModificationInformation("", sValueName, modificationFactor, dMinValue, dMaxValue);
+
+				uint32_t nTotalCount = 0;
+
+				LibMCEnv::sHatch2DSubInterpolationData* pTargetInterpolationData = pEvaluationDataBuffer;
+
+				for (uint64_t nEdgeIndex = 0; nEdgeIndex < nNeededEdgeCount; nEdgeIndex++) {
+
+					uint32_t nSubInterpolationCount = 0;
+					Lib3MF::sHatchModificationInterpolationData* pSourceInterpolationData = nullptr;
+					m_pToolpathLayerData->getPolylineEdgeSubinterpolationData(nSegmentIndex, (uint32_t)nEdgeIndex, nSubInterpolationCount, pSourceInterpolationData);
+
+					pCountArrayBuffer[nEdgeIndex] = nSubInterpolationCount;
+					if (nSubInterpolationCount > 0) {
+
+						if (pSourceInterpolationData == nullptr)
+							throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDHATCHSUBINTERPOLATIONDATA);
+
+						for (uint32_t nSubInterpolationIndex = 0; nSubInterpolationIndex < nSubInterpolationCount; nSubInterpolationIndex++) {
+
+							if (nTotalCount >= nTotalSubinterpolationCount)
+								throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_HATCHSUBINTERPOLATIONDATAOVERFLOW);
+							nTotalCount++;
+
+							double dParameter = pSourceInterpolationData->m_Parameter;
+							double dFactor = pSourceInterpolationData->m_Factor;
+
+							if (dFactor < 0.0)
+								dFactor = 0.0;
+							if (dFactor > 1.0)
+								dFactor = 1.0;
+
+							double dValue = (1.0 - dFactor) * dMinValue + dFactor * dMaxValue;
+
+							pTargetInterpolationData->m_Parameter = dParameter;
+							pTargetInterpolationData->m_Value = dValue;
+
+							pTargetInterpolationData++;
+							pSourceInterpolationData++;
+						}
+
+					}
+
+				}
+				break;
+			}
+
+			}
+		}
+		else {
+			if ((pCountArrayBuffer != nullptr) || (pEvaluationDataBuffer != nullptr)) {
+			}
+		}
+
+	}
+	else {
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE);
+	}
+
 }
 
 /*void CToolpathLayer::GetSegmentLinearPolylineModifiers(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileModificationFactor eModificationFactorType, LibMCEnv_uint64 nModificationDataBufferSize, LibMCEnv_uint64* pModificationDataNeededCount, LibMCEnv_double* pModificationDataBuffer)

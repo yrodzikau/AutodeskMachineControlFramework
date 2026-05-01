@@ -137,6 +137,10 @@ public:
 
 	void EvaluateTypedHatchProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32* pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData* pEvaluationDataBuffer) override;
 
+	void EvaluateTypedPolyLineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nEvaluationData1BufferSize, LibMCEnv_uint64* pEvaluationData1NeededCount, LibMCEnv_double* pEvaluationData1Buffer, LibMCEnv_uint64 nEvaluationData2BufferSize, LibMCEnv_uint64* pEvaluationData2NeededCount, LibMCEnv_double* pEvaluationData2Buffer) override;
+
+	void EvaluateTypedPolyLineProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32* pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData* pEvaluationDataBuffer) override;
+
 	LibMCEnv_int32 GetZValue() override;
 
 	LibMCEnv_double GetZValueInMM() override;

@@ -203,6 +203,174 @@ void CSMCJobInstance::DrawPolyline(const LibMCDriver_ScanLabSMC_uint64 nPointsBu
 
 }
 
+void CSMCJobInstance::DrawPolylineLinearPower(const LibMCDriver_ScanLabSMC_uint64 nPointsBufferSize, const LibMCDriver_ScanLabSMC::sPoint2D* pPointsBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue, const bool bIsClosedPolyline, std::vector<double>& PowerValuesInWatts1, std::vector<double>& PowerValuesInWatts2)
+{
+    if (m_bIsFinalized)
+        throw std::runtime_error("Job is already finalized!");
+
+    if (nPointsBufferSize < 2)
+        return;
+
+    if (pPointsBuffer == nullptr)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+
+    const uint64_t nEdgeCount = nPointsBufferSize - 1;
+
+    if (PowerValuesInWatts1.size() != nEdgeCount)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE);
+    if (PowerValuesInWatts2.size() != nEdgeCount)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE);
+
+    auto contextHandle = m_pContextHandle->getHandle();
+
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_jump_speed(contextHandle, dJumpSpeed));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_mark_speed(contextHandle, dMarkSpeed));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_min_mark_speed(contextHandle, dMinimalMarkSpeed));
+
+    std::array<double, 3> startPosition;
+    startPosition[0] = pPointsBuffer[0].m_X;
+    startPosition[1] = pPointsBuffer[0].m_Y;
+    startPosition[2] = 0.0;
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, startPosition.data()));
+
+    slsc_PolylineOptions polyLineOptions;
+    if (bIsClosedPolyline) {
+        polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Closed;
+    }
+    else {
+        polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Open;
+    }
+    polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_begin_polyline(contextHandle, polyLineOptions));
+
+    for (uint64_t nEdgeIndex = 0; nEdgeIndex < nEdgeCount; nEdgeIndex++) {
+        auto& pt2 = pPointsBuffer[nEdgeIndex + 1];
+
+        std::array<double, 3> point2;
+        point2[0] = pt2.m_X;
+        point2[1] = pt2.m_Y;
+        point2[2] = 0.0;
+
+        std::array<double, 1> paraPower1;
+        paraPower1[0] = PowerValuesInWatts1.at(nEdgeIndex) / m_dMaxPowerInWatts;
+
+        std::array<double, 1> paraPower2;
+        paraPower2[0] = PowerValuesInWatts2.at(nEdgeIndex) / m_dMaxPowerInWatts;
+
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_line(contextHandle, point2.data(), paraPower2.data()));
+    }
+
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_end_polyline(contextHandle));
+}
+
+void CSMCJobInstance::DrawPolylineNonLinearPower(const LibMCDriver_ScanLabSMC_uint64 nPointsBufferSize, const LibMCDriver_ScanLabSMC::sPoint2D* pPointsBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue, const bool bIsClosedPolyline, std::vector<double>& PowerValues1, std::vector<double>& PowerValues2, std::vector<uint32_t> SubInterpolationCounts, std::vector<LibMCEnv::sHatch2DSubInterpolationData> SubInterpolationData)
+{
+    if (m_bIsFinalized)
+        throw std::runtime_error("Job is already finalized!");
+
+    if (nPointsBufferSize < 2)
+        return;
+
+    if (pPointsBuffer == nullptr)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+
+    const uint64_t nEdgeCount = nPointsBufferSize - 1;
+
+    if (PowerValues1.size() != nEdgeCount)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE);
+    if (PowerValues2.size() != nEdgeCount)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_LINEARPOWERVALUESAREINCOMPLETE);
+    if (SubInterpolationCounts.size() != nEdgeCount)
+        throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_NONLINEARPOWERVALUESAREINCOMPLETE);
+
+    auto contextHandle = m_pContextHandle->getHandle();
+
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_jump_speed(contextHandle, dJumpSpeed));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_mark_speed(contextHandle, dMarkSpeed));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_min_mark_speed(contextHandle, dMinimalMarkSpeed));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_corner_tolerance(contextHandle, dCornerTolerance));
+    
+    std::array<double, 3> startPosition;
+    startPosition[0] = pPointsBuffer[0].m_X;
+    startPosition[1] = pPointsBuffer[0].m_Y;
+    startPosition[2] = 0.0;
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, startPosition.data()));
+
+    slsc_PolylineOptions polyLineOptions;
+    if (bIsClosedPolyline) {
+        polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Closed;
+    }
+    else {
+        polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Open;
+    }
+    polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+    //polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Constant_Velocity;
+
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_begin_polyline(contextHandle, polyLineOptions));
+
+    uint32_t nTotalInterpolationIndex = 0;
+
+    for (uint64_t nEdgeIndex = 0; nEdgeIndex < nEdgeCount; nEdgeIndex++) {
+        auto& pt1 = pPointsBuffer[nEdgeIndex];
+        auto& pt2 = pPointsBuffer[nEdgeIndex + 1];
+
+        std::array<double, 3> point1;
+        point1[0] = pt1.m_X;
+        point1[1] = pt1.m_Y;
+        point1[2] = 0.0;
+
+        std::array<double, 3> point2;
+        point2[0] = pt2.m_X;
+        point2[1] = pt2.m_Y;
+        point2[2] = 0.0;
+
+        double dX = point2[0] - point1[0];
+        double dY = point2[1] - point1[1];
+        double dLen = sqrt(dX * dX + dY * dY);
+
+        double dLastSection = 0.0;
+
+        std::array<double, 1> paraPower1;
+        paraPower1[0] = PowerValues1.at(nEdgeIndex) / m_dMaxPowerInWatts;
+
+        uint32_t nSubinterpolationCount = SubInterpolationCounts.at(nEdgeIndex);
+
+        std::vector<slsc_ParaSection> paraSections(nSubinterpolationCount + 1);
+        for (uint32_t nSubinterpolationIndex = 0; nSubinterpolationIndex < nSubinterpolationCount; nSubinterpolationIndex++) {
+
+            auto& interpolationData = SubInterpolationData.at(nTotalInterpolationIndex);
+
+            double dCurrentSection = interpolationData.m_Parameter * dLen;
+            double dSectionDelta = dCurrentSection - dLastSection;
+
+            if (dSectionDelta < 0.0)
+                throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INTERPOLATIONDATAISNOTINCREASING, "interpolation data is not increasing: " + std::to_string(dLastSection) + " MUST be smaller than " + std::to_string(dCurrentSection));
+
+            auto& section = paraSections.at(nSubinterpolationIndex);
+            section.m_dS = dSectionDelta;
+            section.m_dParaTargetFactor = interpolationData.m_Value / m_dMaxPowerInWatts;
+
+            dLastSection = dCurrentSection;
+            nTotalInterpolationIndex++;
+        }
+
+        double dSectionDelta = dLen - dLastSection;
+        auto& section = paraSections.at(nSubinterpolationCount);
+        section.m_dS = dSectionDelta;
+        section.m_dParaTargetFactor = PowerValues2.at(nEdgeIndex) / m_dMaxPowerInWatts;
+
+        slsc_MultiParaTarget multiTarget;
+        multiTarget.m_nNumTargets = nSubinterpolationCount + 1;
+        multiTarget.m_pTargets = paraSections.data();
+
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_multi_para_line(contextHandle, point2.data(), &multiTarget));
+    }
+
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_end_polyline(contextHandle));
+}
+
 void CSMCJobInstance::DrawLoop(const LibMCDriver_ScanLabSMC_uint64 nPointsBufferSize, const LibMCDriver_ScanLabSMC::sPoint2D* pPointsBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue)
 {
     if (m_bIsFinalized)
@@ -224,12 +392,12 @@ void CSMCJobInstance::DrawLoop(const LibMCDriver_ScanLabSMC_uint64 nPointsBuffer
 }
 
 
-void CSMCJobInstance::DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue)
+void CSMCJobInstance::DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue)
 {    
-    drawHatchesEx(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dJumpSpeed, dPowerInWatts, dZValue);
+    drawHatchesEx(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dMinimalMarkSpeed, dJumpSpeed, dPowerInWatts, dCornerTolerance, dZValue);
 }
 
-void CSMCJobInstance::drawHatchesEx(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue)
+void CSMCJobInstance::drawHatchesEx(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue)
 {
     if (m_bIsFinalized)
         throw std::runtime_error("Job is already finalized!");
@@ -247,6 +415,7 @@ void CSMCJobInstance::drawHatchesEx(const LibMCDriver_ScanLabSMC_uint64 nHatches
 
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_jump_speed(contextHandle, dJumpSpeed));
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_mark_speed(contextHandle, dMarkSpeed));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_min_mark_speed(contextHandle, dMinimalMarkSpeed));
 
         for (uint64_t nHatchIndex = 0; nHatchIndex < nHatchesBufferSize; nHatchIndex++) {
             auto& hatch = pHatchesBuffer[nHatchIndex];
@@ -271,7 +440,7 @@ void CSMCJobInstance::drawHatchesEx(const LibMCDriver_ScanLabSMC_uint64 nHatches
 
 }
 
-void CSMCJobInstance::drawHatchesExLinearPower(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue, std::vector<double>& PowerValuesInWatts1, std::vector<double>& PowerValuesInWatts2)
+void CSMCJobInstance::drawHatchesExLinearPower(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue, std::vector<double>& PowerValuesInWatts1, std::vector<double>& PowerValuesInWatts2)
 {
     if (m_bIsFinalized)
         throw std::runtime_error("Job is already finalized!");
@@ -289,6 +458,7 @@ void CSMCJobInstance::drawHatchesExLinearPower(const LibMCDriver_ScanLabSMC_uint
 
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_jump_speed(contextHandle, dJumpSpeed));
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_mark_speed(contextHandle, dMarkSpeed));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_min_mark_speed(contextHandle, dMinimalMarkSpeed));
 
         for (uint64_t nHatchIndex = 0; nHatchIndex < nHatchesBufferSize; nHatchIndex++) {
             auto& hatch = pHatchesBuffer[nHatchIndex];
@@ -313,12 +483,14 @@ void CSMCJobInstance::drawHatchesExLinearPower(const LibMCDriver_ScanLabSMC_uint
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_line(contextHandle, point2.data(), paraPower2.data()));
 
-        }
+        }        
     }
 
 }
 
-void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue, std::vector<double>& PowerValues1, std::vector<double>& PowerValues2, std::vector<uint32_t> SubInterpolationCounts, std::vector<LibMCEnv::sHatch2DSubInterpolationData> SubInterpolationData)
+#define CONNECTED_POLYLINE
+
+void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue, std::vector<double>& PowerValues1, std::vector<double>& PowerValues2, std::vector<uint32_t> SubInterpolationCounts, std::vector<LibMCEnv::sHatch2DSubInterpolationData> SubInterpolationData)
 {
     if (m_bIsFinalized)
         throw std::runtime_error("Job is already finalized!");
@@ -338,6 +510,29 @@ void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_u
 
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_jump_speed(contextHandle, dJumpSpeed));
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_mark_speed(contextHandle, dMarkSpeed));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_min_mark_speed(contextHandle, dMinimalMarkSpeed));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_set_corner_tolerance(contextHandle, dCornerTolerance));
+            
+
+        std::array<double, 3> startPosition;
+        startPosition[0] = pHatchesBuffer[0].m_X1;
+        startPosition[1] = pHatchesBuffer[0].m_Y1;
+        startPosition[2] = 0.0;
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, startPosition.data()));
+
+        //DEBUG 
+        slsc_PolylineOptions polyLineOptions;
+        //if (bIsClosedPolyline) {
+        //    polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Closed;
+        //}
+        //else {
+            polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Open;
+        //}
+        polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+        
+#ifdef CONNECTED_POLYLINE
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_begin_polyline(contextHandle, polyLineOptions));
+#endif
 
         uint32_t nTotalInterpolationIndex = 0;
 
@@ -394,12 +589,17 @@ void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_u
             multiTarget.m_nNumTargets = nSubinterpolationCount + 1;
             multiTarget.m_pTargets = paraSections.data();
 
-
+#ifndef CONNECTED_POLYLINE
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, point1.data()));
+#endif
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_multi_para_line(contextHandle, point2.data(), &multiTarget));
 
         }
+
+#ifdef CONNECTED_POLYLINE
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_end_polyline(contextHandle));
+#endif
     }
 
 }
@@ -986,8 +1186,39 @@ void CSMCJobInstance::AddLayerToList(LibMCEnv::PToolpathLayer pLayer)
                         pContourPoint->m_Y = (float)(((double)PointData.at(nPointIndex).m_Coordinates[1]) * dUnits);
                     } 
 
+                    std::vector<double> DataBuffer1;
+                    std::vector<double> DataBuffer2;
+
+                    std::vector<uint32_t> SubinterpolationCounts;
+                    std::vector<LibMCEnv::sHatch2DSubInterpolationData> SubinterpolationData;
+                    LibMCEnv::eToolpathProfileModificationType modificationType = pLayer->GetSegmentProfileTypedModificationType(nSegmentIndex, LibMCEnv::eToolpathProfileValueType::LaserPower);
+
+                    if ((modificationType == LibMCEnv::eToolpathProfileModificationType::LinearModification)
+                        || (modificationType == LibMCEnv::eToolpathProfileModificationType::NonlinearModification)) {
+
+                        pLayer->EvaluateTypedPolyLineProfileModifier(nSegmentIndex, LibMCEnv::eToolpathProfileValueType::LaserPower, DataBuffer1, DataBuffer2);
+
+                    }
+
+                    if (modificationType == LibMCEnv::eToolpathProfileModificationType::NonlinearModification) {
+                        pLayer->EvaluateTypedPolyLineProfileInterpolation(nSegmentIndex, LibMCEnv::eToolpathProfileValueType::LaserPower, SubinterpolationCounts, SubinterpolationData);
+                    }
+
                     if (ContourPoints.size() > 0) {
+
+                        switch (modificationType) {
+                            case LibMCEnv::eToolpathProfileModificationType::NoModification:
+                            case LibMCEnv::eToolpathProfileModificationType::ConstantModification:
                         this->DrawPolyline(ContourPoints.size(), ContourPoints.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue);
+                                break;
+                            case LibMCEnv::eToolpathProfileModificationType::LinearModification:
+                                this->DrawPolylineLinearPower(ContourPoints.size(), ContourPoints.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue, false, DataBuffer1, DataBuffer2);
+                                break;
+                            case LibMCEnv::eToolpathProfileModificationType::NonlinearModification:
+                                this->DrawPolylineNonLinearPower(ContourPoints.size(), ContourPoints.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue, false, DataBuffer1, DataBuffer2, SubinterpolationCounts, SubinterpolationData);
+                                break;
+                        }
+
                     }
 
                     break;
@@ -1023,7 +1254,6 @@ void CSMCJobInstance::AddLayerToList(LibMCEnv::PToolpathLayer pLayer)
                     LibMCEnv::eToolpathProfileModificationType modificationType = pLayer->GetSegmentProfileTypedModificationType(nSegmentIndex, LibMCEnv::eToolpathProfileValueType::LaserPower);
 
                     if ((modificationType == LibMCEnv::eToolpathProfileModificationType::LinearModification) 
-                        || (modificationType == LibMCEnv::eToolpathProfileModificationType::LinearModification)
                         || (modificationType == LibMCEnv::eToolpathProfileModificationType::NonlinearModification)) {
 
                         pLayer->EvaluateTypedHatchProfileModifier(nSegmentIndex, LibMCEnv::eToolpathProfileValueType::LaserPower, DataBuffer1, DataBuffer2);
@@ -1040,13 +1270,13 @@ void CSMCJobInstance::AddLayerToList(LibMCEnv::PToolpathLayer pLayer)
                         switch (modificationType) {
                             case LibMCEnv::eToolpathProfileModificationType::NoModification:
                             case LibMCEnv::eToolpathProfileModificationType::ConstantModification:
-                                this->drawHatchesEx(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dJumpSpeedInMMPerSecond, dPowerInWatts, dZValue);
+                                this->drawHatchesEx(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue);
                                 break;
                             case LibMCEnv::eToolpathProfileModificationType::LinearModification:
-                                this->drawHatchesExLinearPower(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dJumpSpeedInMMPerSecond, dPowerInWatts, dZValue, DataBuffer1, DataBuffer2);
+                                this->drawHatchesExLinearPower(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue, DataBuffer1, DataBuffer2);
                                 break;
                             case LibMCEnv::eToolpathProfileModificationType::NonlinearModification:
-                                this->drawHatchesExNonLinearPower(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dJumpSpeedInMMPerSecond, dPowerInWatts, dZValue, DataBuffer1, DataBuffer2, SubinterpolationCounts, SubinterpolationData);
+                                this->drawHatchesExNonLinearPower(SMCHatches.size(), SMCHatches.data(), dMarkSpeedInMMPerSecond, dMinimalMarkSpeed, dJumpSpeedInMMPerSecond, dPowerInWatts, dCornerTolerance, dZValue, DataBuffer1, DataBuffer2, SubinterpolationCounts, SubinterpolationData);
                                 break;
                         }
                         

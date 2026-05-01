@@ -766,6 +766,8 @@ public:
 			case LIBMCENV_ERROR_INVALIDPAUSETOLERANCE: return "INVALIDPAUSETOLERANCE";
 			case LIBMCENV_ERROR_INVALIDFRAMECACHEDURATION: return "INVALIDFRAMECACHEDURATION";
 			case LIBMCENV_ERROR_VIDEOSTREAMFRAMEENCODINGERROR: return "VIDEOSTREAMFRAMEENCODINGERROR";
+			case LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE: return "SEGMENTISNOTOFTYPEPOLYLINE";
+			case LIBMCENV_ERROR_COULDNOTEVALUATEPOLYLINES: return "COULDNOTEVALUATEPOLYLINES";
 		}
 		return "UNKNOWN";
 	}
@@ -1035,6 +1037,8 @@ public:
 			case LIBMCENV_ERROR_INVALIDPAUSETOLERANCE: return "Invalid pause tolerance.";
 			case LIBMCENV_ERROR_INVALIDFRAMECACHEDURATION: return "Invalid frame cache duration.";
 			case LIBMCENV_ERROR_VIDEOSTREAMFRAMEENCODINGERROR: return "Video stream frame encoding error.";
+			case LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE: return "Segment is not of type polyline.";
+			case LIBMCENV_ERROR_COULDNOTEVALUATEPOLYLINES: return "Could not evaluate polyline profiles.";
 		}
 		return "unknown error";
 	}
@@ -2159,6 +2163,8 @@ public:
 	inline void GetSegmentHatchDataInMM(const LibMCEnv_uint32 nSegmentIndex, std::vector<sFloatHatch2D> & HatchDataBuffer);
 	inline void EvaluateTypedHatchProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_double> & EvaluationData1Buffer, std::vector<LibMCEnv_double> & EvaluationData2Buffer);
 	inline void EvaluateTypedHatchProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_uint32> & CountArrayBuffer, std::vector<sHatch2DSubInterpolationData> & EvaluationDataBuffer);
+	inline void EvaluateTypedPolyLineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_double> & EvaluationData1Buffer, std::vector<LibMCEnv_double> & EvaluationData2Buffer);
+	inline void EvaluateTypedPolyLineProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_uint32> & CountArrayBuffer, std::vector<sHatch2DSubInterpolationData> & EvaluationDataBuffer);
 	inline LibMCEnv_int32 GetZValue();
 	inline LibMCEnv_double GetZValueInMM();
 	inline LibMCEnv_double GetUnits();
@@ -4170,6 +4176,8 @@ public:
 		pWrapperTable->m_ToolpathLayer_GetSegmentHatchDataInMM = nullptr;
 		pWrapperTable->m_ToolpathLayer_EvaluateTypedHatchProfileModifier = nullptr;
 		pWrapperTable->m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation = nullptr;
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier = nullptr;
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation = nullptr;
 		pWrapperTable->m_ToolpathLayer_GetZValue = nullptr;
 		pWrapperTable->m_ToolpathLayer_GetZValueInMM = nullptr;
 		pWrapperTable->m_ToolpathLayer_GetUnits = nullptr;
@@ -7847,6 +7855,24 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier = (PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileModifierPtr) GetProcAddress(hLibrary, "libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier");
+		#else // _WIN32
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier = (PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileModifierPtr) dlsym(hLibrary, "libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation = (PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileInterpolationPtr) GetProcAddress(hLibrary, "libmcenv_toolpathlayer_evaluatetypedpolylineprofileinterpolation");
+		#else // _WIN32
+		pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation = (PLibMCEnvToolpathLayer_EvaluateTypedPolyLineProfileInterpolationPtr) dlsym(hLibrary, "libmcenv_toolpathlayer_evaluatetypedpolylineprofileinterpolation");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation == nullptr)
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -16040,6 +16066,14 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcenv_toolpathlayer_evaluatetypedpolylineprofilemodifier", (void**)&(pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_toolpathlayer_evaluatetypedpolylineprofileinterpolation", (void**)&(pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcenv_toolpathlayer_getzvalue", (void**)&(pWrapperTable->m_ToolpathLayer_GetZValue));
 		if ( (eLookupError != 0) || (pWrapperTable->m_ToolpathLayer_GetZValue == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -23299,6 +23333,44 @@ public:
 		CountArrayBuffer.resize((size_t) elementsNeededCountArray);
 		EvaluationDataBuffer.resize((size_t) elementsNeededEvaluationData);
 		CheckError(m_pWrapper->m_WrapperTable.m_ToolpathLayer_EvaluateTypedHatchProfileInterpolation(m_pHandle, nSegmentIndex, eValueType, elementsNeededCountArray, &elementsWrittenCountArray, CountArrayBuffer.data(), elementsNeededEvaluationData, &elementsWrittenEvaluationData, EvaluationDataBuffer.data()));
+	}
+	
+	/**
+	* CToolpathLayer::EvaluateTypedPolyLineProfileModifier - Evaluates a typed profile value with its modifier factors. Fails if segment type is not polyline.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+	* @param[out] EvaluationData1Buffer - Evaluated data at the start vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+	* @param[out] EvaluationData2Buffer - Evaluated data at the end vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+	*/
+	void CToolpathLayer::EvaluateTypedPolyLineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_double> & EvaluationData1Buffer, std::vector<LibMCEnv_double> & EvaluationData2Buffer)
+	{
+		LibMCEnv_uint64 elementsNeededEvaluationData1 = 0;
+		LibMCEnv_uint64 elementsWrittenEvaluationData1 = 0;
+		LibMCEnv_uint64 elementsNeededEvaluationData2 = 0;
+		LibMCEnv_uint64 elementsWrittenEvaluationData2 = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier(m_pHandle, nSegmentIndex, eValueType, 0, &elementsNeededEvaluationData1, nullptr, 0, &elementsNeededEvaluationData2, nullptr));
+		EvaluationData1Buffer.resize((size_t) elementsNeededEvaluationData1);
+		EvaluationData2Buffer.resize((size_t) elementsNeededEvaluationData2);
+		CheckError(m_pWrapper->m_WrapperTable.m_ToolpathLayer_EvaluateTypedPolyLineProfileModifier(m_pHandle, nSegmentIndex, eValueType, elementsNeededEvaluationData1, &elementsWrittenEvaluationData1, EvaluationData1Buffer.data(), elementsNeededEvaluationData2, &elementsWrittenEvaluationData2, EvaluationData2Buffer.data()));
+	}
+	
+	/**
+	* CToolpathLayer::EvaluateTypedPolyLineProfileInterpolation - Evaluates the subinterpolation values with its modifier factors. Fails if segment type is not polyline.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+	* @param[out] CountArrayBuffer - Number of subinterpolation values per polyline edge. Will contain (PointCount - 1) elements when PointCount is at least 2.
+	* @param[out] EvaluationDataBuffer - Evaluated data on evaluation points for the full segment, in edge order. Will contain the sum of CountArray elements.
+	*/
+	void CToolpathLayer::EvaluateTypedPolyLineProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const eToolpathProfileValueType eValueType, std::vector<LibMCEnv_uint32> & CountArrayBuffer, std::vector<sHatch2DSubInterpolationData> & EvaluationDataBuffer)
+	{
+		LibMCEnv_uint64 elementsNeededCountArray = 0;
+		LibMCEnv_uint64 elementsWrittenCountArray = 0;
+		LibMCEnv_uint64 elementsNeededEvaluationData = 0;
+		LibMCEnv_uint64 elementsWrittenEvaluationData = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation(m_pHandle, nSegmentIndex, eValueType, 0, &elementsNeededCountArray, nullptr, 0, &elementsNeededEvaluationData, nullptr));
+		CountArrayBuffer.resize((size_t) elementsNeededCountArray);
+		EvaluationDataBuffer.resize((size_t) elementsNeededEvaluationData);
+		CheckError(m_pWrapper->m_WrapperTable.m_ToolpathLayer_EvaluateTypedPolyLineProfileInterpolation(m_pHandle, nSegmentIndex, eValueType, elementsNeededCountArray, &elementsWrittenCountArray, CountArrayBuffer.data(), elementsNeededEvaluationData, &elementsWrittenEvaluationData, EvaluationDataBuffer.data()));
 	}
 	
 	/**

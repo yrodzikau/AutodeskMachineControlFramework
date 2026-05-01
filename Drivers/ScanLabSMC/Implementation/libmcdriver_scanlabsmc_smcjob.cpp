@@ -87,9 +87,9 @@ void CSMCJob::DrawLoop(const LibMCDriver_ScanLabSMC_uint64 nPointsBufferSize, co
 }
 
 
-void CSMCJob::DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPower, const LibMCDriver_ScanLabSMC_double dZValue)
+void CSMCJob::DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D* pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPower, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue)
 {
-    m_pJobInstance->DrawHatches(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dJumpSpeed, dPower, dZValue);
+    m_pJobInstance->DrawHatches(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dMinimalMarkSpeed, dJumpSpeed, dPower, dCornerTolerance, dZValue);
 }
 
 void CSMCJob::AddLayerToList(LibMCEnv::PToolpathLayer pLayer)

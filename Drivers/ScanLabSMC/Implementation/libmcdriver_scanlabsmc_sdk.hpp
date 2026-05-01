@@ -239,7 +239,7 @@ namespace LibMCDriver_ScanLabSMC {
 		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_job_set_mark_speed) (size_t Handle, double dMarkSpeed);
 		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_job_set_min_mark_speed) (size_t Handle, double dMinimalMarkSpeed);
 		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_job_jump_min_time) (size_t Handle, const double* Target, double dMinimalJumpTime);
-		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_job_set_corner_tolerance) (size_t Handle, const double* Target, double dCornerTolerance);
+		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_job_set_corner_tolerance) (size_t Handle, double dCornerTolerance);
 		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_ctrl_get_simulation_filename) (size_t Handle, size_t nJobID, char * pszBuffer, size_t nBufferSize);
 		typedef slscReturnValue(SCANLABSMC_CALLINGCONVENTION* PScanLabSMCPtr_slsc_ctrl_get_job_characteristic) (size_t Handle, size_t nJobID, slsc_JobCharacteristic eKey, double * pdValue);
 
@@ -400,7 +400,7 @@ namespace LibMCDriver_ScanLabSMC {
 			slscReturnValue slsc_job_set_mark_speed(size_t Handle, double dMarkSpeed);
 			slscReturnValue slsc_job_set_min_mark_speed(size_t Handle, double dMinimalMarkSpeed);
 			slscReturnValue slsc_job_jump_min_time(size_t Handle, const double* Target, double dMinimalJumpTime);
-			slscReturnValue slsc_job_set_corner_tolerance(size_t Handle, const double* Target, double dCornerTolerance);
+			slscReturnValue slsc_job_set_corner_tolerance(size_t Handle, double dCornerTolerance);
 			slscReturnValue slsc_ctrl_get_simulation_filename(size_t Handle, size_t nJobID, char* pszBuffer, size_t nBufferSize);
 			slscReturnValue slsc_ctrl_get_job_characteristic(size_t Handle, size_t nJobID, slsc_JobCharacteristic eKey, double* pdValue);
 

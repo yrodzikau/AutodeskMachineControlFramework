@@ -66,9 +66,32 @@ typedef LibOpen62541Result (*PLibOpen62541OPCClient_EnableEncryptionPtr) (LibOpe
 * Enables encryption for subsequent connects.
 *
 * @param[in] pOPCClient - OPCClient instance.
+* @param[in] nLocalCertificateBufferSize - Number of elements in buffer
+* @param[in] pLocalCertificateBuffer - uint8 buffer of Local Certificate Buffer
+* @param[in] nPrivateKeyBufferSize - Number of elements in buffer
+* @param[in] pPrivateKeyBuffer - uint8 buffer of Private Key Buffer
+* @param[in] eSecurityMode - Security mode to use.
+* @return error code or 0 (success)
+*/
+typedef LibOpen62541Result (*PLibOpen62541OPCClient_EnableEncryptionBinPtr) (LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8 * pLocalCertificateBuffer, LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8 * pPrivateKeyBuffer, LibOpen62541::eUASecurityMode eSecurityMode);
+
+/**
+* Enables encryption for subsequent connects.
+*
+* @param[in] pOPCClient - OPCClient instance.
 * @return error code or 0 (success)
 */
 typedef LibOpen62541Result (*PLibOpen62541OPCClient_DisableEncryptionPtr) (LibOpen62541_OPCClient pOPCClient);
+
+/**
+* Connects to the end point with a user name and password.
+*
+* @param[in] pOPCClient - OPCClient instance.
+* @param[in] pEndPointURL - End point URL to connect to.
+* @param[in] pApplicationURL - Application URL to use.
+* @return error code or 0 (success)
+*/
+typedef LibOpen62541Result (*PLibOpen62541OPCClient_ConnectPtr) (LibOpen62541_OPCClient pOPCClient, const char * pEndPointURL, const char * pApplicationURL);
 
 /**
 * Connects to the end point with a user name and password.
@@ -171,6 +194,19 @@ typedef LibOpen62541Result (*PLibOpen62541OPCClient_WriteDoublePtr) (LibOpen6254
 */
 typedef LibOpen62541Result (*PLibOpen62541OPCClient_WriteStringPtr) (LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint32 nNameSpace, const char * pNodeName, const char * pValue);
 
+/**
+* Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+*
+* @param[in] pOPCClient - OPCClient instance.
+* @param[in] nNameSpace - Namespace ID
+* @param[in] pNodeName - NodeToRead
+* @param[in] pMethod - Method to call
+* @param[in] nArgInt32 - Method Argument Int32
+* @param[in] pFeedbackResult - Method execution result string
+* @return error code or 0 (success)
+*/
+typedef LibOpen62541Result (*PLibOpen62541OPCClient_CallMethodInt32Ptr) (LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint32 nNameSpace, const char * pNodeName, const char * pMethod, LibOpen62541_int32 nArgInt32, const char * pFeedbackResult);
+
 /*************************************************************************************************************************
  Global functions
 **************************************************************************************************************************/
@@ -236,7 +272,9 @@ typedef LibOpen62541Result (*PLibOpen62541CreateClientPtr) (LibOpen62541_OPCClie
 typedef struct {
 	void * m_LibraryHandle;
 	PLibOpen62541OPCClient_EnableEncryptionPtr m_OPCClient_EnableEncryption;
+	PLibOpen62541OPCClient_EnableEncryptionBinPtr m_OPCClient_EnableEncryptionBin;
 	PLibOpen62541OPCClient_DisableEncryptionPtr m_OPCClient_DisableEncryption;
+	PLibOpen62541OPCClient_ConnectPtr m_OPCClient_Connect;
 	PLibOpen62541OPCClient_ConnectUserNamePtr m_OPCClient_ConnectUserName;
 	PLibOpen62541OPCClient_DisconnectPtr m_OPCClient_Disconnect;
 	PLibOpen62541OPCClient_IsConnectedPtr m_OPCClient_IsConnected;
@@ -246,6 +284,7 @@ typedef struct {
 	PLibOpen62541OPCClient_WriteIntegerPtr m_OPCClient_WriteInteger;
 	PLibOpen62541OPCClient_WriteDoublePtr m_OPCClient_WriteDouble;
 	PLibOpen62541OPCClient_WriteStringPtr m_OPCClient_WriteString;
+	PLibOpen62541OPCClient_CallMethodInt32Ptr m_OPCClient_CallMethodInt32;
 	PLibOpen62541GetVersionPtr m_GetVersion;
 	PLibOpen62541GetLastErrorPtr m_GetLastError;
 	PLibOpen62541AcquireInstancePtr m_AcquireInstance;

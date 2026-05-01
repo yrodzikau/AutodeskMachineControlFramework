@@ -575,12 +575,12 @@ slscReturnValue CScanLabSMCSDK::slsc_job_jump_min_time(size_t Handle, const doub
 
 }
 
-slscReturnValue CScanLabSMCSDK::slsc_job_set_corner_tolerance(size_t Handle, const double* Target, double dCornerTolerance)
+slscReturnValue CScanLabSMCSDK::slsc_job_set_corner_tolerance(size_t Handle, double dCornerTolerance)
 {
 	if (m_pLogJournal.get() != nullptr)
-		m_pLogJournal->logCall("slsc_job_set_corner_tolerance", std::to_string(Handle) + ", &" + std::to_string(intptr_t(Target)) + ", " + std::to_string(dCornerTolerance));
+		m_pLogJournal->logCall("slsc_job_set_corner_tolerance", std::to_string(Handle) + ", " + std::to_string(dCornerTolerance));
 
-	return this->ptr_slsc_job_set_corner_tolerance(Handle, Target, dCornerTolerance);
+	return this->ptr_slsc_job_set_corner_tolerance(Handle, dCornerTolerance);
 }
 
 slscReturnValue CScanLabSMCSDK::slsc_ctrl_get_simulation_filename(size_t Handle, size_t nJobID, char* pszBuffer, size_t nBufferSize)

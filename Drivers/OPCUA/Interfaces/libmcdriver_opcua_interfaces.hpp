@@ -334,9 +334,26 @@ public:
 	virtual void EnableEncryption(const std::string & sLocalCertificate, const std::string & sPrivateKey, const LibMCDriver_OPCUA::eUASecurityMode eSecurityMode) = 0;
 
 	/**
+	* IDriver_OPCUA::EnableEncryptionBin - Enables encryption for subsequent connects.
+	* @param[in] nLocalCertificateBufferSize - Number of elements in buffer
+	* @param[in] pLocalCertificateBuffer - Local Certificate Buffer
+	* @param[in] nPrivateKeyBufferSize - Number of elements in buffer
+	* @param[in] pPrivateKeyBuffer - Private Key Buffer
+	* @param[in] eSecurityMode - Security mode to use.
+	*/
+	virtual void EnableEncryptionBin(const LibMCDriver_OPCUA_uint64 nLocalCertificateBufferSize, const LibMCDriver_OPCUA_uint8 * pLocalCertificateBuffer, const LibMCDriver_OPCUA_uint64 nPrivateKeyBufferSize, const LibMCDriver_OPCUA_uint8 * pPrivateKeyBuffer, const LibMCDriver_OPCUA::eUASecurityMode eSecurityMode) = 0;
+
+	/**
 	* IDriver_OPCUA::DisableEncryption - Enables encryption for subsequent connects.
 	*/
 	virtual void DisableEncryption() = 0;
+
+	/**
+	* IDriver_OPCUA::Connect - Connects anonymously to a OPCUA PLC Controller.
+	* @param[in] sEndPointURL - End point URL to connect to.
+	* @param[in] sApplicationURL - Application URL to use.
+	*/
+	virtual void Connect(const std::string & sEndPointURL, const std::string & sApplicationURL) = 0;
 
 	/**
 	* IDriver_OPCUA::ConnectWithUserName - Connects to a OPCUA PLC Controller.
@@ -409,6 +426,16 @@ public:
 	* @param[in] sValue - Node Value to write
 	*/
 	virtual void WriteString(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue) = 0;
+
+	/**
+	* IDriver_OPCUA::CallMethodInt32 - Call a method with an int32 argumnet on server. Fails if not connected or node does not exist.
+	* @param[in] nNameSpace - Namespace ID
+	* @param[in] sNodeName - NodeToRead
+	* @param[in] sMethod - Method to call
+	* @param[in] nArgInt32 - Method Argument Int32
+	* @param[in] sFeedbackResult - Method execution result string
+	*/
+	virtual void CallMethodInt32(const LibMCDriver_OPCUA_uint32 nNameSpace, const std::string & sNodeName, const std::string & sMethod, const LibMCDriver_OPCUA_int32 nArgInt32, const std::string & sFeedbackResult) = 0;
 
 };
 

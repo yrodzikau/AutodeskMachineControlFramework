@@ -135,6 +135,42 @@ LibOpen62541Result libopen62541_opcclient_enableencryption(LibOpen62541_OPCClien
 	}
 }
 
+LibOpen62541Result libopen62541_opcclient_enableencryptionbin(LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8 * pLocalCertificateBuffer, LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8 * pPrivateKeyBuffer, eLibOpen62541UASecurityMode eSecurityMode)
+{
+	IBase* pIBaseClass = (IBase *)pOPCClient;
+
+	PLibOpen62541InterfaceJournalEntry pJournalEntry;
+	try {
+		if (m_GlobalJournal.get() != nullptr)  {
+			pJournalEntry = m_GlobalJournal->beginClassMethod(pOPCClient, "OPCClient", "EnableEncryptionBin");
+			pJournalEntry->addEnumParameter("SecurityMode", "UASecurityMode", (LibOpen62541_int32)(eSecurityMode));
+		}
+		if ( (!pLocalCertificateBuffer) && (nLocalCertificateBufferSize>0))
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		if ( (!pPrivateKeyBuffer) && (nPrivateKeyBufferSize>0))
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		IOPCClient* pIOPCClient = dynamic_cast<IOPCClient*>(pIBaseClass);
+		if (!pIOPCClient)
+			throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_INVALIDCAST);
+		
+		pIOPCClient->EnableEncryptionBin(nLocalCertificateBufferSize, pLocalCertificateBuffer, nPrivateKeyBufferSize, pPrivateKeyBuffer, eSecurityMode);
+
+		if (pJournalEntry.get() != nullptr) {
+			pJournalEntry->writeSuccess();
+		}
+		return LIBOPEN62541_SUCCESS;
+	}
+	catch (ELibOpen62541InterfaceException & Exception) {
+		return handleLibOpen62541Exception(pIBaseClass, Exception, pJournalEntry.get());
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException, pJournalEntry.get());
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass, pJournalEntry.get());
+	}
+}
+
 LibOpen62541Result libopen62541_opcclient_disableencryption(LibOpen62541_OPCClient pOPCClient)
 {
 	IBase* pIBaseClass = (IBase *)pOPCClient;
@@ -149,6 +185,45 @@ LibOpen62541Result libopen62541_opcclient_disableencryption(LibOpen62541_OPCClie
 			throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_INVALIDCAST);
 		
 		pIOPCClient->DisableEncryption();
+
+		if (pJournalEntry.get() != nullptr) {
+			pJournalEntry->writeSuccess();
+		}
+		return LIBOPEN62541_SUCCESS;
+	}
+	catch (ELibOpen62541InterfaceException & Exception) {
+		return handleLibOpen62541Exception(pIBaseClass, Exception, pJournalEntry.get());
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException, pJournalEntry.get());
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass, pJournalEntry.get());
+	}
+}
+
+LibOpen62541Result libopen62541_opcclient_connect(LibOpen62541_OPCClient pOPCClient, const char * pEndPointURL, const char * pApplicationURL)
+{
+	IBase* pIBaseClass = (IBase *)pOPCClient;
+
+	PLibOpen62541InterfaceJournalEntry pJournalEntry;
+	try {
+		if (m_GlobalJournal.get() != nullptr)  {
+			pJournalEntry = m_GlobalJournal->beginClassMethod(pOPCClient, "OPCClient", "Connect");
+			pJournalEntry->addStringParameter("EndPointURL", pEndPointURL);
+			pJournalEntry->addStringParameter("ApplicationURL", pApplicationURL);
+		}
+		if (pEndPointURL == nullptr)
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		if (pApplicationURL == nullptr)
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		std::string sEndPointURL(pEndPointURL);
+		std::string sApplicationURL(pApplicationURL);
+		IOPCClient* pIOPCClient = dynamic_cast<IOPCClient*>(pIBaseClass);
+		if (!pIOPCClient)
+			throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_INVALIDCAST);
+		
+		pIOPCClient->Connect(sEndPointURL, sApplicationURL);
 
 		if (pJournalEntry.get() != nullptr) {
 			pJournalEntry->writeSuccess();
@@ -535,6 +610,51 @@ LibOpen62541Result libopen62541_opcclient_writestring(LibOpen62541_OPCClient pOP
 	}
 }
 
+LibOpen62541Result libopen62541_opcclient_callmethodint32(LibOpen62541_OPCClient pOPCClient, LibOpen62541_uint32 nNameSpace, const char * pNodeName, const char * pMethod, LibOpen62541_int32 nArgInt32, const char * pFeedbackResult)
+{
+	IBase* pIBaseClass = (IBase *)pOPCClient;
+
+	PLibOpen62541InterfaceJournalEntry pJournalEntry;
+	try {
+		if (m_GlobalJournal.get() != nullptr)  {
+			pJournalEntry = m_GlobalJournal->beginClassMethod(pOPCClient, "OPCClient", "CallMethodInt32");
+			pJournalEntry->addUInt32Parameter("NameSpace", nNameSpace);
+			pJournalEntry->addStringParameter("NodeName", pNodeName);
+			pJournalEntry->addStringParameter("Method", pMethod);
+			pJournalEntry->addInt32Parameter("ArgInt32", nArgInt32);
+			pJournalEntry->addStringParameter("FeedbackResult", pFeedbackResult);
+		}
+		if (pNodeName == nullptr)
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		if (pMethod == nullptr)
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		if (pFeedbackResult == nullptr)
+			throw ELibOpen62541InterfaceException (LIBOPEN62541_ERROR_INVALIDPARAM);
+		std::string sNodeName(pNodeName);
+		std::string sMethod(pMethod);
+		std::string sFeedbackResult(pFeedbackResult);
+		IOPCClient* pIOPCClient = dynamic_cast<IOPCClient*>(pIBaseClass);
+		if (!pIOPCClient)
+			throw ELibOpen62541InterfaceException(LIBOPEN62541_ERROR_INVALIDCAST);
+		
+		pIOPCClient->CallMethodInt32(nNameSpace, sNodeName, sMethod, nArgInt32, sFeedbackResult);
+
+		if (pJournalEntry.get() != nullptr) {
+			pJournalEntry->writeSuccess();
+		}
+		return LIBOPEN62541_SUCCESS;
+	}
+	catch (ELibOpen62541InterfaceException & Exception) {
+		return handleLibOpen62541Exception(pIBaseClass, Exception, pJournalEntry.get());
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException, pJournalEntry.get());
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass, pJournalEntry.get());
+	}
+}
+
 
 
 /*************************************************************************************************************************
@@ -552,8 +672,12 @@ LibOpen62541Result LibOpen62541::Impl::LibOpen62541_GetProcAddress (const char *
 	
 	if (sProcName == "libopen62541_opcclient_enableencryption") 
 		*ppProcAddress = (void*) &libopen62541_opcclient_enableencryption;
+	if (sProcName == "libopen62541_opcclient_enableencryptionbin") 
+		*ppProcAddress = (void*) &libopen62541_opcclient_enableencryptionbin;
 	if (sProcName == "libopen62541_opcclient_disableencryption") 
 		*ppProcAddress = (void*) &libopen62541_opcclient_disableencryption;
+	if (sProcName == "libopen62541_opcclient_connect") 
+		*ppProcAddress = (void*) &libopen62541_opcclient_connect;
 	if (sProcName == "libopen62541_opcclient_connectusername") 
 		*ppProcAddress = (void*) &libopen62541_opcclient_connectusername;
 	if (sProcName == "libopen62541_opcclient_disconnect") 
@@ -572,6 +696,8 @@ LibOpen62541Result LibOpen62541::Impl::LibOpen62541_GetProcAddress (const char *
 		*ppProcAddress = (void*) &libopen62541_opcclient_writedouble;
 	if (sProcName == "libopen62541_opcclient_writestring") 
 		*ppProcAddress = (void*) &libopen62541_opcclient_writestring;
+	if (sProcName == "libopen62541_opcclient_callmethodint32") 
+		*ppProcAddress = (void*) &libopen62541_opcclient_callmethodint32;
 	if (sProcName == "libopen62541_getversion") 
 		*ppProcAddress = (void*) &libopen62541_getversion;
 	if (sProcName == "libopen62541_getlasterror") 

@@ -65,6 +65,12 @@ private:
 
 	std::string m_sCertificate;
 	std::string m_sPrivateKey;
+
+	std::vector<uint8_t> m_certBuffer;
+	std::vector<uint8_t> m_keyBuffer;
+
+	bool m_bUseBinaryEncryption = false;
+
 	LibOpen62541::eUASecurityMode m_SecurityMode;
 
 public:
@@ -75,7 +81,11 @@ public:
 
 	void EnableEncryption(const std::string& sLocalCertificate, const std::string& sPrivateKey, const LibOpen62541::eUASecurityMode eSecurityMode) override;
 
+	void EnableEncryptionBin(const LibOpen62541_uint64 nLocalCertificateBufferSize, const LibOpen62541_uint8* pLocalCertificateBuffer, const LibOpen62541_uint64 nPrivateKeyBufferSize, const LibOpen62541_uint8* pPrivateKeyBuffer, const LibOpen62541::eUASecurityMode eSecurityMode) override;
+
 	void DisableEncryption() override;
+
+	void Connect(const std::string& sEndPointURL, const std::string& sApplicationURL);
 
 	void ConnectUserName(const std::string & sEndPointURL, const std::string & sUsername, const std::string & sPassword, const std::string & sApplicationURL) override;
 
@@ -95,6 +105,7 @@ public:
 
 	void WriteString(const LibOpen62541_uint32 nNameSpace, const std::string & sNodeName, const std::string & sValue) override;
 
+	void CallMethodInt32(const LibOpen62541_uint32 nNameSpace, const std::string& sNodeName, const std::string& sMethod, const LibOpen62541_int32 nArgInt32, const std::string& sFeedbackResult) override;
 };
 
 } // namespace Impl

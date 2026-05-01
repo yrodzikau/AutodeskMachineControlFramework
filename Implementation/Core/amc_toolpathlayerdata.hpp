@@ -234,6 +234,10 @@ namespace AMC {
 
 		void getHatchModificationFactors (uint32_t nSegmentIndex, uint32_t nHatchIndex, LibMCEnv::eToolpathProfileModificationFactor eModificationFactor, double & dFactor1, double & dFactor2);
 
+		void getPolylineEdgeModificationFactors(uint32_t nSegmentIndex, uint32_t nEdgeIndex, LibMCEnv::eToolpathProfileModificationFactor eModificationFactor, double& dFactor1, double& dFactor2);
+
+		void getPolylineEdgeSubinterpolationData(const uint32_t nSegmentIndex, const uint32_t nEdgeIndex, uint32_t& nSubInterpolationCount, Lib3MF::sHatchModificationInterpolationData*& pSubInterpolationData);
+
 		static std::string getValueNameByType(const LibMCEnv::eToolpathProfileValueType eValueType);
 
 	};

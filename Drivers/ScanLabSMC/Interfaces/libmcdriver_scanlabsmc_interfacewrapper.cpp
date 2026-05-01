@@ -445,7 +445,7 @@ LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawloop(LibMCDriver_
 	}
 }
 
-LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawhatches(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const sLibMCDriver_ScanLabSMCHatch2D * pHatchesBuffer, LibMCDriver_ScanLabSMC_double dMarkSpeed, LibMCDriver_ScanLabSMC_double dJumpSpeed, LibMCDriver_ScanLabSMC_double dPowerInWatts, LibMCDriver_ScanLabSMC_double dZValue)
+LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawhatches(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const sLibMCDriver_ScanLabSMCHatch2D * pHatchesBuffer, LibMCDriver_ScanLabSMC_double dMarkSpeed, LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, LibMCDriver_ScanLabSMC_double dJumpSpeed, LibMCDriver_ScanLabSMC_double dPowerInWatts, LibMCDriver_ScanLabSMC_double dCornerTolerance, LibMCDriver_ScanLabSMC_double dZValue)
 {
 	IBase* pIBaseClass = (IBase *)pSMCJob;
 
@@ -456,7 +456,7 @@ LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawhatches(LibMCDriv
 		if (!pISMCJob)
 			throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDCAST);
 		
-		pISMCJob->DrawHatches(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dJumpSpeed, dPowerInWatts, dZValue);
+		pISMCJob->DrawHatches(nHatchesBufferSize, pHatchesBuffer, dMarkSpeed, dMinimalMarkSpeed, dJumpSpeed, dPowerInWatts, dCornerTolerance, dZValue);
 
 		return LIBMCDRIVER_SCANLABSMC_SUCCESS;
 	}

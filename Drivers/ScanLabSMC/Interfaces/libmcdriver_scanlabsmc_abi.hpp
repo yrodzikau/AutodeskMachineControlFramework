@@ -196,12 +196,14 @@ LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlab
 * @param[in] nHatchesBufferSize - Number of elements in buffer
 * @param[in] pHatchesBuffer - Hatch2D buffer of Hatches to draw.
 * @param[in] dMarkSpeed - Mark speed in mm/s
+* @param[in] dMinimalMarkSpeed - Minimal allowed mark speed in mm/s
 * @param[in] dJumpSpeed - Jump speed in mm/s
 * @param[in] dPowerInWatts - Laser power in Watts
+* @param[in] dCornerTolerance - Allowed position deviation on corners (in mm.)
 * @param[in] dZValue - Focus Z Value
 * @return error code or 0 (success)
 */
-LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawhatches(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D * pHatchesBuffer, LibMCDriver_ScanLabSMC_double dMarkSpeed, LibMCDriver_ScanLabSMC_double dJumpSpeed, LibMCDriver_ScanLabSMC_double dPowerInWatts, LibMCDriver_ScanLabSMC_double dZValue);
+LIBMCDRIVER_SCANLABSMC_DECLSPEC LibMCDriver_ScanLabSMCResult libmcdriver_scanlabsmc_smcjob_drawhatches(LibMCDriver_ScanLabSMC_SMCJob pSMCJob, LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D * pHatchesBuffer, LibMCDriver_ScanLabSMC_double dMarkSpeed, LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, LibMCDriver_ScanLabSMC_double dJumpSpeed, LibMCDriver_ScanLabSMC_double dPowerInWatts, LibMCDriver_ScanLabSMC_double dCornerTolerance, LibMCDriver_ScanLabSMC_double dZValue);
 
 /**
 * Adds a layer instance to the current open list.

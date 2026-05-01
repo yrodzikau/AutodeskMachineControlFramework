@@ -2963,6 +2963,32 @@ public:
 	virtual void EvaluateTypedHatchProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer) = 0;
 
 	/**
+	* IToolpathLayer::EvaluateTypedPolyLineProfileModifier - Evaluates a typed profile value with its modifier factors. Fails if segment type is not polyline.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+	* @param[in] nEvaluationData1BufferSize - Number of elements in buffer
+	* @param[out] pEvaluationData1NeededCount - will be filled with the count of the written structs, or needed buffer size.
+	* @param[out] pEvaluationData1Buffer - double buffer of Evaluated data at the start vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+	* @param[in] nEvaluationData2BufferSize - Number of elements in buffer
+	* @param[out] pEvaluationData2NeededCount - will be filled with the count of the written structs, or needed buffer size.
+	* @param[out] pEvaluationData2Buffer - double buffer of Evaluated data at the end vertex of each polyline edge. Will return (PointCount - 1) elements when PointCount is at least 2.
+	*/
+	virtual void EvaluateTypedPolyLineProfileModifier(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nEvaluationData1BufferSize, LibMCEnv_uint64* pEvaluationData1NeededCount, LibMCEnv_double * pEvaluationData1Buffer, LibMCEnv_uint64 nEvaluationData2BufferSize, LibMCEnv_uint64* pEvaluationData2NeededCount, LibMCEnv_double * pEvaluationData2Buffer) = 0;
+
+	/**
+	* IToolpathLayer::EvaluateTypedPolyLineProfileInterpolation - Evaluates the subinterpolation values with its modifier factors. Fails if segment type is not polyline.
+	* @param[in] nSegmentIndex - Index. Must be between 0 and Count - 1.
+	* @param[in] eValueType - Enum to query for. MUST NOT be custom. Fails if value type does not exist.
+	* @param[in] nCountArrayBufferSize - Number of elements in buffer
+	* @param[out] pCountArrayNeededCount - will be filled with the count of the written structs, or needed buffer size.
+	* @param[out] pCountArrayBuffer - uint32 buffer of Number of subinterpolation values per polyline edge. Will contain (PointCount - 1) elements when PointCount is at least 2.
+	* @param[in] nEvaluationDataBufferSize - Number of elements in buffer
+	* @param[out] pEvaluationDataNeededCount - will be filled with the count of the written structs, or needed buffer size.
+	* @param[out] pEvaluationDataBuffer - Hatch2DSubInterpolationData buffer of Evaluated data on evaluation points for the full segment, in edge order. Will contain the sum of CountArray elements.
+	*/
+	virtual void EvaluateTypedPolyLineProfileInterpolation(const LibMCEnv_uint32 nSegmentIndex, const LibMCEnv::eToolpathProfileValueType eValueType, LibMCEnv_uint64 nCountArrayBufferSize, LibMCEnv_uint64* pCountArrayNeededCount, LibMCEnv_uint32 * pCountArrayBuffer, LibMCEnv_uint64 nEvaluationDataBufferSize, LibMCEnv_uint64* pEvaluationDataNeededCount, LibMCEnv::sHatch2DSubInterpolationData * pEvaluationDataBuffer) = 0;
+
+	/**
 	* IToolpathLayer::GetZValue - Retrieves the layers Z Value in units.
 	* @return Z Value of the layer in units.
 	*/

@@ -357,6 +357,8 @@ typedef void * LibMCEnv_pvoid;
 #define LIBMCENV_ERROR_INVALIDPAUSETOLERANCE 10260 /** Invalid pause tolerance. */
 #define LIBMCENV_ERROR_INVALIDFRAMECACHEDURATION 10261 /** Invalid frame cache duration. */
 #define LIBMCENV_ERROR_VIDEOSTREAMFRAMEENCODINGERROR 10262 /** Video stream frame encoding error. */
+#define LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE 10263 /** Segment is not of type polyline. */
+#define LIBMCENV_ERROR_COULDNOTEVALUATEPOLYLINES 10264 /** Could not evaluate polyline profiles. */
 
 /*************************************************************************************************************************
  Error strings for LibMCEnv
@@ -626,6 +628,8 @@ inline const char * LIBMCENV_GETERRORSTRING (LibMCEnvResult nErrorCode) {
     case LIBMCENV_ERROR_INVALIDPAUSETOLERANCE: return "Invalid pause tolerance.";
     case LIBMCENV_ERROR_INVALIDFRAMECACHEDURATION: return "Invalid frame cache duration.";
     case LIBMCENV_ERROR_VIDEOSTREAMFRAMEENCODINGERROR: return "Video stream frame encoding error.";
+    case LIBMCENV_ERROR_SEGMENTISNOTOFTYPEPOLYLINE: return "Segment is not of type polyline.";
+    case LIBMCENV_ERROR_COULDNOTEVALUATEPOLYLINES: return "Could not evaluate polyline profiles.";
     default: return "unknown error";
   }
 }

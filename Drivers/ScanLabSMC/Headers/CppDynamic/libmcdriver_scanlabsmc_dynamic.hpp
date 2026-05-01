@@ -550,7 +550,7 @@ public:
 	inline bool IsFinalized();
 	inline void DrawPolyline(const CInputVector<sPoint2D> & PointsBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue);
 	inline void DrawLoop(const CInputVector<sPoint2D> & PointsBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue);
-	inline void DrawHatches(const CInputVector<sHatch2D> & HatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue);
+	inline void DrawHatches(const CInputVector<sHatch2D> & HatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue);
 	inline void AddLayerToList(classParam<LibMCEnv::CToolpathLayer> pLayer);
 	inline bool IsReady();
 	inline void Execute(const bool bBlocking);
@@ -2127,13 +2127,15 @@ public:
 	* CSMCJob::DrawHatches - Writes a list of hatches into the open list
 	* @param[in] HatchesBuffer - Hatches to draw.
 	* @param[in] dMarkSpeed - Mark speed in mm/s
+	* @param[in] dMinimalMarkSpeed - Minimal allowed mark speed in mm/s
 	* @param[in] dJumpSpeed - Jump speed in mm/s
 	* @param[in] dPowerInWatts - Laser power in Watts
+	* @param[in] dCornerTolerance - Allowed position deviation on corners (in mm.)
 	* @param[in] dZValue - Focus Z Value
 	*/
-	void CSMCJob::DrawHatches(const CInputVector<sHatch2D> & HatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue)
+	void CSMCJob::DrawHatches(const CInputVector<sHatch2D> & HatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue)
 	{
-		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_DrawHatches(m_pHandle, (LibMCDriver_ScanLabSMC_uint64)HatchesBuffer.size(), HatchesBuffer.data(), dMarkSpeed, dJumpSpeed, dPowerInWatts, dZValue));
+		CheckError(m_pWrapper->m_WrapperTable.m_SMCJob_DrawHatches(m_pHandle, (LibMCDriver_ScanLabSMC_uint64)HatchesBuffer.size(), HatchesBuffer.data(), dMarkSpeed, dMinimalMarkSpeed, dJumpSpeed, dPowerInWatts, dCornerTolerance, dZValue));
 	}
 	
 	/**

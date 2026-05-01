@@ -388,11 +388,13 @@ public:
 	* @param[in] nHatchesBufferSize - Number of elements in buffer
 	* @param[in] pHatchesBuffer - Hatches to draw.
 	* @param[in] dMarkSpeed - Mark speed in mm/s
+	* @param[in] dMinimalMarkSpeed - Minimal allowed mark speed in mm/s
 	* @param[in] dJumpSpeed - Jump speed in mm/s
 	* @param[in] dPowerInWatts - Laser power in Watts
+	* @param[in] dCornerTolerance - Allowed position deviation on corners (in mm.)
 	* @param[in] dZValue - Focus Z Value
 	*/
-	virtual void DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D * pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dZValue) = 0;
+	virtual void DrawHatches(const LibMCDriver_ScanLabSMC_uint64 nHatchesBufferSize, const LibMCDriver_ScanLabSMC::sHatch2D * pHatchesBuffer, const LibMCDriver_ScanLabSMC_double dMarkSpeed, const LibMCDriver_ScanLabSMC_double dMinimalMarkSpeed, const LibMCDriver_ScanLabSMC_double dJumpSpeed, const LibMCDriver_ScanLabSMC_double dPowerInWatts, const LibMCDriver_ScanLabSMC_double dCornerTolerance, const LibMCDriver_ScanLabSMC_double dZValue) = 0;
 
 	/**
 	* ISMCJob::AddLayerToList - Adds a layer instance to the current open list.
