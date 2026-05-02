@@ -71,6 +71,7 @@ class LayerViewImpl {
 		this.toolpathVisible = true;
 		this.pointsVisible = true;
 		this.showLaserOffPoints = false;
+		this.filteredToOriginalIndexMap = null;
         
 		this.updateTransform ();
 
@@ -557,11 +558,13 @@ class LayerViewImpl {
 		if (this.layerPointsArray && this.pointsVisible) {
 			let pointsToRender = this.layerPointsArray;
 			let colorsToRender = this.layerPointsColorArray;
+			this.filteredToOriginalIndexMap = null;
 
 			if (!this.showLaserOffPoints && this.laser && this.laser.laseron) {
 				let pointCount = this.layerPointsArray.length / 2;
 				let filteredCoords = [];
 				let filteredColors = colorsToRender ? [] : null;
+				let indexMap = [];
 
 				for (let i = 0; i < pointCount; i++) {
 					if (this.laser.laseron[i] !== 0) {
@@ -569,10 +572,12 @@ class LayerViewImpl {
 						if (filteredColors && colorsToRender[i] !== undefined) {
 							filteredColors.push(colorsToRender[i]);
 						}
+						indexMap.push(i);
 					}
 				}
 				pointsToRender = new Float32Array(filteredCoords);
 				colorsToRender = filteredColors;
+				this.filteredToOriginalIndexMap = indexMap;
 			}
 
 			this.glInstance.add2DLocalizedPointsGeometry("layerdata_points", pointsToRender, 61, this.lineScaleLevel * 0.06, 0x00d0ff, colorsToRender, -200, -200, 2, 2, 400, 400);
@@ -580,7 +585,16 @@ class LayerViewImpl {
 			this.RenderScene (true);
 		}
 	}
-		
+
+	resolvePointIndex (filteredIndex)
+	{
+		if (this.filteredToOriginalIndexMap && filteredIndex >= 0
+			&& filteredIndex < this.filteredToOriginalIndexMap.length) {
+			return this.filteredToOriginalIndexMap[filteredIndex];
+		}
+		return filteredIndex;
+	}
+
 	getPointPosition (pointIndex)
 	{
 		if (this.layerPointsArray) {

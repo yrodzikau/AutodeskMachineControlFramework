@@ -606,7 +606,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 						const mouseX = event.clientX - renderElementPosition.left;
 						const mouseY = event.clientY - renderElementPosition.top;
 
-						let pointIndex = this.LayerViewerInstance.glInstance.getRaycasterCollisions ("layerdata_points", mouseX, mouseY);
+						let rawPointIndex = this.LayerViewerInstance.glInstance.getRaycasterCollisions ("layerdata_points", mouseX, mouseY);
+						let pointIndex = this.LayerViewerInstance.resolvePointIndex (rawPointIndex);
 						if (pointIndex >= 0) {
 						
 							let pointPosition = this.LayerViewerInstance.getPointPosition (pointIndex);
