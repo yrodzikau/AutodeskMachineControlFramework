@@ -304,8 +304,8 @@ void CSMCJobInstance::DrawPolylineNonLinearPower(const LibMCDriver_ScanLabSMC_ui
     else {
         polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Open;
     }
-    polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
-    //polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Constant_Velocity;
+    //polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+    polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Constant_Velocity;
 
     m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_begin_polyline(contextHandle, polyLineOptions));
 
@@ -528,7 +528,8 @@ void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_u
         //else {
             polyLineOptions.Geometry = slsc_PolylineGeometry::slsc_Polyline_Open;
         //}
-        polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+        //polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Maximize_Velocity;
+        polyLineOptions.ProfileType = slsc_PolylineProfile::slsc_Constant_Velocity;
         
 #ifdef CONNECTED_POLYLINE
         m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_begin_polyline(contextHandle, polyLineOptions));

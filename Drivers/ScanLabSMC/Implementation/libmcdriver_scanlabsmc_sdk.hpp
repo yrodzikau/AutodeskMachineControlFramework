@@ -58,14 +58,14 @@ namespace LibMCDriver_ScanLabSMC {
 		typedef size_t slscJobID;
 		typedef uint32_t slscReturnValue;
 
-		enum class slsc_PolylineGeometry : uint8_t
+		enum class slsc_PolylineGeometry //: uint8_t
 		{
 			slsc_Polyline_Open = 0,
 			slsc_Polyline_Closed = 1
 		};
 		
 
-		enum class slsc_PolylineProfile : uint8_t
+		enum class slsc_PolylineProfile //: uint8_t
 		{
 			slsc_Maximize_Velocity = 0,
 			slsc_Constant_Velocity = 1
