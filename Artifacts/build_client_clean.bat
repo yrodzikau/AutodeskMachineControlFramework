@@ -1,4 +1,4 @@
-B@echo off
+@echo off
 
 set basepath=%~dp0
 echo %basepath%
@@ -35,14 +35,21 @@ cd build_client\Client
 
 set TOOLBUILDDIR=..\..\build_clientdist_tools
 if not exist "%TOOLBUILDDIR%" (mkdir "%TOOLBUILDDIR%")
+if exist "%TOOLBUILDDIR%\CMakeCache.txt" del /f /q "%TOOLBUILDDIR%\CMakeCache.txt"
+if exist "%TOOLBUILDDIR%\CMakeFiles" rmdir /s /q "%TOOLBUILDDIR%\CMakeFiles"
 git rev-parse --verify --short HEAD >"%TOOLBUILDDIR%\githash.txt"
 git log -n 1 --format="%%H" -- "Client" >"%TOOLBUILDDIR%\clientdirhash.txt"
-cmake -S ..\.. -B "%TOOLBUILDDIR%"
+cmake -S ..\.. -B "%TOOLBUILDDIR%" -G "Visual Studio 17 2022" -A x64
+if errorlevel 1 goto :error
 cmake --build "%TOOLBUILDDIR%" --target create_client_dist --config Release
+if errorlevel 1 goto :error
 cmake --build "%TOOLBUILDDIR%" --target create_client_source --config Release
+if errorlevel 1 goto :error
 
 call npm install
+if errorlevel 1 goto :error
 call npm run build
+if errorlevel 1 goto :error
 
 cd ..\..\
 
@@ -59,3 +66,11 @@ if "%1" neq "NOPAUSE" (
 )
 
 exit 0
+
+:error
+echo.
+echo build_client_clean.bat failed with exit code %errorlevel%.
+if "%1" neq "NOPAUSE" (
+	pause
+)
+exit /b %errorlevel%
