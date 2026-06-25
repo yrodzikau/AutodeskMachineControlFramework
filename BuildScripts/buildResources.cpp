@@ -92,6 +92,23 @@ static std::string getContentTypeFromExtension(const std::string& sExtension)
 	return "application/binary";
 }
 
+static std::string makeResourceNameFromFileName(const std::filesystem::path& filePath)
+{
+	std::string sExtension = toLowerString(filePath.extension().u8string());
+	std::string sStem = filePath.stem().u8string();
+	std::string sResourceName = toLowerString(sStem);
+
+	if (sResourceName.empty())
+		return sResourceName;
+
+	// Preserve a unique sidecar resource name for debug symbol files that
+	// live next to a DLL with the same stem.
+	if (sExtension == ".pdb")
+		sResourceName += "_pdb";
+
+	return sResourceName;
+}
+
 struct SResourceEntry
 {
 	std::string m_sResourceName;
@@ -172,8 +189,7 @@ int main(int argc, char* argv[])
 				continue;
 
 			std::string sExtension = entry.path().extension().u8string();
-			std::string sStem = entry.path().stem().u8string();
-			std::string sResourceName = toLowerString(sStem);
+			std::string sResourceName = makeResourceNameFromFileName(entry.path());
 
 			if (sResourceName.empty())
 				throw std::runtime_error("invalid resource name for: " + sFileName);

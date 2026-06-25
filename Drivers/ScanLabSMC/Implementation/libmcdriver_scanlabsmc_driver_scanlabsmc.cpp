@@ -48,6 +48,51 @@ Abstract: This is a stub class definition of CDriver_ScanLabSMC
 
 using namespace LibMCDriver_ScanLabSMC::Impl;
 
+namespace {
+
+bool retrieveOptionalResourceData(
+    LibMCEnv::PDriverEnvironment pDriverEnvironment,
+    const std::string& sResourceName,
+    std::vector<uint8_t>& resourceData)
+{
+    resourceData.clear();
+    if (sResourceName.empty())
+        return false;
+
+    if (pDriverEnvironment->MachineHasResourceData(sResourceName)) {
+        pDriverEnvironment->RetrieveMachineResourceData(sResourceName, resourceData);
+        return !resourceData.empty();
+    }
+
+    if (pDriverEnvironment->DriverHasResourceData(sResourceName)) {
+        pDriverEnvironment->RetrieveDriverResourceData(sResourceName, resourceData);
+        return !resourceData.empty();
+    }
+
+    return false;
+}
+
+std::vector<std::string> determineOptionalSMCPDBResourceNames(const std::string& sSMCDLLResourceName)
+{
+    if (sSMCDLLResourceName.empty())
+        return {};
+
+    std::vector<std::string> resourceNames;
+    auto nLastDot = sSMCDLLResourceName.find_last_of('.');
+    std::string sBaseResourceName = sSMCDLLResourceName;
+    if (nLastDot != std::string::npos) {
+        auto sExtension = sSMCDLLResourceName.substr(nLastDot);
+        if (sExtension == ".dll" || sExtension == ".DLL")
+            sBaseResourceName = sSMCDLLResourceName.substr(0, nLastDot);
+    }
+
+    resourceNames.push_back(sBaseResourceName + ".pdb");
+    resourceNames.push_back(sBaseResourceName + "_pdb");
+    return resourceNames;
+}
+
+}
+
 /*************************************************************************************************************************
  Class definition of CDriver_ScanLabSMC 
 **************************************************************************************************************************/
@@ -72,6 +117,7 @@ void CDriver_ScanLabSMC::SetDLLResources(const std::string& sSMCDLLResourceName,
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_SDKALREADYLOADED);
 
     m_SMCDLLResourceData.resize(0);
+    m_SMCPDBResourceData.resize(0);
     m_RTCDLLResourceData.resize(0);
 
     if (sSMCDLLResourceName.empty())
@@ -91,6 +137,12 @@ void CDriver_ScanLabSMC::SetDLLResources(const std::string& sSMCDLLResourceName,
 
     if (m_SMCDLLResourceData.empty())
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_COULDNOTSTORESMCSDK);
+
+    auto sSMCPDBResourceNames = determineOptionalSMCPDBResourceNames(sSMCDLLResourceName);
+    for (const auto& sSMCPDBResourceName : sSMCPDBResourceNames) {
+        if (retrieveOptionalResourceData(m_pDriverEnvironment, sSMCPDBResourceName, m_SMCPDBResourceData))
+            break;
+    }
 
     if (m_pDriverEnvironment->MachineHasResourceData(sRTCDLLResourceName)) {
         m_pDriverEnvironment->RetrieveMachineResourceData(sRTCDLLResourceName, m_RTCDLLResourceData);
@@ -164,6 +216,7 @@ void CDriver_ScanLabSMC::SetCustomDLLData(const LibMCDriver_ScanLabSMC_uint64 nS
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_SDKALREADYLOADED);
 
     m_SMCDLLResourceData.resize(0);
+    m_SMCPDBResourceData.resize(0);
     m_RTCDLLResourceData.resize(0);
 
     if (nSMCDLLResourceDataBufferSize == 0)
@@ -253,6 +306,8 @@ void CDriver_ScanLabSMC::LoadSDK()
         SetXercesDLLResource(SCANLABSMC_DEFAULT_XERCESDLLRESOURCENAME);
 
     m_pSMCDLL = m_pDLLDirectory->StoreCustomData("SCANmotionControl_x64.dll", m_SMCDLLResourceData);
+    if (!m_SMCPDBResourceData.empty())
+        m_pSMCPDB = m_pDLLDirectory->StoreCustomData("SCANmotionControl_x64.pdb", m_SMCPDBResourceData);
     m_pRTCDLL = m_pDLLDirectory->StoreCustomData("RTC6DLLx64.dll", m_RTCDLLResourceData);
     
     if (m_sType == "scanlab-smc-1.0" || m_sType == "scanlab-smc-1.1" || m_sType == "scanlab-smc-latest")
@@ -270,6 +325,7 @@ void CDriver_ScanLabSMC::LoadSDK()
 
     // Free up resource data buffers
     m_SMCDLLResourceData.resize(0);
+    m_SMCPDBResourceData.resize(0);
     m_RTCDLLResourceData.resize(0);
     m_RTCServiceDLLResourceData.resize(0);
     m_XercesDLLResourceData.resize(0);

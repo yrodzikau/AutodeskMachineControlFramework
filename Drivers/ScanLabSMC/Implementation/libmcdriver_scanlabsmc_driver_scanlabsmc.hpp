@@ -64,6 +64,7 @@ private:
     std::string m_sType;
     
     std::vector<uint8_t> m_SMCDLLResourceData;
+    std::vector<uint8_t> m_SMCPDBResourceData;
     std::vector<uint8_t> m_RTCDLLResourceData;
     std::vector<uint8_t> m_RTCServiceDLLResourceData;
     std::vector<uint8_t> m_XercesDLLResourceData;
@@ -71,6 +72,7 @@ private:
     LibMCEnv::PDriverEnvironment m_pDriverEnvironment;
     LibMCEnv::PWorkingDirectory m_pDLLDirectory;
     LibMCEnv::PWorkingFile m_pSMCDLL;
+    LibMCEnv::PWorkingFile m_pSMCPDB;
     LibMCEnv::PWorkingFile m_pRTCDLL;
     LibMCEnv::PWorkingFile m_pRTCServiceDLL;
     LibMCEnv::PWorkingFile m_pXercesDLL;
