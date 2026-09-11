@@ -121,6 +121,14 @@ namespace AMC {
 
 		// Returns true if the value can differ between client sessions.
 		virtual bool isSessionScoped() = 0;
+
+		// Returns true if the value is bound to state machine data (or the session) and has to be evaluated on every
+		// request. Such attributes are never replaced by a client value. Provider attributes are always synchronized.
+		virtual bool isSynchronized();
+
+		// Writes a session specific value (e.g. set by a UI event handler with UIEnvironment::SetUIProperty) with the
+		// type of the attribute. The default implementation fails; only expression attributes support client values.
+		virtual void writeClientValueToFrontendJSON(CJSONWriter& writer, CJSONWriterObject& attributesObject, const std::string& sClientValue);
 	};
 
 	typedef std::shared_ptr<CUIFrontendDefinitionAttribute> PUIFrontendDefinitionAttribute;
@@ -130,7 +138,9 @@ namespace AMC {
 	private:
 		CUIExpression m_ValueExpression;
 
-	public: 
+		void writeExpressionToFrontendJSON(CJSONWriterObject& attributesObject, CUIExpression& valueExpression, CStateMachineData* pStateMachineData, CUIExpressionSessionContext* pSessionContext);
+
+	public:
 
 		CUIFrontendDefinitionExpressionAttribute(const std::string& sName, eUIFrontendDefinitionAttributeType attributeType, const CUIExpression& valueExpression);
 
@@ -141,6 +151,10 @@ namespace AMC {
 		virtual std::string getSessionReference() override;
 
 		virtual bool isSessionScoped() override;
+
+		virtual bool isSynchronized() override;
+
+		virtual void writeClientValueToFrontendJSON(CJSONWriter& writer, CJSONWriterObject& attributesObject, const std::string& sClientValue) override;
 
 	};
 
