@@ -265,6 +265,7 @@ typedef void * LibMCDriver_ScanLab_pvoid;
 #define LIBMCDRIVER_SCANLAB_ERROR_COULDNOTCONVERTLASERPOWERTOPERCENT 1160 /** Could not convert laser power to percent. */
 #define LIBMCDRIVER_SCANLAB_ERROR_INVALIDDEFOCUSCORRECTIONTABLE 1161 /** Invalid defocus correction table. */
 #define LIBMCDRIVER_SCANLAB_ERROR_DEFOCUSCORRECTIONNOTENABLED 1162 /** Defocus correction by power is not enabled. */
+#define LIBMCDRIVER_SCANLAB_ERROR_RECORDINGREADOUTNOTSTARTED 1163 /** The incremental readout of the recording has not been started. */
 
 /*************************************************************************************************************************
  Error strings for LibMCDriver_ScanLab
@@ -442,6 +443,7 @@ inline const char * LIBMCDRIVER_SCANLAB_GETERRORSTRING (LibMCDriver_ScanLabResul
     case LIBMCDRIVER_SCANLAB_ERROR_COULDNOTCONVERTLASERPOWERTOPERCENT: return "Could not convert laser power to percent.";
     case LIBMCDRIVER_SCANLAB_ERROR_INVALIDDEFOCUSCORRECTIONTABLE: return "Invalid defocus correction table.";
     case LIBMCDRIVER_SCANLAB_ERROR_DEFOCUSCORRECTIONNOTENABLED: return "Defocus correction by power is not enabled.";
+    case LIBMCDRIVER_SCANLAB_ERROR_RECORDINGREADOUTNOTSTARTED: return "The incremental readout of the recording has not been started.";
     default: return "unknown error";
   }
 }

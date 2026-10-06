@@ -211,7 +211,8 @@
 		<error name="COULDNOTCONVERTLASERPOWERTOWATTS" code="1159" description="Could not convert laser power to watts." />
 		<error name="COULDNOTCONVERTLASERPOWERTOPERCENT" code="1160" description="Could not convert laser power to percent." />
 		<error name="INVALIDDEFOCUSCORRECTIONTABLE" code="1161" description="Invalid defocus correction table." />
-		<error name="DEFOCUSCORRECTIONNOTENABLED" code="1162" description="Defocus correction by power is not enabled." />			
+		<error name="DEFOCUSCORRECTIONNOTENABLED" code="1162" description="Defocus correction by power is not enabled." />
+		<error name="RECORDINGREADOUTNOTSTARTED" code="1163" description="The incremental readout of the recording has not been started." />
 							
 	</errors>
 
@@ -634,7 +635,17 @@ Custom implementation
 			<param name="ColumnIdentifierY" type="string" pass="in" description="Identifier of the X Column." />
 			<param name="ColumnDescriptionY" type="string" pass="in" description="Description of the X Column." />
 		</method>
-		
+
+		<method name="StartListWithRecording" description="Starts the execution of the list and the incremental readout of the recorded data. Returns immediately. ReadRecordedData MUST be called repeatedly afterwards until it reports that the recording is complete.">
+		</method>
+
+		<method name="ReadRecordedData" description="Reads the data that the RTC card has recorded since the last call into the channels. Does not wait for new data. Fails if StartListWithRecording has not been called.">
+			<param name="RecordingComplete" type="bool" pass="return" description="True if the list has finished and all recorded data has been read." />
+		</method>
+
+		<method name="DiscardRecords" description="Drops the record entries of all channels. The channels and the readout position are kept, so that the recorded data can be handed on piece by piece between calls to ReadRecordedData.">
+		</method>
+
 	</class>
 
 
