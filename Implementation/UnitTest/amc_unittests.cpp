@@ -53,6 +53,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_alerts.hpp"
 #include "amc_unittests_dataseries.hpp"
 #include "amc_unittests_discretefielddata2d.hpp"
+#include "amc_unittests_datatable.hpp"
+#include "amc_unittests_datatableformat.hpp"
+#include "amc_unittests_datatableencoding.hpp"
+#include "amc_unittests_datacapture.hpp"
+#include "amc_unittests_datatablereader.hpp"
+#include "amc_unittests_datacapturequery.hpp"
 #include "amc_unittests_jsonwriter.hpp"
 #include "amc_unittests_geometryutils.hpp"
 #include "amc_unittests_logger.hpp"
@@ -84,6 +90,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_libmcdata_installationinfo.hpp"
 #include "amc_unittests_libmcdata_machineconfig.hpp"
 #include "amc_unittests_libmcdata_customdata.hpp"
+#include "amc_unittests_libmcdata_datacapture.hpp"
 
 
 using namespace AMCUnitTest;
@@ -115,6 +122,12 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_Alerts>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_DataSeries>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_DiscreteFieldData2D>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataTable>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataTableFormatV2>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataTableEncoding>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataCapture>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataTableReader>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_DataCaptureQuery>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_JSONWriter>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_GeometryUtils>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_Logger>());
@@ -146,4 +159,5 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_InstallationInfo>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_MachineConfig>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_CustomData>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_DataCapture>());
 }

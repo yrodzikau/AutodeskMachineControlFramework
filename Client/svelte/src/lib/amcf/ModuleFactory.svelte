@@ -28,6 +28,7 @@
 	import ModuleOperationSequenceEditor from './modules/ModuleOperationSequenceEditor.svelte';
 	import ModuleHistoryBrowser from './modules/ModuleHistoryBrowser.svelte';
 	import ModuleUserManagement from './modules/ModuleUserManagement.svelte';
+	import ModuleDataCapture from './modules/ModuleDataCapture.svelte';
 	import ModuleFallback from './modules/ModuleFallback.svelte';
 
 	let { module, app }: { module: any; app: any } = $props();
@@ -62,6 +63,7 @@
 		journalhistory: ModuleHistoryBrowser,
 		operationsequenceeditor: ModuleOperationSequenceEditor,
 		usermanagement: ModuleUserManagement,
+		datacapture: ModuleDataCapture,
 	};
 
 	let Component = $derived(componentMap[module?.type] || ModuleFallback);

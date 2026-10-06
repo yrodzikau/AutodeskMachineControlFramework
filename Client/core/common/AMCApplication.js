@@ -50,6 +50,7 @@ import AMCApplicationModule_Form from "../modules/AMCModule_Form.js"
 import AMCApplicationModule_Chart from "../modules/AMCModule_Chart.js"
 import AMCApplicationModule_JournalHistory from "../modules/AMCModule_JournalHistory.js"
 import AMCApplicationModule_UserManagement from "../modules/AMCModule_UserManagement.js"
+import AMCApplicationModule_DataCapture from "../modules/AMCModule_DataCapture.js"
 import AMCApplicationModule_Image from "../modules/AMCModule_Image.js"
 import AMCApplicationModule_StateMachineGraph from "../modules/AMCModule_StateMachineGraph.js"
 import AMCApplicationModule_Paragraph from "../modules/AMCModule_Paragraph.js"
@@ -868,6 +869,8 @@ export default class AMCApplication extends Common.AMCObject {
 			return new AMCApplicationModule_JournalHistory (page, def);
 		if (def.type === "usermanagement")
 			return new AMCApplicationModule_UserManagement (page, def);
+		if (def.type === "datacapture")
+			return new AMCApplicationModule_DataCapture (page, def);
 		if (def.type === "image")
 			return new AMCApplicationModule_Image (page, def);
 		if (def.type === "paragraph")

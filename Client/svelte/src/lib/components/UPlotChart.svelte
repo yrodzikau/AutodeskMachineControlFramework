@@ -20,6 +20,7 @@
 		fillHeight = false,
 		showLiveLabels = false,
 		canvasLegend = false,
+		formatX = undefined,
 		onZoom = undefined,
 		onHover = undefined
 	}: {
@@ -35,6 +36,8 @@
 		// When true a legend (color, title and the latest or hovered value of each
 		// trace) is drawn on the canvas in a band reserved above the plotting area.
 		canvasLegend?: boolean;
+		// Formats the tick labels of the x axis. The default reads x as seconds.
+		formatX?: (value: number) => string;
 		onZoom?: (minX: number, maxX: number) => void;
 		onHover?: (idx: number | null) => void;
 	} = $props();
@@ -270,7 +273,7 @@
 					stroke: '#94a3b8',
 					grid: { stroke: 'rgba(148,163,184,0.15)' },
 					ticks: { stroke: 'rgba(148,163,184,0.25)' },
-					values: (_u, splits) => splits.map((v) => formatSeconds(v))
+					values: (_u, splits) => splits.map((v) => (formatX ? formatX(v) : formatSeconds(v)))
 				},
 				{
 					stroke: '#94a3b8',
