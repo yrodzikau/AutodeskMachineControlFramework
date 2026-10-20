@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "amc_systemstate.hpp"
+#include "amc_streamdownloadregistry.hpp"
 #include "libmc_exceptiontypes.hpp"
 
 #include "amc_logger.hpp"
@@ -99,7 +100,8 @@ namespace AMC {
 		m_pMeshHandler = std::make_shared<CMeshHandler>();
 		m_pToolpathHandler = std::make_shared<CToolpathHandler>(m_pDataModel);
 		m_pStreamRegistry = std::make_shared<CStreamRegistry>();
-		m_pStateMachineData = std::make_shared<CStateMachineData>();
+		m_pStreamDownloadRegistry = std::make_shared<CStreamDownloadRegistry>();
+m_pStateMachineData = std::make_shared<CStateMachineData>();
 		m_pDriverHandler = std::make_shared<CDriverHandler>(pEnvWrapper, m_pToolpathHandler, m_pMeshHandler, m_pLogger, m_pDataModel, m_pGlobalChrono, m_pStateJournal, m_pTelemetryHandler, m_pStreamRegistry, m_pStateMachineData->getFrontendChangeCounter());
 		m_pSignalHandler = std::make_shared<CStateSignalHandler>(m_pTelemetryHandler);
 		m_pLanguageHandler = std::make_shared<CLanguageHandler>();
@@ -216,6 +218,21 @@ namespace AMC {
 	PStreamRegistry CSystemState::getStreamRegistryInstance()
 	{
 		return m_pStreamRegistry;
+	}
+
+	std::shared_ptr<CStreamDownloadRegistry> CSystemState::getStreamDownloadRegistryInstance()
+	{
+		return m_pStreamDownloadRegistry;
+	}
+
+	void CSystemState::setSessionHandler(std::shared_ptr<CAPISessionHandler> pSessionHandler)
+	{
+		m_pSessionHandler = pSessionHandler;
+	}
+
+	std::shared_ptr<CAPISessionHandler> CSystemState::getSessionHandler()
+	{
+		return m_pSessionHandler.lock();
 	}
 
 	PLogger CSystemState::getLoggerInstance()

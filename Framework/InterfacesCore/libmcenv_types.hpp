@@ -394,6 +394,9 @@ typedef void * LibMCEnv_pvoid;
 #define LIBMCENV_ERROR_INVALIDDOWNSAMPLEPARAMETERS 10297 /** Invalid downsample parameters. */
 #define LIBMCENV_ERROR_DATATABLECOLUMNTYPEMISMATCH 10298 /** Datatable column can not be read as the requested type. */
 #define LIBMCENV_ERROR_INVALIDDATATABLECHUNKINDEX 10299 /** Invalid datatable chunk index. */
+#define LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS 10300 /** Storage stream has active downloads. */
+#define LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED 10301 /** ZIP stream has already been finished. */
+#define LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE 10302 /** Session handler is not available. */
 
 /*************************************************************************************************************************
  Error strings for LibMCEnv
@@ -700,6 +703,9 @@ inline const char * LIBMCENV_GETERRORSTRING (LibMCEnvResult nErrorCode) {
     case LIBMCENV_ERROR_INVALIDDOWNSAMPLEPARAMETERS: return "Invalid downsample parameters.";
     case LIBMCENV_ERROR_DATATABLECOLUMNTYPEMISMATCH: return "Datatable column can not be read as the requested type.";
     case LIBMCENV_ERROR_INVALIDDATATABLECHUNKINDEX: return "Invalid datatable chunk index.";
+    case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
+    case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished.";
+    case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
     default: return "unknown error";
   }
 }

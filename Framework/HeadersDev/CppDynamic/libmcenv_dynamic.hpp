@@ -823,6 +823,9 @@ public:
 			case LIBMCENV_ERROR_INVALIDDOWNSAMPLEPARAMETERS: return "INVALIDDOWNSAMPLEPARAMETERS";
 			case LIBMCENV_ERROR_DATATABLECOLUMNTYPEMISMATCH: return "DATATABLECOLUMNTYPEMISMATCH";
 			case LIBMCENV_ERROR_INVALIDDATATABLECHUNKINDEX: return "INVALIDDATATABLECHUNKINDEX";
+			case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "STREAMHASACTIVEDOWNLOADS";
+			case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIPSTREAMALREADYFINISHED";
+			case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "SESSIONHANDLERNOTAVAILABLE";
 		}
 		return "UNKNOWN";
 	}
@@ -1129,6 +1132,9 @@ public:
 			case LIBMCENV_ERROR_INVALIDDOWNSAMPLEPARAMETERS: return "Invalid downsample parameters.";
 			case LIBMCENV_ERROR_DATATABLECOLUMNTYPEMISMATCH: return "Datatable column can not be read as the requested type.";
 			case LIBMCENV_ERROR_INVALIDDATATABLECHUNKINDEX: return "Invalid datatable chunk index.";
+			case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
+			case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished.";
+			case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
 		}
 		return "unknown error";
 	}
@@ -3285,6 +3291,7 @@ public:
 	
 	inline PTempStreamWriter CreateZIPEntry(const std::string & sFileName);
 	inline void CreateZIPEntryFromStream(const std::string & sFileName, classParam<CStreamReader> pStreamReader);
+	inline void Discard();
 };
 	
 /*************************************************************************************************************************
@@ -3944,6 +3951,11 @@ public:
 	inline PTempStreamWriter CreateTemporaryStream(const std::string & sName, const std::string & sMIMEType);
 	inline PZIPStreamWriter CreateZIPStream(const std::string & sName);
 	inline PStreamReader LoadStream(const std::string & sUUID, const bool bMustExist);
+	inline bool StartStreamDownloadForSession(const std::string & sSessionUUID, const std::string & sStreamUUID, const std::string & sFileName);
+	inline void GetStreamDownloadProgress(const std::string & sStreamUUID, LibMCEnv_uint32 & nActiveConnections, LibMCEnv_uint64 & nDeliveredBytes, LibMCEnv_uint64 & nTotalBytes, bool & bCompleted, LibMCEnv_uint64 & nMillisecondsSinceActivity);
+	inline bool CancelStreamDownloads(const std::string & sStreamUUID);
+	inline void DeleteStorageStream(const std::string & sUUID);
+	inline LibMCEnv_uint32 EnforceStreamRetention(const std::string & sName, const LibMCEnv_uint32 nKeepCount);
 };
 	
 /*************************************************************************************************************************
@@ -5005,6 +5017,7 @@ public:
 		pWrapperTable->m_TempStreamWriter_CopyFrom = nullptr;
 		pWrapperTable->m_ZIPStreamWriter_CreateZIPEntry = nullptr;
 		pWrapperTable->m_ZIPStreamWriter_CreateZIPEntryFromStream = nullptr;
+		pWrapperTable->m_ZIPStreamWriter_Discard = nullptr;
 		pWrapperTable->m_StreamReader_GetUUID = nullptr;
 		pWrapperTable->m_StreamReader_GetName = nullptr;
 		pWrapperTable->m_StreamReader_GetMIMEType = nullptr;
@@ -5280,6 +5293,11 @@ public:
 		pWrapperTable->m_StateEnvironment_CreateTemporaryStream = nullptr;
 		pWrapperTable->m_StateEnvironment_CreateZIPStream = nullptr;
 		pWrapperTable->m_StateEnvironment_LoadStream = nullptr;
+		pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession = nullptr;
+		pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress = nullptr;
+		pWrapperTable->m_StateEnvironment_CancelStreamDownloads = nullptr;
+		pWrapperTable->m_StateEnvironment_DeleteStorageStream = nullptr;
+		pWrapperTable->m_StateEnvironment_EnforceStreamRetention = nullptr;
 		pWrapperTable->m_UIItem_GetName = nullptr;
 		pWrapperTable->m_UIItem_GetPath = nullptr;
 		pWrapperTable->m_UIItem_GetUUID = nullptr;
@@ -12946,6 +12964,15 @@ public:
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamWriter_Discard = (PLibMCEnvZIPStreamWriter_DiscardPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamwriter_discard");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamWriter_Discard = (PLibMCEnvZIPStreamWriter_DiscardPtr) dlsym(hLibrary, "libmcenv_zipstreamwriter_discard");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamWriter_Discard == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_StreamReader_GetUUID = (PLibMCEnvStreamReader_GetUUIDPtr) GetProcAddress(hLibrary, "libmcenv_streamreader_getuuid");
 		#else // _WIN32
 		pWrapperTable->m_StreamReader_GetUUID = (PLibMCEnvStreamReader_GetUUIDPtr) dlsym(hLibrary, "libmcenv_streamreader_getuuid");
@@ -15418,6 +15445,51 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_StateEnvironment_LoadStream == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession = (PLibMCEnvStateEnvironment_StartStreamDownloadForSessionPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_startstreamdownloadforsession");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession = (PLibMCEnvStateEnvironment_StartStreamDownloadForSessionPtr) dlsym(hLibrary, "libmcenv_stateenvironment_startstreamdownloadforsession");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress = (PLibMCEnvStateEnvironment_GetStreamDownloadProgressPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_getstreamdownloadprogress");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress = (PLibMCEnvStateEnvironment_GetStreamDownloadProgressPtr) dlsym(hLibrary, "libmcenv_stateenvironment_getstreamdownloadprogress");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_CancelStreamDownloads = (PLibMCEnvStateEnvironment_CancelStreamDownloadsPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_cancelstreamdownloads");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_CancelStreamDownloads = (PLibMCEnvStateEnvironment_CancelStreamDownloadsPtr) dlsym(hLibrary, "libmcenv_stateenvironment_cancelstreamdownloads");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_CancelStreamDownloads == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_DeleteStorageStream = (PLibMCEnvStateEnvironment_DeleteStorageStreamPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_deletestoragestream");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_DeleteStorageStream = (PLibMCEnvStateEnvironment_DeleteStorageStreamPtr) dlsym(hLibrary, "libmcenv_stateenvironment_deletestoragestream");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_DeleteStorageStream == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_EnforceStreamRetention = (PLibMCEnvStateEnvironment_EnforceStreamRetentionPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_enforcestreamretention");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_EnforceStreamRetention = (PLibMCEnvStateEnvironment_EnforceStreamRetentionPtr) dlsym(hLibrary, "libmcenv_stateenvironment_enforcestreamretention");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_EnforceStreamRetention == nullptr)
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -19830,6 +19902,10 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamWriter_CreateZIPEntryFromStream == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcenv_zipstreamwriter_discard", (void**)&(pWrapperTable->m_ZIPStreamWriter_Discard));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamWriter_Discard == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcenv_streamreader_getuuid", (void**)&(pWrapperTable->m_StreamReader_GetUUID));
 		if ( (eLookupError != 0) || (pWrapperTable->m_StreamReader_GetUUID == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -20928,6 +21004,26 @@ public:
 		
 		eLookupError = (*pLookup)("libmcenv_stateenvironment_loadstream", (void**)&(pWrapperTable->m_StateEnvironment_LoadStream));
 		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_LoadStream == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_startstreamdownloadforsession", (void**)&(pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_StartStreamDownloadForSession == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_getstreamdownloadprogress", (void**)&(pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_GetStreamDownloadProgress == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_cancelstreamdownloads", (void**)&(pWrapperTable->m_StateEnvironment_CancelStreamDownloads));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_CancelStreamDownloads == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_deletestoragestream", (void**)&(pWrapperTable->m_StateEnvironment_DeleteStorageStream));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_DeleteStorageStream == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_enforcestreamretention", (void**)&(pWrapperTable->m_StateEnvironment_EnforceStreamRetention));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_EnforceStreamRetention == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcenv_uiitem_getname", (void**)&(pWrapperTable->m_UIItem_GetName));
@@ -32585,6 +32681,14 @@ public:
 	}
 	
 	/**
+	* CZIPStreamWriter::Discard - Discards the unfinished ZIP stream. The file on disk and the stream entry are deleted. Fails if the stream has been finished already. A ZIP writer that is released without Finish is discarded automatically.
+	*/
+	void CZIPStreamWriter::Discard()
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamWriter_Discard(m_pHandle));
+	}
+	
+	/**
 	 * Method definitions for class CStreamReader
 	 */
 	
@@ -36657,6 +36761,71 @@ public:
 		} else {
 			return nullptr;
 		}
+	}
+	
+	/**
+	* CStateEnvironment::StartStreamDownloadForSession - Starts a stream download in the browser of a client session. Creates a download ticket for the user of the session and queues the download action for delivery to the session. Returns false if the session does not exist or is not authorized.
+	* @param[in] sSessionUUID - UUID of the client session.
+	* @param[in] sStreamUUID - Storage stream. Fails if the stream does not exist or is not finished.
+	* @param[in] sFileName - File name offered to the browser. Fails if empty.
+	* @return True if the download action was queued for the session.
+	*/
+	bool CStateEnvironment::StartStreamDownloadForSession(const std::string & sSessionUUID, const std::string & sStreamUUID, const std::string & sFileName)
+	{
+		bool resultSuccess = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_StartStreamDownloadForSession(m_pHandle, sSessionUUID.c_str(), sStreamUUID.c_str(), sFileName.c_str(), &resultSuccess));
+		
+		return resultSuccess;
+	}
+	
+	/**
+	* CStateEnvironment::GetStreamDownloadProgress - Returns the delivery progress of all downloads of a storage stream.
+	* @param[in] sStreamUUID - Storage stream.
+	* @param[out] nActiveConnections - Connections that are sending the stream right now.
+	* @param[out] nDeliveredBytes - Bytes from the start of the stream that were sent without a gap.
+	* @param[out] nTotalBytes - Size of the stream.
+	* @param[out] bCompleted - The last byte was sent and its connection ended successfully.
+	* @param[out] nMillisecondsSinceActivity - Time since the last chunk was sent or since the download was handed over.
+	*/
+	void CStateEnvironment::GetStreamDownloadProgress(const std::string & sStreamUUID, LibMCEnv_uint32 & nActiveConnections, LibMCEnv_uint64 & nDeliveredBytes, LibMCEnv_uint64 & nTotalBytes, bool & bCompleted, LibMCEnv_uint64 & nMillisecondsSinceActivity)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_GetStreamDownloadProgress(m_pHandle, sStreamUUID.c_str(), &nActiveConnections, &nDeliveredBytes, &nTotalBytes, &bCompleted, &nMillisecondsSinceActivity));
+	}
+	
+	/**
+	* CStateEnvironment::CancelStreamDownloads - Stops all running downloads of a storage stream, revokes its download tickets and drops its unclaimed download actions. Does nothing if the stream was already delivered completely.
+	* @param[in] sStreamUUID - Storage stream.
+	* @return False if the download had already completed and nothing was cancelled.
+	*/
+	bool CStateEnvironment::CancelStreamDownloads(const std::string & sStreamUUID)
+	{
+		bool resultCancelled = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_CancelStreamDownloads(m_pHandle, sStreamUUID.c_str(), &resultCancelled));
+		
+		return resultCancelled;
+	}
+	
+	/**
+	* CStateEnvironment::DeleteStorageStream - Deletes a finished storage stream from disk and database, including its download tickets. Fails if the stream does not exist, is still being written or is being downloaded right now.
+	* @param[in] sUUID - UUID of the storage stream.
+	*/
+	void CStateEnvironment::DeleteStorageStream(const std::string & sUUID)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_DeleteStorageStream(m_pHandle, sUUID.c_str()));
+	}
+	
+	/**
+	* CStateEnvironment::EnforceStreamRetention - Deletes all finished streams with the given name except the newest ones. Streams with running downloads or pending download actions are kept. Returns the number of deleted streams.
+	* @param[in] sName - Name of the streams.
+	* @param[in] nKeepCount - Number of newest streams to keep.
+	* @return Number of deleted streams.
+	*/
+	LibMCEnv_uint32 CStateEnvironment::EnforceStreamRetention(const std::string & sName, const LibMCEnv_uint32 nKeepCount)
+	{
+		LibMCEnv_uint32 resultDeletedCount = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_EnforceStreamRetention(m_pHandle, sName.c_str(), nKeepCount, &resultDeletedCount));
+		
+		return resultDeletedCount;
 	}
 	
 	/**

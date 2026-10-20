@@ -489,6 +489,9 @@ typedef void * LibMCData_pvoid;
 #define LIBMCDATA_ERROR_DUPLICATEDATACAPTURECOLUMN 462 /** Duplicate data capture column. */
 #define LIBMCDATA_ERROR_DATACAPTUREALREADYABORTED 463 /** Data capture has already been aborted. */
 #define LIBMCDATA_ERROR_RANDOMWRITESTREAMNOTFOUND 464 /** Random write stream not found. */
+#define LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND 465 /** Download access log entry not found. */
+#define LIBMCDATA_ERROR_STREAMHASACTIVEWRITER 466 /** Storage stream is still being written. */
+#define LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED 467 /** ZIP stream has already been finished and can not be discarded. */
 
 /*************************************************************************************************************************
  Error strings for LibMCData
@@ -890,6 +893,9 @@ inline const char * LIBMCDATA_GETERRORSTRING (LibMCDataResult nErrorCode) {
     case LIBMCDATA_ERROR_DUPLICATEDATACAPTURECOLUMN: return "Duplicate data capture column.";
     case LIBMCDATA_ERROR_DATACAPTUREALREADYABORTED: return "Data capture has already been aborted.";
     case LIBMCDATA_ERROR_RANDOMWRITESTREAMNOTFOUND: return "Random write stream not found.";
+    case LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND: return "Download access log entry not found.";
+    case LIBMCDATA_ERROR_STREAMHASACTIVEWRITER: return "Storage stream is still being written.";
+    case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished and can not be discarded.";
     default: return "unknown error";
   }
 }

@@ -731,6 +731,15 @@ typedef void * LibMC_pvoid;
 #define LIBMC_ERROR_MISSINGSESSIONVARIABLENAME 715 /** Missing session variable name. */
 #define LIBMC_ERROR_MISSINGSESSIONVARIABLETYPE 716 /** Missing session variable type. */
 #define LIBMC_ERROR_INVALIDSESSIONREFERENCE 717 /** Invalid session reference in UI expression. */
+#define LIBMC_ERROR_NOSTREAMRESULT 718 /** API response is not a stream. */
+#define LIBMC_ERROR_DOWNLOADCANCELLED 719 /** Download was cancelled. */
+#define LIBMC_ERROR_INVALIDSTREAMCHUNK 720 /** Invalid stream chunk range. */
+#define LIBMC_ERROR_DOWNLOADTICKETEXPIRED 721 /** Download ticket has expired or has been revoked. */
+#define LIBMC_ERROR_TOOMANYDOWNLOADS 722 /** Too many concurrent downloads. */
+#define LIBMC_ERROR_CLIENTACTIONNOTFOUND 723 /** Client action not found. */
+#define LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED 724 /** Client action has already been claimed. */
+#define LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS 725 /** Storage stream has active downloads. */
+#define LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE 726 /** Session handler is not available. */
 
 /*************************************************************************************************************************
  Error strings for LibMC
@@ -1374,6 +1383,15 @@ inline const char * LIBMC_GETERRORSTRING (LibMCResult nErrorCode) {
     case LIBMC_ERROR_MISSINGSESSIONVARIABLENAME: return "Missing session variable name.";
     case LIBMC_ERROR_MISSINGSESSIONVARIABLETYPE: return "Missing session variable type.";
     case LIBMC_ERROR_INVALIDSESSIONREFERENCE: return "Invalid session reference in UI expression.";
+    case LIBMC_ERROR_NOSTREAMRESULT: return "API response is not a stream.";
+    case LIBMC_ERROR_DOWNLOADCANCELLED: return "Download was cancelled.";
+    case LIBMC_ERROR_INVALIDSTREAMCHUNK: return "Invalid stream chunk range.";
+    case LIBMC_ERROR_DOWNLOADTICKETEXPIRED: return "Download ticket has expired or has been revoked.";
+    case LIBMC_ERROR_TOOMANYDOWNLOADS: return "Too many concurrent downloads.";
+    case LIBMC_ERROR_CLIENTACTIONNOTFOUND: return "Client action not found.";
+    case LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED: return "Client action has already been claimed.";
+    case LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
+    case LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
     default: return "unknown error";
   }
 }
