@@ -784,6 +784,15 @@ typedef void * LibMC_pvoid;
 #define LIBMC_ERROR_FIRSTRUNADMINROLEINVALID 768 /** The first-run administrator role is invalid. */
 #define LIBMC_ERROR_INVALIDFIRSTRUNSETUPCODEMODE 769 /** Invalid first-run setup code mode. */
 #define LIBMC_ERROR_FIRSTRUNNOTAVAILABLE 770 /** The first-run setup is not available, because no administrator role could be determined. */
+#define LIBMC_ERROR_NOSTREAMRESULT 771 /** API response is not a stream. */
+#define LIBMC_ERROR_DOWNLOADCANCELLED 772 /** Download was cancelled. */
+#define LIBMC_ERROR_INVALIDSTREAMCHUNK 773 /** Invalid stream chunk range. */
+#define LIBMC_ERROR_DOWNLOADTICKETEXPIRED 774 /** Download ticket has expired or has been revoked. */
+#define LIBMC_ERROR_TOOMANYDOWNLOADS 775 /** Too many concurrent downloads. */
+#define LIBMC_ERROR_CLIENTACTIONNOTFOUND 776 /** Client action not found. */
+#define LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED 777 /** Client action has already been claimed. */
+#define LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS 778 /** Storage stream has active downloads. */
+#define LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE 779 /** Session handler is not available. */
 
 /*************************************************************************************************************************
  Error strings for LibMC
@@ -1480,6 +1489,15 @@ inline const char * LIBMC_GETERRORSTRING (LibMCResult nErrorCode) {
     case LIBMC_ERROR_FIRSTRUNADMINROLEINVALID: return "The first-run administrator role is invalid.";
     case LIBMC_ERROR_INVALIDFIRSTRUNSETUPCODEMODE: return "Invalid first-run setup code mode.";
     case LIBMC_ERROR_FIRSTRUNNOTAVAILABLE: return "The first-run setup is not available, because no administrator role could be determined.";
+    case LIBMC_ERROR_NOSTREAMRESULT: return "API response is not a stream.";
+    case LIBMC_ERROR_DOWNLOADCANCELLED: return "Download was cancelled.";
+    case LIBMC_ERROR_INVALIDSTREAMCHUNK: return "Invalid stream chunk range.";
+    case LIBMC_ERROR_DOWNLOADTICKETEXPIRED: return "Download ticket has expired or has been revoked.";
+    case LIBMC_ERROR_TOOMANYDOWNLOADS: return "Too many concurrent downloads.";
+    case LIBMC_ERROR_CLIENTACTIONNOTFOUND: return "Client action not found.";
+    case LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED: return "Client action has already been claimed.";
+    case LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
+    case LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
     default: return "unknown error";
   }
 }

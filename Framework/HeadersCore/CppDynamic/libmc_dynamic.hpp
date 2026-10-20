@@ -862,6 +862,15 @@ public:
 			case LIBMC_ERROR_FIRSTRUNADMINROLEINVALID: return "FIRSTRUNADMINROLEINVALID";
 			case LIBMC_ERROR_INVALIDFIRSTRUNSETUPCODEMODE: return "INVALIDFIRSTRUNSETUPCODEMODE";
 			case LIBMC_ERROR_FIRSTRUNNOTAVAILABLE: return "FIRSTRUNNOTAVAILABLE";
+			case LIBMC_ERROR_NOSTREAMRESULT: return "NOSTREAMRESULT";
+			case LIBMC_ERROR_DOWNLOADCANCELLED: return "DOWNLOADCANCELLED";
+			case LIBMC_ERROR_INVALIDSTREAMCHUNK: return "INVALIDSTREAMCHUNK";
+			case LIBMC_ERROR_DOWNLOADTICKETEXPIRED: return "DOWNLOADTICKETEXPIRED";
+			case LIBMC_ERROR_TOOMANYDOWNLOADS: return "TOOMANYDOWNLOADS";
+			case LIBMC_ERROR_CLIENTACTIONNOTFOUND: return "CLIENTACTIONNOTFOUND";
+			case LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED: return "CLIENTACTIONALREADYCLAIMED";
+			case LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS: return "STREAMHASACTIVEDOWNLOADS";
+			case LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE: return "SESSIONHANDLERNOTAVAILABLE";
 		}
 		return "UNKNOWN";
 	}
@@ -1558,6 +1567,15 @@ public:
 			case LIBMC_ERROR_FIRSTRUNADMINROLEINVALID: return "The first-run administrator role is invalid.";
 			case LIBMC_ERROR_INVALIDFIRSTRUNSETUPCODEMODE: return "Invalid first-run setup code mode.";
 			case LIBMC_ERROR_FIRSTRUNNOTAVAILABLE: return "The first-run setup is not available, because no administrator role could be determined.";
+			case LIBMC_ERROR_NOSTREAMRESULT: return "API response is not a stream.";
+			case LIBMC_ERROR_DOWNLOADCANCELLED: return "Download was cancelled.";
+			case LIBMC_ERROR_INVALIDSTREAMCHUNK: return "Invalid stream chunk range.";
+			case LIBMC_ERROR_DOWNLOADTICKETEXPIRED: return "Download ticket has expired or has been revoked.";
+			case LIBMC_ERROR_TOOMANYDOWNLOADS: return "Too many concurrent downloads.";
+			case LIBMC_ERROR_CLIENTACTIONNOTFOUND: return "Client action not found.";
+			case LIBMC_ERROR_CLIENTACTIONALREADYCLAIMED: return "Client action has already been claimed.";
+			case LIBMC_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
+			case LIBMC_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
 		}
 		return "unknown error";
 	}
@@ -1806,6 +1824,10 @@ public:
 	inline void GetResultData(std::vector<LibMC_uint8> & DataBuffer);
 	inline std::string GetContentDispositionName();
 	inline void SetClientAddress(const std::string & sClientAddress);
+	inline bool HasStreamResult();
+	inline void GetResultStreamInfo(LibMC_uint64 & nSize, std::string & sETag, std::string & sLastModified);
+	inline void ReadResultStreamChunk(const LibMC_uint64 nOffset, const LibMC_uint64 nLength, std::vector<LibMC_uint8> & DataBuffer);
+	inline void FinishStreamResult(const bool bSuccess);
 };
 	
 /*************************************************************************************************************************
@@ -1963,6 +1985,10 @@ public:
 		pWrapperTable->m_APIRequestHandler_GetResultData = nullptr;
 		pWrapperTable->m_APIRequestHandler_GetContentDispositionName = nullptr;
 		pWrapperTable->m_APIRequestHandler_SetClientAddress = nullptr;
+		pWrapperTable->m_APIRequestHandler_HasStreamResult = nullptr;
+		pWrapperTable->m_APIRequestHandler_GetResultStreamInfo = nullptr;
+		pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk = nullptr;
+		pWrapperTable->m_APIRequestHandler_FinishStreamResult = nullptr;
 		pWrapperTable->m_MCContext_RegisterLibraryPath = nullptr;
 		pWrapperTable->m_MCContext_SetTempBasePath = nullptr;
 		pWrapperTable->m_MCContext_ParseConfiguration = nullptr;
@@ -2185,6 +2211,42 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_APIRequestHandler_SetClientAddress == nullptr)
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_APIRequestHandler_HasStreamResult = (PLibMCAPIRequestHandler_HasStreamResultPtr) GetProcAddress(hLibrary, "libmc_apirequesthandler_hasstreamresult");
+		#else // _WIN32
+		pWrapperTable->m_APIRequestHandler_HasStreamResult = (PLibMCAPIRequestHandler_HasStreamResultPtr) dlsym(hLibrary, "libmc_apirequesthandler_hasstreamresult");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_APIRequestHandler_HasStreamResult == nullptr)
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_APIRequestHandler_GetResultStreamInfo = (PLibMCAPIRequestHandler_GetResultStreamInfoPtr) GetProcAddress(hLibrary, "libmc_apirequesthandler_getresultstreaminfo");
+		#else // _WIN32
+		pWrapperTable->m_APIRequestHandler_GetResultStreamInfo = (PLibMCAPIRequestHandler_GetResultStreamInfoPtr) dlsym(hLibrary, "libmc_apirequesthandler_getresultstreaminfo");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_APIRequestHandler_GetResultStreamInfo == nullptr)
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk = (PLibMCAPIRequestHandler_ReadResultStreamChunkPtr) GetProcAddress(hLibrary, "libmc_apirequesthandler_readresultstreamchunk");
+		#else // _WIN32
+		pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk = (PLibMCAPIRequestHandler_ReadResultStreamChunkPtr) dlsym(hLibrary, "libmc_apirequesthandler_readresultstreamchunk");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk == nullptr)
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_APIRequestHandler_FinishStreamResult = (PLibMCAPIRequestHandler_FinishStreamResultPtr) GetProcAddress(hLibrary, "libmc_apirequesthandler_finishstreamresult");
+		#else // _WIN32
+		pWrapperTable->m_APIRequestHandler_FinishStreamResult = (PLibMCAPIRequestHandler_FinishStreamResultPtr) dlsym(hLibrary, "libmc_apirequesthandler_finishstreamresult");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_APIRequestHandler_FinishStreamResult == nullptr)
 			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -2458,6 +2520,22 @@ public:
 		
 		eLookupError = (*pLookup)("libmc_apirequesthandler_setclientaddress", (void**)&(pWrapperTable->m_APIRequestHandler_SetClientAddress));
 		if ( (eLookupError != 0) || (pWrapperTable->m_APIRequestHandler_SetClientAddress == nullptr) )
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmc_apirequesthandler_hasstreamresult", (void**)&(pWrapperTable->m_APIRequestHandler_HasStreamResult));
+		if ( (eLookupError != 0) || (pWrapperTable->m_APIRequestHandler_HasStreamResult == nullptr) )
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmc_apirequesthandler_getresultstreaminfo", (void**)&(pWrapperTable->m_APIRequestHandler_GetResultStreamInfo));
+		if ( (eLookupError != 0) || (pWrapperTable->m_APIRequestHandler_GetResultStreamInfo == nullptr) )
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmc_apirequesthandler_readresultstreamchunk", (void**)&(pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk));
+		if ( (eLookupError != 0) || (pWrapperTable->m_APIRequestHandler_ReadResultStreamChunk == nullptr) )
+			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmc_apirequesthandler_finishstreamresult", (void**)&(pWrapperTable->m_APIRequestHandler_FinishStreamResult));
+		if ( (eLookupError != 0) || (pWrapperTable->m_APIRequestHandler_FinishStreamResult == nullptr) )
 			return LIBMC_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmc_mccontext_registerlibrarypath", (void**)&(pWrapperTable->m_MCContext_RegisterLibraryPath));
@@ -2777,6 +2855,62 @@ public:
 	void CAPIRequestHandler::SetClientAddress(const std::string & sClientAddress)
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_SetClientAddress(m_pHandle, sClientAddress.c_str()));
+	}
+	
+	/**
+	* CAPIRequestHandler::HasStreamResult - Returns true if the result is a storage stream that must be sent in chunks with ReadResultStreamChunk instead of a buffer. Call only after Handle().
+	* @return Result is a stream.
+	*/
+	bool CAPIRequestHandler::HasStreamResult()
+	{
+		bool resultHasStream = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_HasStreamResult(m_pHandle, &resultHasStream));
+		
+		return resultHasStream;
+	}
+	
+	/**
+	* CAPIRequestHandler::GetResultStreamInfo - Returns size and validators of the result stream. Fails if the result is not a stream.
+	* @param[out] nSize - Stream size in bytes.
+	* @param[out] sETag - Strong entity tag of the stream, without quotes.
+	* @param[out] sLastModified - Creation time of the stream as HTTP date.
+	*/
+	void CAPIRequestHandler::GetResultStreamInfo(LibMC_uint64 & nSize, std::string & sETag, std::string & sLastModified)
+	{
+		LibMC_uint32 bytesNeededETag = 0;
+		LibMC_uint32 bytesWrittenETag = 0;
+		LibMC_uint32 bytesNeededLastModified = 0;
+		LibMC_uint32 bytesWrittenLastModified = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_GetResultStreamInfo(m_pHandle, &nSize, 0, &bytesNeededETag, nullptr, 0, &bytesNeededLastModified, nullptr));
+		std::vector<char> bufferETag(bytesNeededETag);
+		std::vector<char> bufferLastModified(bytesNeededLastModified);
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_GetResultStreamInfo(m_pHandle, &nSize, bytesNeededETag, &bytesWrittenETag, &bufferETag[0], bytesNeededLastModified, &bytesWrittenLastModified, &bufferLastModified[0]));
+		sETag = std::string(&bufferETag[0]);
+		sLastModified = std::string(&bufferLastModified[0]);
+	}
+	
+	/**
+	* CAPIRequestHandler::ReadResultStreamChunk - Reads a part of the result stream and records it as sent. Fails if the range is outside the stream, the length exceeds 16 MiB or the download was cancelled.
+	* @param[in] nOffset - Start position in bytes.
+	* @param[in] nLength - Number of bytes to read.
+	* @param[out] DataBuffer - Data that was read.
+	*/
+	void CAPIRequestHandler::ReadResultStreamChunk(const LibMC_uint64 nOffset, const LibMC_uint64 nLength, std::vector<LibMC_uint8> & DataBuffer)
+	{
+		LibMC_uint64 elementsNeededData = 0;
+		LibMC_uint64 elementsWrittenData = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_ReadResultStreamChunk(m_pHandle, nOffset, nLength, 0, &elementsNeededData, nullptr));
+		DataBuffer.resize((size_t) elementsNeededData);
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_ReadResultStreamChunk(m_pHandle, nOffset, nLength, elementsNeededData, &elementsWrittenData, DataBuffer.data()));
+	}
+	
+	/**
+	* CAPIRequestHandler::FinishStreamResult - Reports that sending the result stream has ended. May be called more than once and without any chunk having been read.
+	* @param[in] bSuccess - All requested bytes were sent.
+	*/
+	void CAPIRequestHandler::FinishStreamResult(const bool bSuccess)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_APIRequestHandler_FinishStreamResult(m_pHandle, bSuccess));
 	}
 	
 	/**
