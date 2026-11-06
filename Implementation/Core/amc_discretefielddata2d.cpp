@@ -313,7 +313,34 @@ void CDiscreteFieldData2DInstance::SetPixel(const uint32_t nX, const uint32_t nY
 
 void CDiscreteFieldData2DInstance::GetPixelRange(const uint32_t nXMin, const uint32_t nYMin, const uint32_t nXMax, const uint32_t nYMax, uint64_t nValueBufferSize, uint64_t* pValueNeededCount, double* pValueBuffer)
 {
-	throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_NOTIMPLEMENTED);
+	if (m_Data.get() == nullptr)
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDFIELDBUFFER);
+
+	if ((nXMin >= m_nPixelCountX) || (nXMax >= m_nPixelCountX) || (nXMin > nXMax))
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDXCOORDINATE);
+	if ((nYMin >= m_nPixelCountY) || (nYMax >= m_nPixelCountY) || (nYMin > nYMax))
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDYCOORDINATE);
+
+	uint64_t nRangeWidth = (uint64_t)nXMax - (uint64_t)nXMin + 1;
+	uint64_t nRangeHeight = (uint64_t)nYMax - (uint64_t)nYMin + 1;
+	uint64_t nNeededCount = nRangeWidth * nRangeHeight;
+
+	// Two-pass array output: the first call asks for the needed count, the second call passes a buffer.
+	if (pValueNeededCount != nullptr)
+		*pValueNeededCount = nNeededCount;
+
+	if (pValueBuffer != nullptr) {
+		if (nValueBufferSize < nNeededCount)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_BUFFERTOOSMALL);
+
+		// Row-wise, like the field itself: one contiguous copy per row.
+		double* pTarget = pValueBuffer;
+		for (uint64_t nY = nYMin; nY <= nYMax; nY++) {
+			const double* pSource = m_Data->data() + (size_t)nXMin + (size_t)nY * m_nPixelCountX;
+			memcpy((void*)pTarget, (const void*)pSource, (size_t)nRangeWidth * sizeof(double));
+			pTarget += nRangeWidth;
+		}
+	}
 }
 
 void CDiscreteFieldData2DInstance::SetPixelRange(const uint32_t nXMin, const uint32_t nYMin, const uint32_t nXMax, const uint32_t nYMax, const uint64_t nValueBufferSize, const double* pValueBuffer)
@@ -620,6 +647,90 @@ void CDiscreteFieldData2DInstance::renderAveragePointValues_FloorSampling(const 
 
 	}
 
+}
+
+
+// Weighted average over a rectangular footprint of dSampleSizeX x dSampleSizeY pixels centred on each
+// point: every pixel receives the point value weighted by the area the footprint shares with it. Pixels
+// without any overlap keep dDefaultValue. The footprint MUST be positive (see the IDL) and is not
+// clamped: a footprint below one pixel is legitimate and splits a point between at most two pixels per
+// axis in proportion to the overlap, which is the honest weight for a point near a pixel border.
+void CDiscreteFieldData2DInstance::renderAveragePointValues_RectangleSampling(const LibMCEnv_double dDefaultValue, const double dSampleSizeX, const double dSampleSizeY, const uint64_t nPointValuesBufferSize, const LibMCEnv::sFieldData2DPoint* pPointValuesBuffer)
+{
+	if (m_Data.get() == nullptr)
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDFIELDBUFFER);
+
+	// The negated comparisons also reject NaN.
+	if (!(dSampleSizeX > 0.0) || !(dSampleSizeY > 0.0))
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM);
+
+	if (nPointValuesBufferSize == 0) {
+		Clear(dDefaultValue);
+		return;
+	}
+
+	if (nPointValuesBufferSize > DISCRETEFIELD_MAXPOINTVALUESCOUNT)
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_SAMPLEPOINTCOUNTEXCEEDSMAXIMUM);
+	if (pPointValuesBuffer == nullptr)
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM);
+
+	size_t nPixelCount = m_nPixelCountX * m_nPixelCountY;
+	std::vector<double> weightedSumBuffer(nPixelCount, 0.0);
+	std::vector<double> weightSumBuffer(nPixelCount, 0.0);
+
+	double dPixelPerMMX = m_dDPIX / 25.4;
+	double dPixelPerMMY = m_dDPIY / 25.4;
+	double dHalfSizeX = dSampleSizeX * 0.5;
+	double dHalfSizeY = dSampleSizeY * 0.5;
+	double dFieldWidth = (double)m_nPixelCountX;
+	double dFieldHeight = (double)m_nPixelCountY;
+
+	auto pPointValue = pPointValuesBuffer;
+	for (uint64_t nPointIndex = 0; nPointIndex < nPointValuesBufferSize; nPointIndex++, pPointValue++) {
+		double dCenterX = (pPointValue->m_Coordinates[0] - m_dOriginX) * dPixelPerMMX;
+		double dCenterY = (pPointValue->m_Coordinates[1] - m_dOriginY) * dPixelPerMMY;
+		double dMinX = dCenterX - dHalfSizeX;
+		double dMaxX = dCenterX + dHalfSizeX;
+		double dMinY = dCenterY - dHalfSizeY;
+		double dMaxY = dCenterY + dHalfSizeY;
+
+		// A footprint outside of the field contributes nothing. The comparison is written so that a NaN
+		// coordinate fails it as well, before anything is cast to an integer.
+		if (!((dMaxX > 0.0) && (dMinX < dFieldWidth) && (dMaxY > 0.0) && (dMinY < dFieldHeight)))
+			continue;
+
+		// Clipped to the field before the cast: a footprint that starts far outside has no integer position.
+		int64_t nFirstX = (int64_t)floor((std::max)(dMinX, 0.0));
+		int64_t nLastX = (int64_t)ceil((std::min)(dMaxX, dFieldWidth)) - 1;
+		int64_t nFirstY = (int64_t)floor((std::max)(dMinY, 0.0));
+		int64_t nLastY = (int64_t)ceil((std::min)(dMaxY, dFieldHeight)) - 1;
+
+		for (int64_t nY = nFirstY; nY <= nLastY; nY++) {
+			double dOverlapY = (std::min)(dMaxY, (double)(nY + 1)) - (std::max)(dMinY, (double)nY);
+			if (dOverlapY <= 0.0)
+				continue;
+
+			for (int64_t nX = nFirstX; nX <= nLastX; nX++) {
+				double dOverlapX = (std::min)(dMaxX, (double)(nX + 1)) - (std::max)(dMinX, (double)nX);
+				if (dOverlapX <= 0.0)
+					continue;
+
+				double dWeight = dOverlapX * dOverlapY;
+				size_t nAddress = (size_t)nX + (size_t)nY * m_nPixelCountX;
+				weightedSumBuffer[nAddress] += dWeight * pPointValue->m_Value;
+				weightSumBuffer[nAddress] += dWeight;
+			}
+		}
+	}
+
+	// Written directly: SetPixel would check the bounds once per pixel, eight million times for a camera-sized field.
+	double* pData = m_Data->data();
+	for (size_t nAddress = 0; nAddress < nPixelCount; nAddress++) {
+		if (weightSumBuffer[nAddress] > 0.0)
+			pData[nAddress] = weightedSumBuffer[nAddress] / weightSumBuffer[nAddress];
+		else
+			pData[nAddress] = dDefaultValue;
+	}
 }
 
 void CDiscreteFieldData2DInstance::saveToBuffer(std::vector<uint8_t>& Buffer)

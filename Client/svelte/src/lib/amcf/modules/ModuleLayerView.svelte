@@ -482,6 +482,7 @@
 				platform.displayed_layer = 0;
 				platform.displayed_build = 0;
 				platform.displayed_scatterplot = '';
+				platform.displayed_overlayimage = '';
 			} else if (autoFrame) {
 				centerOnPlatform();
 			}
@@ -534,6 +535,14 @@
 		if (currentPlatform.displayed_scatterplot !== scatterPlotUUID) {
 			currentPlatform.displayed_scatterplot = scatterPlotUUID;
 			loadScatterPlot(scatterPlotUUID);
+		}
+
+		// Raster overlay over the platform (for example a heat map of the layer), followed like the scatter plot.
+		const overlayImageUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
+		if (currentPlatform.displayed_overlayimage !== overlayImageUUID) {
+			currentPlatform.displayed_overlayimage = overlayImageUUID;
+			const overlayURL = isValidUUID(overlayImageUUID) ? app.getImageURL(overlayImageUUID) : null;
+			layerViewer.SetOverlayImage(overlayURL, currentPlatform.sizex || 300, currentPlatform.sizey || 300);
 		}
 	}
 
@@ -1313,6 +1322,7 @@
 			platform.displayed_layer = 0;
 			platform.displayed_build = 0;
 			platform.displayed_scatterplot = '';
+			platform.displayed_overlayimage = '';
 		}
 	});
 
@@ -1326,6 +1336,7 @@
 			platform.displayed_layer = 0;
 			platform.displayed_build = 0;
 			platform.displayed_scatterplot = '';
+			platform.displayed_overlayimage = '';
 		}
 	});
 </script>

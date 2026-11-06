@@ -396,6 +396,14 @@ class LayerViewImpl {
             buildplategeometry.setPositionXY(this.transform.x, this.transform.y, buildplategeometry);
             buildplategeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
         }
+
+        // The overlay image covers the platform rectangle, so it follows the build plate and not the toolpath
+        // (which is shifted by the origin and may be rotated and translated).
+        var overlaygeometry = this.glInstance.findElement("overlayimage");
+        if (overlaygeometry) {
+            overlaygeometry.setPositionXY(this.transform.x, this.transform.y);
+            overlaygeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
+        }
 		
 		this.renderNeedsUpdate = true;
 
@@ -1911,6 +1919,22 @@ class LayerViewImpl {
 		
 	} 
 	
+	// Raster image stretched over the platform rectangle (0..sizeX, 0..sizeY in platform coordinates), for
+	// example a heat map of the layer. It shares the position and the scale of the build plate, between
+	// the plate (z 35) and the toolpath (z 59 and up). null removes it.
+	SetOverlayImage (url, sizeX, sizeY) {
+		if (!this.glInstance)
+			return;
+
+		if (url) {
+			this.glInstance.addImageElement ("overlayimage", url, sizeX, sizeY, 0, 0, 36);
+			this.updateTransform ();
+		} else {
+			this.glInstance.removeElement ("overlayimage");
+			this.RenderScene (true);
+		}
+	}
+
 	SetBuildPlateSVG (url) {
 		if (this.glInstance) {
 			if (url) {

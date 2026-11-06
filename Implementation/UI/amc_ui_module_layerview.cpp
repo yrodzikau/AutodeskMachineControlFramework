@@ -160,6 +160,9 @@ void CUIModule_LayerViewPlatformItem::populateClientVariables(CParameterHandler*
 	if (sBaseImageResourceUUID.empty())
 		sBaseImageResourceUUID = AMCCommon::CUtils::createEmptyUUID();
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_BASEIMAGERESOURCE, "Platform base image", sBaseImageResourceUUID);
+	// Raster image stretched over the platform rectangle, for example a heat map of the layer. Set by the
+	// UI plugin through SetUIProperty like the scatter plot; the empty UUID means no overlay.
+	pGroup->addNewUUIDParameter(AMC_API_KEY_UI_OVERLAYIMAGEUUID, "Overlay image UUID", AMCCommon::CUtils::createEmptyUUID());
 	pGroup->addNewIntParameter(AMC_API_KEY_UI_LABELVISIBLE, "Label is visible", m_LabelVisible.evaluateIntegerValue (pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELCAPTION, "Label caption", m_LabelCaption.evaluateStringValue(pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELICON, "Label icon", m_LabelIcon.evaluateStringValue(pStateMachineData));
@@ -398,6 +401,13 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	/////////////////////////////////////////////////////////////////////////////////////
 	registerUUIDAttribute(AMC_API_KEY_UI_EXECUTIONUUID, executionUUID);
 	registerUUIDAttribute(AMC_API_KEY_UI_SCATTERPLOTUUID, scatterplotUUID);
+
+	// The overlay image has no XML attribute; the UI plugin sets the client variable of the same name.
+	// Registered with a fixed empty UUID, so that the frontend state reports the client value (an
+	// attribute that is not synchronized is replaced by the client variable, see writeModuleAttributesToJSON).
+	CUIExpression overlayImageUUIDExpression;
+	overlayImageUUIDExpression.setFixedValue(AMCCommon::CUtils::createEmptyUUID());
+	registerUUIDAttribute(AMC_API_KEY_UI_OVERLAYIMAGEUUID, overlayImageUUIDExpression);
 
 	// Build and layer selection are per-session client variables of the platform item.
 	registerProviderAttribute(AMC_API_KEY_UI_BUILDUUID, eUIFrontendDefinitionAttributeType::atUUID, eUIFrontendDefinitionAttributeScope::asSession,

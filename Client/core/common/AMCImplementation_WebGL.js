@@ -1058,6 +1058,74 @@ class WebGLSVGElement extends WebGLElement {
 
 }
 
+// Frees the GPU resources of raster image elements (texture, material, geometry): three.js does not do that on
+// scene.remove. Only meshes flagged with disposeOnRemove are touched, the other element types are left as they were.
+function disposeImageResources (object3d) {
+    if (!object3d)
+        return;
+
+    object3d.traverse((child) => {
+        if (!child.isMesh || !child.userData || !child.userData.disposeOnRemove)
+            return;
+
+        if (child.material) {
+            if (child.material.map)
+                child.material.map.dispose();
+            child.material.dispose();
+        }
+        if (child.geometry)
+            child.geometry.dispose();
+    });
+}
+
+// Raster image stretched over a rectangle of the scene, for example a heat map laid over the build plate.
+// The texture is loaded asynchronously; until then the element has no glelement, like an SVG before its load.
+class WebGLImageElement extends WebGLElement {
+
+    constructor ()
+	{
+        super();
+		this.glelement = null;
+	}
+
+	loadTexture (url, width, height, offsetX, offsetY, onLoaded)
+	{
+        const loader = new THREE.TextureLoader();
+        loader.load(url, (texture) => {
+            // A PNG holds sRGB colours and the renderer outputs sRGB, so the colours stay as rendered.
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.NearestFilter;
+            texture.generateMipmaps = false;
+
+            // transparent: the PNG carries an alpha channel, the build plate stays visible under the image.
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            });
+            const geometry = new THREE.PlaneGeometry(width, height);
+            const mesh = new THREE.Mesh(geometry, material);
+            // PlaneGeometry is centred on its origin; move it so that its lower left corner is the given offset.
+            // With the default flipY of the loader, row 0 of the image lies on the local +Y side of the plane.
+            mesh.position.set(offsetX + width / 2, offsetY + height / 2, 0);
+            mesh.userData.disposeOnRemove = true;
+
+            const group = new THREE.Group();
+            group.add(mesh);
+            this.glelement = group;
+            this.updateGLPosition();
+
+            if (onLoaded)
+                onLoaded(this);
+        }, undefined, (error) => {
+            console.error("Could not load the overlay image " + url, error);
+        });
+	}
+
+}
+
 class WebGLAmbientLight extends WebGLElement {
 
     constructor (paramColor, paramIntensity) {
@@ -1416,6 +1484,36 @@ class WebGLImpl {
 
     }
 	
+	// Raster image over a rectangle of the scene (lower left corner at offsetX/offsetY, width x height in the local
+	// units of the element), for example a heat map over the build plate. The texture loads asynchronously; an
+	// element that was removed or replaced in the meantime is not added to the scene.
+	addImageElement (identifier, url, width, height, offsetX, offsetY, zValue)
+	{
+        if (!identifier)
+            return;
+
+        let imageElement = new WebGLImageElement ();
+        this.addElement(identifier, imageElement);
+        imageElement.setPosition (0, 0, zValue);
+
+        imageElement.loadTexture (url, width, height, offsetX, offsetY, (element) => {
+            if (this.renderElements.get(identifier) !== element) {
+                disposeImageResources (element.glelement);
+                return;
+            }
+
+            if (element.glelement && this.scene) {
+                element.glelement.name = identifier;
+                this.scene.add(element.glelement);
+                element.updateGLPosition ();
+            }
+
+            this.renderScene ();
+        });
+
+        return imageElement;
+	}
+
 	addAmbientLight (identifier, color, intensity)
 	{
         if (!identifier)

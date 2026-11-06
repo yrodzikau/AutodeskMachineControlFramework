@@ -56,6 +56,8 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		};
 
 		this.dark_baseimageresource = "";
+		// Raster overlay over the platform rectangle (for example a heat map of the layer); null UUID = none.
+		this.overlayimageuuid = Common.nullUUID ();
 		this.highlightpartuuid = Common.nullUUID ();
 		// Changes whenever parts of the build are disabled or re-enabled; the displayed layer is reloaded then.
 		this.partstateversion = 0;
@@ -89,6 +91,7 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		this.layercount = Assert.OptionalIntegerValue (updateJSON.layercount);
 		this.builduuid = Assert.OptionalUUIDValue (updateJSON.builduuid);
 		this.scatterplotuuid = Assert.OptionalUUIDValue (updateJSON.scatterplotuuid);
+		this.overlayimageuuid = Assert.OptionalUUIDValue (updateJSON.overlayimageuuid);
 		if (updateJSON.highlightpartuuid !== undefined)
 			this.highlightpartuuid = Assert.OptionalUUIDValue (updateJSON.highlightpartuuid);
 		if (updateJSON.partstateversion !== undefined)
@@ -142,6 +145,8 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.builduuid = attrs.builduuid;
 		if (attrs.scatterplotuuid !== undefined)
 			this.scatterplotuuid = attrs.scatterplotuuid;
+		if (attrs.overlayimageuuid !== undefined)
+			this.overlayimageuuid = attrs.overlayimageuuid;
 		if (attrs.highlightpartuuid !== undefined)
 			this.highlightpartuuid = attrs.highlightpartuuid;
 		if (attrs.partstateversion !== undefined) {

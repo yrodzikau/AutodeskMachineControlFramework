@@ -34,8 +34,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "amc_unittests.hpp"
 #include "amc_discretefielddata2d.hpp"
+#include "libmcenv_interfaceexception.hpp"
 
 #include <cmath>
+#include <limits>
+#include <vector>
 
 
 namespace AMCUnitTest {
@@ -54,7 +57,8 @@ namespace AMCUnitTest {
 			registerTest("DuplicateAndAdd", "Discrete field duplication and add operations", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testDuplicateAndAdd, this));
 			registerTest("RenderAndSampling", "Discrete field rendering and sampling operations", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testRenderAndSampling, this));
 			registerTest("SerializationAndLoad", "Discrete field serialization and raw pixel loading", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testSerializationAndLoad, this));
-			registerTest("NotImplementedPaths", "Discrete field not implemented paths throw", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testNotImplementedPaths, this));
+			registerTest("NotImplementedPaths", "Discrete field pixel range and not implemented paths", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testNotImplementedPaths, this));
+			registerTest("RectangleSampling", "Discrete field rectangle area sampling", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_DiscreteFieldData2D::testRectangleSampling, this));
 		}
 
 		void initializeTests() override {
@@ -65,6 +69,19 @@ namespace AMCUnitTest {
 		bool nearlyEqual(const double a, const double b, const double epsilon = 1.0e-9)
 		{
 			return std::abs(a - b) < epsilon;
+		}
+
+		// Error code of the LibMCEnv exception a call throws, 0 if it does not throw.
+		template <typename F>
+		int32_t errorCodeOf(F&& fn)
+		{
+			try {
+				fn();
+			}
+			catch (ELibMCEnvInterfaceException& envException) {
+				return envException.getErrorCode();
+			}
+			return 0;
 		}
 
 		void testConstructionAndBasics()
@@ -446,16 +463,32 @@ namespace AMCUnitTest {
 		void testNotImplementedPaths()
 		{
 			AMC::CDiscreteFieldData2DInstance field(2, 2, 25.4, 25.4, 0.0, 0.0, 0.0, true);
-			bool thrown = false;
-			try {
-				field.GetPixelRange(0, 0, 1, 1, 0, nullptr, nullptr);
-			}
-			catch (...) {
-				thrown = true;
-			}
-			assertTrue(thrown, "Expected GetPixelRange to throw not implemented");
+			field.SetPixel(0, 0, 1.0);
+			field.SetPixel(1, 0, 2.0);
+			field.SetPixel(0, 1, 3.0);
+			field.SetPixel(1, 1, 4.0);
 
-			thrown = false;
+			// GetPixelRange is implemented: the first call reports the needed count, the second one fills the buffer row-wise.
+			uint64_t nNeeded = 0;
+			field.GetPixelRange(0, 0, 1, 1, 0, &nNeeded, nullptr);
+			assertTrue(nNeeded == 4, "Expected GetPixelRange to report four values for a 2 x 2 range");
+			std::vector<double> values(4, 0.0);
+			field.GetPixelRange(0, 0, 1, 1, values.size(), nullptr, values.data());
+			assertTrue(nearlyEqual(values[0], 1.0) && nearlyEqual(values[1], 2.0) && nearlyEqual(values[2], 3.0) && nearlyEqual(values[3], 4.0), "Expected GetPixelRange to return the field row-wise");
+
+			field.GetPixelRange(1, 0, 1, 1, 0, &nNeeded, nullptr);
+			assertTrue(nNeeded == 2, "Expected GetPixelRange to report two values for a single column");
+			std::vector<double> column(2, 0.0);
+			field.GetPixelRange(1, 0, 1, 1, column.size(), nullptr, column.data());
+			assertTrue(nearlyEqual(column[0], 2.0) && nearlyEqual(column[1], 4.0), "Expected GetPixelRange to return a column top down");
+
+			assertTrue(errorCodeOf([&]() { field.GetPixelRange(0, 0, 2, 1, 0, &nNeeded, nullptr); }) == LIBMCENV_ERROR_INVALIDXCOORDINATE, "Expected GetPixelRange to reject a range outside of the field");
+			assertTrue(errorCodeOf([&]() { field.GetPixelRange(1, 0, 0, 1, 0, &nNeeded, nullptr); }) == LIBMCENV_ERROR_INVALIDXCOORDINATE, "Expected GetPixelRange to reject XMin above XMax");
+			assertTrue(errorCodeOf([&]() { field.GetPixelRange(0, 1, 1, 0, 0, &nNeeded, nullptr); }) == LIBMCENV_ERROR_INVALIDYCOORDINATE, "Expected GetPixelRange to reject YMin above YMax");
+			std::vector<double> tooSmall(2, 0.0);
+			assertTrue(errorCodeOf([&]() { field.GetPixelRange(0, 0, 1, 1, tooSmall.size(), nullptr, tooSmall.data()); }) == LIBMCENV_ERROR_BUFFERTOOSMALL, "Expected GetPixelRange to reject a buffer that is too small");
+
+			bool thrown = false;
 			try {
 				field.SetPixelRange(0, 0, 1, 1, 0, nullptr);
 			}
@@ -472,6 +505,92 @@ namespace AMCUnitTest {
 				thrown = true;
 			}
 			assertTrue(thrown, "Expected DiscretizeWithMapping to throw not implemented");
+		}
+
+		void testRectangleSampling()
+		{
+			// 4 x 4 field, one pixel per mm, origin 0: pixel coordinates equal mm coordinates.
+			AMC::CDiscreteFieldData2DInstance field(4, 4, 25.4, 25.4, 0.0, 0.0, 0.0, true);
+
+			// A point on the junction of four pixels with a 2 x 2 footprint lands in all four with equal weight.
+			LibMCEnv::sFieldData2DPoint junction[1];
+			junction[0].m_Coordinates[0] = 2.0;
+			junction[0].m_Coordinates[1] = 2.0;
+			junction[0].m_Value = 8.0;
+			field.renderAveragePointValues_RectangleSampling(-1.0, 2.0, 2.0, 1, junction);
+			assertTrue(nearlyEqual(field.GetPixel(1, 1), 8.0), "Expected the four pixels of the junction to hold the value");
+			assertTrue(nearlyEqual(field.GetPixel(2, 1), 8.0), "Expected the four pixels of the junction to hold the value");
+			assertTrue(nearlyEqual(field.GetPixel(1, 2), 8.0), "Expected the four pixels of the junction to hold the value");
+			assertTrue(nearlyEqual(field.GetPixel(2, 2), 8.0), "Expected the four pixels of the junction to hold the value");
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), -1.0), "Expected pixels without overlap to hold the default value");
+			assertTrue(nearlyEqual(field.GetPixel(3, 3), -1.0), "Expected pixels without overlap to hold the default value");
+			assertTrue(nearlyEqual(field.GetPixel(0, 1), -1.0), "Expected pixels without overlap to hold the default value");
+
+			// A footprint of half a pixel inside one pixel: that pixel gets the exact value, the neighbours nothing.
+			LibMCEnv::sFieldData2DPoint inside[1];
+			inside[0].m_Coordinates[0] = 0.5;
+			inside[0].m_Coordinates[1] = 0.5;
+			inside[0].m_Value = 3.0;
+			field.renderAveragePointValues_RectangleSampling(-1.0, 0.5, 0.5, 1, inside);
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), 3.0), "Expected a sub-pixel footprint to land in the pixel that holds the point");
+			assertTrue(nearlyEqual(field.GetPixel(1, 0), -1.0), "Expected a sub-pixel footprint inside a pixel to leave the neighbour alone");
+			assertTrue(nearlyEqual(field.GetPixel(0, 1), -1.0), "Expected a sub-pixel footprint inside a pixel to leave the neighbour alone");
+
+			// A footprint of half a pixel across a border (centre at 0.9) covers 0.65..1.15: pixel 0 with 0.35 and pixel 1
+			// with 0.15 of its width. Alone, both pixels get the value; a second point in pixel 1 shows the weights.
+			LibMCEnv::sFieldData2DPoint border[2];
+			border[0].m_Coordinates[0] = 0.9;
+			border[0].m_Coordinates[1] = 0.5;
+			border[0].m_Value = 10.0;
+			border[1].m_Coordinates[0] = 1.5;
+			border[1].m_Coordinates[1] = 0.5;
+			border[1].m_Value = 0.0;
+			field.renderAveragePointValues_RectangleSampling(-1.0, 0.5, 0.5, 1, border);
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), 10.0), "Expected a footprint across a border to reach the pixel of the point");
+			assertTrue(nearlyEqual(field.GetPixel(1, 0), 10.0), "Expected a footprint across a border to reach the neighbouring pixel");
+			assertTrue(nearlyEqual(field.GetPixel(2, 0), -1.0), "Expected a footprint across a border to stop at the neighbouring pixel");
+			field.renderAveragePointValues_RectangleSampling(-1.0, 0.5, 0.5, 2, border);
+			double dExpectedBorderValue = (0.15 * 0.5 * 10.0 + 0.5 * 0.5 * 0.0) / (0.15 * 0.5 + 0.5 * 0.5);
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), 10.0), "Expected the pixel of the first point to keep its value");
+			assertTrue(nearlyEqual(field.GetPixel(1, 0), dExpectedBorderValue), "Expected the overlap areas to weight the values of the shared pixel");
+
+			// A footprint over the edge of the field is clipped, a footprint entirely outside is ignored, no exception.
+			LibMCEnv::sFieldData2DPoint edge[2];
+			edge[0].m_Coordinates[0] = 0.0;
+			edge[0].m_Coordinates[1] = 0.0;
+			edge[0].m_Value = 5.0;
+			edge[1].m_Coordinates[0] = -100.0;
+			edge[1].m_Coordinates[1] = 7.0;
+			edge[1].m_Value = 9.0;
+			field.renderAveragePointValues_RectangleSampling(-1.0, 2.0, 2.0, 2, edge);
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), 5.0), "Expected a footprint over the edge to be clipped to the field");
+			assertTrue(nearlyEqual(field.GetPixel(1, 0), -1.0), "Expected a clipped footprint to stop at its border");
+			assertTrue(nearlyEqual(field.GetPixel(0, 1), -1.0), "Expected a clipped footprint to stop at its border");
+			assertTrue(nearlyEqual(field.GetPixel(3, 3), -1.0), "Expected a footprint outside of the field to be ignored");
+
+			// Two overlapping footprints: the pixel they share holds the weighted average.
+			LibMCEnv::sFieldData2DPoint overlapping[2];
+			overlapping[0].m_Coordinates[0] = 1.5;
+			overlapping[0].m_Coordinates[1] = 1.5;
+			overlapping[0].m_Value = 2.0;
+			overlapping[1].m_Coordinates[0] = 2.0;
+			overlapping[1].m_Coordinates[1] = 1.5;
+			overlapping[1].m_Value = 6.0;
+			field.renderAveragePointValues_RectangleSampling(-1.0, 1.0, 1.0, 2, overlapping);
+			assertTrue(nearlyEqual(field.GetPixel(1, 1), (2.0 * 1.0 + 6.0 * 0.5) / 1.5), "Expected the shared pixel to hold the weighted average");
+			assertTrue(nearlyEqual(field.GetPixel(2, 1), 6.0), "Expected the pixel of the second point alone to hold its value");
+			assertTrue(nearlyEqual(field.GetPixel(0, 1), -1.0), "Expected the pixel next to the footprints to hold the default value");
+
+			// The footprint has to be positive (IDL): zero, negative and NaN sizes are rejected, not clamped.
+			assertTrue(errorCodeOf([&]() { field.renderAveragePointValues_RectangleSampling(0.0, 0.0, 1.0, 1, inside); }) == LIBMCENV_ERROR_INVALIDPARAM, "Expected a zero footprint to be rejected");
+			assertTrue(errorCodeOf([&]() { field.renderAveragePointValues_RectangleSampling(0.0, 1.0, -0.5, 1, inside); }) == LIBMCENV_ERROR_INVALIDPARAM, "Expected a negative footprint to be rejected");
+			assertTrue(errorCodeOf([&]() { field.renderAveragePointValues_RectangleSampling(0.0, std::numeric_limits<double>::quiet_NaN(), 1.0, 1, inside); }) == LIBMCENV_ERROR_INVALIDPARAM, "Expected a NaN footprint to be rejected");
+			assertTrue(errorCodeOf([&]() { field.renderAveragePointValues_RectangleSampling(0.0, 1.0, 1.0, 1, nullptr); }) == LIBMCENV_ERROR_INVALIDPARAM, "Expected a null point buffer to be rejected");
+
+			// An empty point array fills the field with the default value.
+			field.renderAveragePointValues_RectangleSampling(7.0, 1.0, 1.0, 0, nullptr);
+			assertTrue(nearlyEqual(field.GetPixel(0, 0), 7.0), "Expected an empty point array to clear the field to the default value");
+			assertTrue(nearlyEqual(field.GetPixel(3, 3), 7.0), "Expected an empty point array to clear the field to the default value");
 		}
 	};
 

@@ -137,6 +137,11 @@ void CDiscreteFieldData2D::RenderAveragePointValues(const LibMCEnv_double dDefau
 			m_pDiscreteFieldDataInstance->renderAveragePointValues_FloorSampling (dDefaultValue, nPointValuesBufferSize, pPointValuesBuffer);
 			break;
 
+		case LibMCEnv::eFieldSamplingMode::WeightByRectangleArea:
+			m_pDiscreteFieldDataInstance->renderAveragePointValues_RectangleSampling (dDefaultValue, dSampleSizeX, dSampleSizeY, nPointValuesBufferSize, pPointValuesBuffer);
+			break;
+
+		// CeilCoordinate and WeightByEllipseArea are not implemented yet.
 		default:
 			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_UNSUPPORTEDFIELDSAMPLINGMODE);
 	}

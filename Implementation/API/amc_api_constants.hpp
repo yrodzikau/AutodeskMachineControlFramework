@@ -328,6 +328,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_KEY_UI_POWERRANGEMIN "powerrangemin"
 #define AMC_API_KEY_UI_POWERRANGEMAX "powerrangemax"
 #define AMC_API_KEY_UI_BASEIMAGERESOURCE "baseimageresource"
+#define AMC_API_KEY_UI_OVERLAYIMAGEUUID "overlayimageuuid"
 #define AMC_API_KEY_UI_HEADLINE "headline"
 #define AMC_API_KEY_UI_TITLE "title"
 #define AMC_API_KEY_UI_SUBTITLE "subtitle"

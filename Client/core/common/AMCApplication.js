@@ -652,6 +652,7 @@ export default class AMCApplication extends Common.AMCObject {
 					builduuid:          attrs.builduuid          || "00000000-0000-0000-0000-000000000000",
 					executionuuid:      attrs.executionuuid      || "00000000-0000-0000-0000-000000000000",
 					scatterplotuuid:    attrs.scatterplotuuid    || "00000000-0000-0000-0000-000000000000",
+					overlayimageuuid:   attrs.overlayimageuuid   || "00000000-0000-0000-0000-000000000000",
 					sizex:              parseFloat(attrs.sizex)  || 0,
 					sizey:              parseFloat(attrs.sizey)  || 0,
 					originx:            parseFloat(attrs.originx) || 0,

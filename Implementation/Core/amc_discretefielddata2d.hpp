@@ -111,6 +111,9 @@ namespace AMC {
 
 		void renderAveragePointValues_FloorSampling(const LibMCEnv_double dDefaultValue, const uint64_t nPointValuesBufferSize, const LibMCEnv::sFieldData2DPoint* pPointValuesBuffer);
 
+		// Weighted average over a rectangular footprint of dSampleSizeX x dSampleSizeY pixels centred on each point (eFieldSamplingMode::WeightByRectangleArea).
+		void renderAveragePointValues_RectangleSampling(const LibMCEnv_double dDefaultValue, const double dSampleSizeX, const double dSampleSizeY, const uint64_t nPointValuesBufferSize, const LibMCEnv::sFieldData2DPoint* pPointValuesBuffer);
+
 		void saveToBuffer (std::vector<uint8_t> & Buffer);
 
 		void loadFromRawPixelData (const std::vector<uint8_t>& pixelData, LibMCEnv::eImagePixelFormat pixelFormat, double dBlackValue, double dWhiteValue);
