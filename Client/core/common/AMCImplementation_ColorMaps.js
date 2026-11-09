@@ -51,7 +51,9 @@ export const COLORMAP_PRESETS = [
 		[0.0, 0.0, 0.0, 1.0], [0.25, 0.0, 1.0, 1.0], [0.5, 0.0, 1.0, 0.0], [0.75, 1.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0]]) },
 	{ name: "jet", caption: "Jet", stops: fromUnitRGB ([
 		[0.0, 0.0, 0.0, 0.5625], [0.111111, 0.0, 0.0, 1.0], [0.365079, 0.0, 1.0, 1.0], [0.492063, 0.5, 1.0, 0.5],
-		[0.619048, 1.0, 1.0, 0.0], [0.873016, 1.0, 0.0, 0.0], [1.0, 0.5, 0.0, 0.0]]) }
+		[0.619048, 1.0, 1.0, 0.0], [0.873016, 1.0, 0.0, 0.0], [1.0, 0.5, 0.0, 0.0]]) },
+	{ name: "blackbody", caption: "Black-Body Radiation", stops: fromUnitRGB ([
+		[0.0, 0.0, 0.0, 0.0], [0.4, 0.901961, 0.0, 0.0], [0.8, 0.901961, 0.901961, 0.0], [1.0, 1.0, 1.0, 1.0]]) }
 ];
 
 export const DEFAULT_COLORMAP = "cooltowarm";
@@ -94,6 +96,21 @@ export class ColorMapSampler {
 		return (red << 16) | (green << 8) | blue;
 	}
 
+}
+
+// RGBA bytes of a color map sampled at size positions from value 0 to 1, for a lookup texture on the GPU.
+export function colorMapLookupTable (name, inverted, size = 256)
+{
+	const sampler = new ColorMapSampler (name, inverted);
+	const table = new Uint8Array (size * 4);
+	for (let index = 0; index < size; index++) {
+		const color = sampler.colorAt (index / (size - 1));
+		table[index * 4] = (color >> 16) & 255;
+		table[index * 4 + 1] = (color >> 8) & 255;
+		table[index * 4 + 2] = color & 255;
+		table[index * 4 + 3] = 255;
+	}
+	return table;
 }
 
 // CSS linear-gradient of a color map, from value 0 (left) to 1 (right).

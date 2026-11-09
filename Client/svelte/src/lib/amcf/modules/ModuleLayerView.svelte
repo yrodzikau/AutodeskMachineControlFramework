@@ -18,6 +18,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Spline from '@lucide/svelte/icons/spline';
+	import Layers from '@lucide/svelte/icons/layers';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
@@ -134,8 +135,6 @@
 	let colorMapInverted = $state(false);
 	let colorMapMenuOpen = $state(false);
 	let colorMapPresets = COLORMAP_PRESETS as ColorMapPreset[];
-	let colorMapCaption = $derived(colorMapPresets.find((preset) => preset.name === colorMapName)?.caption ?? '');
-	let colorMapGradient = $derived(colorMapCSSGradient(colorMapName, colorMapInverted));
 	// Laser power range of the build profiles, sent with every toolpath layer.
 	let buildPowerRange = $state.raw<ColorRange | null>(null);
 	let layerPowerRange = $state.raw<ColorRange | null>(null);
@@ -171,11 +170,61 @@
 		velocity: editedVelocityRange
 	});
 	let legendMode = $derived(toolpathColorMode in LEGEND_MODES ? (toolpathColorMode as LegendMode) : null);
-	let legendVisible = $derived(legendMode !== null && (toolpathVisible || pointsLoaded));
-	let legendRange = $derived(legendMode ? colorRanges[legendMode] : { min: 0, max: 1 });
-	let legendUnit = $derived(legendMode ? LEGEND_MODES[legendMode].unit : '');
-	let legendTitle = $derived(legendMode ? LEGEND_MODES[legendMode].title : '');
-	let legendRangeEdited = $derived(legendMode ? editedRanges[legendMode] !== null : false);
+
+	// Overlay: a scalar field image over the platform (for example a heat map of the layer), drawn through a color
+	// map by the GPU, see WebGLScalarImageElement. The toolbar button named by platform.overlayname shows it instead
+	// of the recorded points; the legend then edits the color map and the value range of the overlay.
+	let overlayName = $derived.by(() => { poll.v; return String(platform?.overlayname || '').trim(); });
+	let overlayIcon = $derived.by(() => { poll.v; return String(platform?.overlayicon || '').trim(); });
+	let overlayCaption = $derived.by(() => { poll.v; return String(platform?.overlaycaption || '').trim(); });
+	let overlayNote = $derived.by(() => { poll.v; return String(platform?.overlaynote || '').trim(); });
+	// Values of the codes 0 and 65535 of the overlay image, also the default range of its legend.
+	let overlayValueRange = $derived.by((): ColorRange => { poll.v; return readOverlayValueRange(platform); });
+	let overlayMode = $state(false);
+	// Overlay image of the current layer as the server reports it; the null UUID means none.
+	let overlayUUID = $state(NULL_UUID);
+	let overlayAvailable = $derived(isValidUUID(overlayUUID));
+	let overlayShown = $derived(overlayMode && overlayAvailable);
+	let loadingOverlay = $state(false);
+	let editedOverlayRange = $state.raw<ColorRange | null>(null);
+	let overlayRange = $derived(editedOverlayRange ?? overlayValueRange);
+	let overlayColorMapName = $state(DEFAULT_COLORMAP);
+	let overlayColorMapInverted = $state(false);
+
+	// The legend in the bottom left corner belongs to the overlay while it is shown, otherwise to the color map
+	// display modes of the toolpath and the recorded points.
+	type LegendKind = 'toolpath' | 'overlay';
+	let legendKind = $derived<LegendKind | null>(
+		overlayShown ? 'overlay' : (legendMode !== null && (toolpathVisible || pointsLoaded) ? 'toolpath' : null)
+	);
+	let legendVisible = $derived(legendKind !== null);
+	let legendTitle = $derived.by(() => {
+		if (legendKind === 'overlay') return overlayCaption || overlayName;
+		return legendMode ? `${LEGEND_MODES[legendMode].title} [${LEGEND_MODES[legendMode].unit}]` : '';
+	});
+	// Lower-case description of the value for the labels of the range fields.
+	let legendValueLabel = $derived.by(() => {
+		if (legendKind === 'overlay') return (overlayCaption || overlayName).toLowerCase();
+		return legendMode ? `${LEGEND_MODES[legendMode].title.toLowerCase()} in ${LEGEND_MODES[legendMode].unit}` : '';
+	});
+	let legendColorMapName = $derived(legendKind === 'overlay' ? overlayColorMapName : colorMapName);
+	let legendColorMapInverted = $derived(legendKind === 'overlay' ? overlayColorMapInverted : colorMapInverted);
+	let legendColorMapCaption = $derived(colorMapPresets.find((preset) => preset.name === legendColorMapName)?.caption ?? '');
+	let legendGradient = $derived(colorMapCSSGradient(legendColorMapName, legendColorMapInverted));
+	let legendRange = $derived<ColorRange>(
+		legendKind === 'overlay' ? overlayRange : (legendMode ? colorRanges[legendMode] : { min: 0, max: 1 })
+	);
+	let legendRangeEdited = $derived(
+		legendKind === 'overlay' ? editedOverlayRange !== null : (legendMode ? editedRanges[legendMode] !== null : false)
+	);
+	let legendResetTitle = $derived(
+		legendKind === 'overlay' ? 'Reset the range to the value range of the image' : (legendMode ? LEGEND_MODES[legendMode].resetTitle : '')
+	);
+	let legendNote = $derived.by(() => {
+		if (legendKind === 'overlay') return overlayNote;
+		if (legendMode === 'power' && pointsLoaded && pointColumns.includes('power')) return 'Recorded points: raw power, layer minimum to maximum';
+		return '';
+	});
 	// Compared as a string so the calibration is only re-applied when a value changes.
 	let pointSizeCalibrationKey = $derived.by(() => {
 		poll.v;
@@ -326,6 +375,27 @@
 		});
 	});
 
+	$effect(() => {
+		const name = overlayColorMapName;
+		const inverted = overlayColorMapInverted;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setOverlayColorMap(name, inverted));
+	});
+
+	$effect(() => {
+		const range = overlayRange;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setOverlayRange(range.min, range.max));
+	});
+
+	// Values of the codes 0 and 65535 of the overlay image; a missing or empty range reads as 0..1.
+	function readOverlayValueRange(currentPlatform: any): ColorRange {
+		const minimum = Number(currentPlatform?.overlayvaluemin);
+		const maximum = Number(currentPlatform?.overlayvaluemax);
+		if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || maximum <= minimum) return { min: 0, max: 1 };
+		return { min: minimum, max: maximum };
+	}
+
 	// A single value (for example one nominal power or speed) is shown from zero.
 	function rangeFromZeroIfSingle(range: ColorRange | null): ColorRange {
 		if (!range) return { min: 0, max: 1 };
@@ -351,18 +421,27 @@
 
 	function onLegendRangeChange(bound: 'min' | 'max', event: Event) {
 		const value = Number((event.target as HTMLInputElement).value);
-		if (!Number.isFinite(value) || !legendMode) return;
+		if (!Number.isFinite(value)) return;
 		const current = legendRange;
-		setEditedRange(legendMode, bound === 'min' ? { min: value, max: current.max } : { min: current.min, max: value });
+		const range = bound === 'min' ? { min: value, max: current.max } : { min: current.min, max: value };
+		if (legendKind === 'overlay') editedOverlayRange = range;
+		else if (legendMode) setEditedRange(legendMode, range);
 	}
 
 	function resetLegendRange() {
-		if (legendMode) setEditedRange(legendMode, null);
+		if (legendKind === 'overlay') editedOverlayRange = null;
+		else if (legendMode) setEditedRange(legendMode, null);
 	}
 
 	function selectColorMap(name: string) {
-		colorMapName = name;
+		if (legendKind === 'overlay') overlayColorMapName = name;
+		else colorMapName = name;
 		colorMapMenuOpen = false;
+	}
+
+	function toggleColorMapInverted() {
+		if (legendKind === 'overlay') overlayColorMapInverted = !overlayColorMapInverted;
+		else colorMapInverted = !colorMapInverted;
 	}
 
 	function readPowerRange(data: any): ColorRange | null {
@@ -524,6 +603,7 @@
 			if (currentPlatform.displayed_build !== currentPlatform.builduuid) {
 				editedPowerRange = null;
 				editedVelocityRange = null;
+				editedOverlayRange = null;
 			}
 			currentPlatform.displayed_layer = currentPlatform.currentlayer;
 			currentPlatform.displayed_build = currentPlatform.builduuid;
@@ -531,19 +611,64 @@
 			loadToolpath(currentPlatform.builduuid, currentPlatform.currentlayer);
 		}
 
-		const scatterPlotUUID = typeof currentPlatform.scatterplotuuid === 'string' ? currentPlatform.scatterplotuuid.toLowerCase() : NULL_UUID;
-		if (currentPlatform.displayed_scatterplot !== scatterPlotUUID) {
-			currentPlatform.displayed_scatterplot = scatterPlotUUID;
-			loadScatterPlot(scatterPlotUUID);
+		// Recorded points and overlay of the layer: only the one the overlay button selects is loaded, the other
+		// follows when the button is toggled (see toggleOverlayMode), so a layer change downloads one of them.
+		overlayUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
+		syncScatterPlot();
+		syncOverlay();
+	}
+
+	// Loads or clears the scatter plot of the layer, which is shown while the overlay button is off.
+	function syncScatterPlot() {
+		const currentPlatform = module.platform;
+		if (!layerViewer || !currentPlatform) return;
+		const serverUUID = typeof currentPlatform.scatterplotuuid === 'string' ? currentPlatform.scatterplotuuid.toLowerCase() : NULL_UUID;
+		const wanted = overlayMode ? NULL_UUID : serverUUID;
+		if (currentPlatform.displayed_scatterplot === wanted) return;
+		currentPlatform.displayed_scatterplot = wanted;
+		loadScatterPlot(wanted);
+	}
+
+	// Loads or removes the overlay image of the layer, which is shown while the overlay button is on.
+	function syncOverlay() {
+		const currentPlatform = module.platform;
+		if (!layerViewer || !currentPlatform) return;
+		const wanted = overlayMode && isValidUUID(overlayUUID) ? overlayUUID : NULL_UUID;
+		if (currentPlatform.displayed_overlayimage === wanted) return;
+		currentPlatform.displayed_overlayimage = wanted;
+
+		if (!isValidUUID(wanted)) {
+			loadingOverlay = false;
+			layerViewer.SetOverlayImage(null);
+			return;
 		}
 
-		// Raster overlay over the platform (for example a heat map of the layer), followed like the scatter plot.
-		const overlayImageUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
-		if (currentPlatform.displayed_overlayimage !== overlayImageUUID) {
-			currentPlatform.displayed_overlayimage = overlayImageUUID;
-			const overlayURL = isValidUUID(overlayImageUUID) ? app.getImageURL(overlayImageUUID) : null;
-			layerViewer.SetOverlayImage(overlayURL, currentPlatform.sizex || 300, currentPlatform.sizey || 300);
-		}
+		const valueRange = readOverlayValueRange(currentPlatform);
+		loadingOverlay = true;
+		layerViewer.SetOverlayImage(
+			app.getImageURL(wanted),
+			currentPlatform.sizex || 300,
+			currentPlatform.sizey || 300,
+			valueRange.min,
+			valueRange.max,
+			() => {
+				if (currentPlatform.displayed_overlayimage === wanted) loadingOverlay = false;
+			},
+			(error: any) => {
+				// Another overlay has been requested in the meantime
+				if (currentPlatform.displayed_overlayimage !== wanted) return;
+				loadingOverlay = false;
+				app.showSnackBar(`Loading the ${(overlayName || 'overlay').toLowerCase()} failed: ${error?.message ?? error}`, 'error', 8000);
+			}
+		);
+	}
+
+	function toggleOverlayMode() {
+		overlayMode = !overlayMode;
+		hideHoverInfo();
+		clearHover();
+		syncScatterPlot();
+		syncOverlay();
 	}
 
 	function isDisplayedToolpath(buildUUID: string, layerIndex: number): boolean {
@@ -1461,23 +1586,23 @@
 					<Spline size={16} />
 					<span>End Points</span>
 				</button>
-				{#if pointsLoaded}
-					{#if pointColumns.includes('laseron')}
-						<button
-							class="layerview-btn"
-							onclick={toggleLaserOffPoints}
-							title="Also show points recorded while the laser was off"
-							aria-label="Toggle points with laser off"
-							aria-pressed={showLaserOffPoints}
-						>
-							<ZapOff size={16} />
-							<span>Laser Off</span>
-						</button>
-					{/if}
+				{#if pointsLoaded && pointColumns.includes('laseron')}
+					<button
+						class="layerview-btn"
+						onclick={toggleLaserOffPoints}
+						title="Also show points recorded while the laser was off"
+						aria-label="Toggle points with laser off"
+						aria-pressed={showLaserOffPoints}
+					>
+						<ZapOff size={16} />
+						<span>Laser Off</span>
+					</button>
+				{/if}
+				{#if pointsLoaded || overlayShown}
 					<button
 						class="layerview-btn"
 						onclick={toggleToolpath}
-						title="Show or hide the toolpath below the recorded points"
+						title={overlayShown ? `Show or hide the toolpath above the ${overlayName.toLowerCase()}` : 'Show or hide the toolpath below the recorded points'}
 						aria-label="Toggle toolpath"
 						aria-pressed={toolpathVisible}
 					>
@@ -1485,10 +1610,26 @@
 						<span>Toolpath</span>
 					</button>
 				{/if}
+				{#if overlayName}
+					<button
+						class="layerview-btn"
+						onclick={toggleOverlayMode}
+						title={`Show the ${overlayName.toLowerCase()} of the layer over the platform instead of the recorded points`}
+						aria-label={`Toggle ${overlayName.toLowerCase()}`}
+						aria-pressed={overlayMode}
+					>
+						{#if overlayIcon}
+							<MdiIcon icon={overlayIcon} class="h-4 w-4" />
+						{:else}
+							<Layers size={16} />
+						{/if}
+						<span>{overlayName}</span>
+					</button>
+				{/if}
 			</div>
 
 			<!-- Platform label and loading indicator -->
-			{#if labelCaption || labelIcon || loadingLayer || loadingPoints}
+			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingOverlay || (overlayMode && !overlayAvailable)}
 				<div class="layerview-status">
 					{#if labelCaption || labelIcon}
 						<div class="layerview-label">
@@ -1496,7 +1637,13 @@
 							<span>{labelCaption}</span>
 						</div>
 					{/if}
-					{#if loadingLayer || loadingPoints}
+					{#if overlayMode && !overlayAvailable}
+						<div class="layerview-label">
+							<MdiIcon icon="mdi-alert-circle-outline" class="h-3.5 w-3.5" />
+							<span>{overlayName} not available for this layer</span>
+						</div>
+					{/if}
+					{#if loadingLayer || loadingPoints || loadingOverlay}
 						<div class="layerview-label">
 							<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
 							<span>Loading layer data</span>
@@ -1567,7 +1714,7 @@
 			</svg>
 		{/if}
 
-		<!-- Color map legend of the power and time display modes -->
+		<!-- Color map legend of the overlay or of the power, time and velocity display modes -->
 		{#if legendVisible}
 			<div
 				class="layerview-legend"
@@ -1575,25 +1722,25 @@
 				class:above-time-slider={!coordinateSystemVisible && showTimeSlider && timelineDuration > 0}
 			>
 				<div class="layerview-legend-header">
-					<span class="layerview-legend-title">{legendTitle} [{legendUnit}]</span>
+					<span class="layerview-legend-title">{legendTitle}</span>
 					<button
 						type="button"
 						class="layerview-legend-btn layerview-legend-preset"
 						onclick={() => (colorMapMenuOpen = !colorMapMenuOpen)}
 						title="Choose a color map"
-						aria-label={`Color map: ${colorMapCaption}. Click to choose`}
+						aria-label={`Color map: ${legendColorMapCaption}. Click to choose`}
 						aria-expanded={colorMapMenuOpen}
 					>
-						<span>{colorMapCaption}</span>
+						<span>{legendColorMapCaption}</span>
 						<ChevronDown size={12} />
 					</button>
 					<button
 						type="button"
 						class="layerview-legend-btn"
-						onclick={() => (colorMapInverted = !colorMapInverted)}
+						onclick={toggleColorMapInverted}
 						title="Invert the color map"
 						aria-label="Invert the color map"
-						aria-pressed={colorMapInverted}
+						aria-pressed={legendColorMapInverted}
 					>
 						<ArrowLeftRight size={12} />
 					</button>
@@ -1602,7 +1749,7 @@
 						class="layerview-legend-btn"
 						onclick={resetLegendRange}
 						disabled={!legendRangeEdited}
-						title={legendMode ? LEGEND_MODES[legendMode].resetTitle : ''}
+						title={legendResetTitle}
 						aria-label="Reset the range"
 					>
 						<RotateCcw size={12} />
@@ -1615,26 +1762,26 @@
 							<button
 								type="button"
 								class="layerview-legend-menu-item"
-								class:selected={preset.name === colorMapName}
+								class:selected={preset.name === legendColorMapName}
 								role="option"
-								aria-selected={preset.name === colorMapName}
+								aria-selected={preset.name === legendColorMapName}
 								onclick={() => selectColorMap(preset.name)}
 							>
-								<span class="layerview-legend-menu-preview" style:background={colorMapCSSGradient(preset.name, colorMapInverted)}></span>
+								<span class="layerview-legend-menu-preview" style:background={colorMapCSSGradient(preset.name, legendColorMapInverted)}></span>
 								<span>{preset.caption}</span>
 							</button>
 						{/each}
 					</div>
 				{/if}
 
-				<div class="layerview-legend-bar" style:background={colorMapGradient}></div>
+				<div class="layerview-legend-bar" style:background={legendGradient}></div>
 				<div class="layerview-legend-range">
 					<input
 						type="number"
 						step="any"
 						value={formatRangeValue(legendRange.min)}
 						onchange={(event) => onLegendRangeChange('min', event)}
-						aria-label={`Minimum ${legendTitle.toLowerCase()} in ${legendUnit}`}
+						aria-label={`Minimum ${legendValueLabel}`}
 					/>
 					<span class="layerview-legend-mid">{formatRangeValue((legendRange.min + legendRange.max) / 2)}</span>
 					<input
@@ -1642,11 +1789,11 @@
 						step="any"
 						value={formatRangeValue(legendRange.max)}
 						onchange={(event) => onLegendRangeChange('max', event)}
-						aria-label={`Maximum ${legendTitle.toLowerCase()} in ${legendUnit}`}
+						aria-label={`Maximum ${legendValueLabel}`}
 					/>
 				</div>
-				{#if legendMode === 'power' && pointsLoaded && pointColumns.includes('power')}
-					<div class="layerview-legend-note">Recorded points: raw power, layer minimum to maximum</div>
+				{#if legendNote}
+					<div class="layerview-legend-note">{legendNote}</div>
 				{/if}
 			</div>
 		{/if}

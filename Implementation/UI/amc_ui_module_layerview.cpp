@@ -163,6 +163,13 @@ void CUIModule_LayerViewPlatformItem::populateClientVariables(CParameterHandler*
 	// Raster image stretched over the platform rectangle, for example a heat map of the layer. Set by the
 	// UI plugin through SetUIProperty like the scatter plot; the empty UUID means no overlay.
 	pGroup->addNewUUIDParameter(AMC_API_KEY_UI_OVERLAYIMAGEUUID, "Overlay image UUID", AMCCommon::CUtils::createEmptyUUID());
+	// The overlay PNG is a scalar field: the 16-bit code of a pixel stands for a value between overlayvaluemin
+	// (code 0) and overlayvaluemax (code 65535), see the layer view client. The caption titles the legend of the
+	// overlay, the note is shown below its range. All set by the UI plugin together with the image.
+	pGroup->addNewDoubleParameter(AMC_API_KEY_UI_OVERLAYVALUEMIN, "Overlay value of code 0", 0.0, 1.0);
+	pGroup->addNewDoubleParameter(AMC_API_KEY_UI_OVERLAYVALUEMAX, "Overlay value of code 65535", 1.0, 1.0);
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_OVERLAYCAPTION, "Overlay legend caption", "");
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_OVERLAYNOTE, "Overlay legend note", "");
 	pGroup->addNewIntParameter(AMC_API_KEY_UI_LABELVISIBLE, "Label is visible", m_LabelVisible.evaluateIntegerValue (pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELCAPTION, "Label caption", m_LabelCaption.evaluateStringValue(pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELICON, "Label icon", m_LabelIcon.evaluateStringValue(pStateMachineData));
@@ -288,6 +295,11 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	CUIExpression powerRangeMin(platformNode, AMC_API_KEY_UI_POWERRANGEMIN, "");
 	CUIExpression powerRangeMax(platformNode, AMC_API_KEY_UI_POWERRANGEMAX, "");
 
+	// Caption and mdi icon of the toolbar button that shows the overlay image (for example "Heat Map"). Without a
+	// caption the layer view has no overlay button and no overlay legend.
+	CUIExpression overlayName(platformNode, AMC_API_KEY_UI_OVERLAYNAME, "");
+	CUIExpression overlayIcon(platformNode, AMC_API_KEY_UI_OVERLAYICON, "");
+
 	CUIExpression buildUUID;
 	CUIExpression executionUUID;
 	CUIExpression scatterplotUUID;
@@ -408,6 +420,19 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	CUIExpression overlayImageUUIDExpression;
 	overlayImageUUIDExpression.setFixedValue(AMCCommon::CUtils::createEmptyUUID());
 	registerUUIDAttribute(AMC_API_KEY_UI_OVERLAYIMAGEUUID, overlayImageUUIDExpression);
+	// Value range and legend texts of the overlay: client variables like the image, see populateClientVariables.
+	CUIExpression overlayValueMinExpression;
+	overlayValueMinExpression.setFixedValue("0");
+	registerNumberAttribute(AMC_API_KEY_UI_OVERLAYVALUEMIN, overlayValueMinExpression);
+	CUIExpression overlayValueMaxExpression;
+	overlayValueMaxExpression.setFixedValue("1");
+	registerNumberAttribute(AMC_API_KEY_UI_OVERLAYVALUEMAX, overlayValueMaxExpression);
+	CUIExpression overlayTextExpression;
+	overlayTextExpression.setFixedValue("");
+	registerStringAttribute(AMC_API_KEY_UI_OVERLAYCAPTION, overlayTextExpression);
+	registerStringAttribute(AMC_API_KEY_UI_OVERLAYNOTE, overlayTextExpression);
+	registerStringAttribute(AMC_API_KEY_UI_OVERLAYNAME, overlayName);
+	registerStringAttribute(AMC_API_KEY_UI_OVERLAYICON, overlayIcon);
 
 	// Build and layer selection are per-session client variables of the platform item.
 	registerProviderAttribute(AMC_API_KEY_UI_BUILDUUID, eUIFrontendDefinitionAttributeType::atUUID, eUIFrontendDefinitionAttributeScope::asSession,

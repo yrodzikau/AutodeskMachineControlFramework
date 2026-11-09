@@ -1071,11 +1071,198 @@ function disposeImageResources (object3d) {
         if (child.material) {
             if (child.material.map)
                 child.material.map.dispose();
+            // Shader materials keep their textures in uniforms.
+            if (child.material.uniforms) {
+                for (const uniform of Object.values(child.material.uniforms)) {
+                    if (uniform && uniform.value && uniform.value.isTexture)
+                        uniform.value.dispose();
+                }
+            }
             child.material.dispose();
         }
         if (child.geometry)
             child.geometry.dispose();
     });
+}
+
+// Scalar field stored in a PNG: the 16-bit code of a pixel lies in its red (high byte) and green (low byte)
+// channel, blue is 255 where the pixel holds a value and 0 where it does not. The codes are decoded into a float
+// texture of (value * coverage, coverage) and drawn through a color lookup table over an adjustable value range,
+// so a new range or color map costs one render and no new download. Linear filtering of the float texture needs
+// OES_texture_float_linear; without it the texels are sampled nearest.
+const SCALARIMAGE_VERTEXSHADER = `
+    varying vec2 vUv;
+    void main () {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4 (position, 1.0);
+    }
+`;
+
+const SCALARIMAGE_FRAGMENTSHADER = `
+    precision highp float;
+    uniform sampler2D fieldMap;
+    uniform sampler2D lookupTable;
+    uniform float rangeMin;
+    uniform float rangeMax;
+    uniform float opacity;
+    varying vec2 vUv;
+    void main () {
+        // (value * coverage, coverage): filtering averages the values of the covered texels only.
+        vec2 field = texture2D (fieldMap, vUv).rg;
+        if (field.g < 0.001)
+            discard;
+        float value = field.r / field.g;
+        float span = rangeMax - rangeMin;
+        float t = (span > 0.0) ? clamp ((value - rangeMin) / span, 0.0, 1.0) : 0.0;
+        vec4 color = texture2D (lookupTable, vec2 (t, 0.5));
+        gl_FragColor = vec4 (color.rgb, color.a * opacity * min (field.g, 1.0));
+    }
+`;
+
+class WebGLScalarImageElement extends WebGLElement {
+
+    constructor (filterable)
+    {
+        super();
+        this.glelement = null;
+        this.material = null;
+        this.lookupTexture = null;
+        this.filterable = filterable === true;
+        this.rangeMin = 0.0;
+        this.rangeMax = 1.0;
+        this.visible = true;
+    }
+
+    // Decodes the loaded PNG into (value * coverage, coverage) floats. Pixels without a value stay (0, 0).
+    static decodeField (image, valueMin, valueMax)
+    {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if ((width <= 0) || (height <= 0))
+            throw new Error ("the image is empty");
+
+        const canvas = document.createElement ("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext ("2d", { willReadFrequently: true });
+        context.drawImage (image, 0, 0);
+        const pixels = context.getImageData (0, 0, width, height).data;
+
+        const field = new Float32Array (width * height * 2);
+        const span = valueMax - valueMin;
+        let covered = 0;
+        for (let index = 0, offset = 0; index < pixels.length; index += 4, offset += 2) {
+            if (pixels[index + 2] < 128)
+                continue;
+            const code = pixels[index] * 256 + pixels[index + 1];
+            field[offset] = valueMin + (code / 65535.0) * span;
+            field[offset + 1] = 1.0;
+            covered++;
+        }
+        return { data: field, width: width, height: height, covered: covered };
+    }
+
+    load (url, width, height, offsetX, offsetY, valueMin, valueMax, onLoaded, onError)
+    {
+        const image = new Image ();
+        image.onload = () => {
+            let decoded;
+            try {
+                decoded = WebGLScalarImageElement.decodeField (image, valueMin, valueMax);
+            } catch (error) {
+                if (onError)
+                    onError (error);
+                return;
+            }
+
+            console.debug ("[WebGL] scalar image " + decoded.width + " x " + decoded.height + ", " + decoded.covered + " pixels hold a value, values "
+                + valueMin + ".." + valueMax + (this.filterable ? ", linear minification" : ", nearest filtering"));
+
+            const texture = new THREE.DataTexture (decoded.data, decoded.width, decoded.height, THREE.RGFormat, THREE.FloatType);
+            // Row 0 of a PNG is its top row; flipY puts it on the local +Y side of the plane, like the TextureLoader does.
+            texture.flipY = true;
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = this.filterable ? THREE.LinearFilter : THREE.NearestFilter;
+            texture.generateMipmaps = false;
+            texture.colorSpace = THREE.NoColorSpace;
+            texture.needsUpdate = true;
+
+            const material = new THREE.ShaderMaterial ({
+                uniforms: {
+                    fieldMap: { value: texture },
+                    lookupTable: { value: this.lookupTexture },
+                    rangeMin: { value: this.rangeMin },
+                    rangeMax: { value: this.rangeMax },
+                    opacity: { value: 1.0 }
+                },
+                vertexShader: SCALARIMAGE_VERTEXSHADER,
+                fragmentShader: SCALARIMAGE_FRAGMENTSHADER,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            });
+            const geometry = new THREE.PlaneGeometry (width, height);
+            const mesh = new THREE.Mesh (geometry, material);
+            // PlaneGeometry is centred on its origin; move it so that its lower left corner is the given offset.
+            mesh.position.set (offsetX + width / 2, offsetY + height / 2, 0);
+            mesh.userData.disposeOnRemove = true;
+
+            const group = new THREE.Group ();
+            group.add (mesh);
+            group.visible = this.visible;
+            this.glelement = group;
+            this.material = material;
+            this.updateGLPosition ();
+
+            if (onLoaded)
+                onLoaded (this);
+        };
+        image.onerror = () => {
+            if (onError)
+                onError (new Error ("the image could not be loaded"));
+        };
+        image.src = url;
+    }
+
+    // table: RGBA bytes of the color map from value 0 to 1, see colorMapLookupTable.
+    setLookupTable (table)
+    {
+        if (!table || (table.length < 4))
+            return;
+
+        const texture = new THREE.DataTexture (table, table.length / 4, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+        texture.magFilter = THREE.LinearFilter;
+        texture.minFilter = THREE.LinearFilter;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.generateMipmaps = false;
+        texture.colorSpace = THREE.NoColorSpace;
+        texture.needsUpdate = true;
+
+        if (this.lookupTexture)
+            this.lookupTexture.dispose ();
+        this.lookupTexture = texture;
+        if (this.material)
+            this.material.uniforms.lookupTable.value = texture;
+    }
+
+    setValueRange (minValue, maxValue)
+    {
+        this.rangeMin = minValue;
+        this.rangeMax = maxValue;
+        if (this.material) {
+            this.material.uniforms.rangeMin.value = minValue;
+            this.material.uniforms.rangeMax.value = maxValue;
+        }
+    }
+
+    setVisible (visible)
+    {
+        this.visible = (visible !== false);
+        if (this.glelement)
+            this.glelement.visible = this.visible;
+    }
+
 }
 
 // Raster image stretched over a rectangle of the scene, for example a heat map laid over the build plate.
@@ -1512,6 +1699,49 @@ class WebGLImpl {
         });
 
         return imageElement;
+	}
+
+	// Scalar field image over a rectangle of the scene, see WebGLScalarImageElement. options: valueMin and valueMax
+	// (values of the codes 0 and 65535), lookupTable (RGBA bytes), rangeMin and rangeMax (values mapped onto the
+	// table), visible, onLoaded and onError callbacks. The image loads asynchronously; an element that was removed
+	// or replaced in the meantime is not added to the scene.
+	addScalarImageElement (identifier, url, width, height, offsetX, offsetY, zValue, options)
+	{
+        if (!identifier)
+            return;
+
+        const settings = options || {};
+        const filterable = this.renderer.extensions.has ("OES_texture_float_linear");
+        let element = new WebGLScalarImageElement (filterable);
+        this.addElement (identifier, element);
+        element.setPosition (0, 0, zValue);
+        if (settings.lookupTable)
+            element.setLookupTable (settings.lookupTable);
+        element.setValueRange (Number.isFinite (settings.rangeMin) ? settings.rangeMin : 0.0, Number.isFinite (settings.rangeMax) ? settings.rangeMax : 1.0);
+        element.setVisible (settings.visible !== false);
+
+        element.load (url, width, height, offsetX, offsetY, settings.valueMin, settings.valueMax, (loadedElement) => {
+            if (this.renderElements.get (identifier) !== loadedElement) {
+                disposeImageResources (loadedElement.glelement);
+                return;
+            }
+
+            if (loadedElement.glelement && this.scene) {
+                loadedElement.glelement.name = identifier;
+                this.scene.add (loadedElement.glelement);
+                loadedElement.updateGLPosition ();
+            }
+
+            this.renderScene ();
+            if (settings.onLoaded)
+                settings.onLoaded (loadedElement);
+        }, (error) => {
+            console.error ("Could not load the scalar image " + url, error);
+            if (settings.onError)
+                settings.onError (error);
+        });
+
+        return element;
 	}
 
 	addAmbientLight (identifier, color, intensity)

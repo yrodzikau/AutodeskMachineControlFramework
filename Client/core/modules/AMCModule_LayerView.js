@@ -57,7 +57,15 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 
 		this.dark_baseimageresource = "";
 		// Raster overlay over the platform rectangle (for example a heat map of the layer); null UUID = none.
+		// The PNG is a scalar field whose 16-bit codes stand for overlayvaluemin (0) to overlayvaluemax (65535);
+		// overlayname and overlayicon describe the toolbar button, overlaycaption and overlaynote the legend.
 		this.overlayimageuuid = Common.nullUUID ();
+		this.overlayname = "";
+		this.overlayicon = "";
+		this.overlayvaluemin = 0.0;
+		this.overlayvaluemax = 1.0;
+		this.overlaycaption = "";
+		this.overlaynote = "";
 		this.highlightpartuuid = Common.nullUUID ();
 		// Changes whenever parts of the build are disabled or re-enabled; the displayed layer is reloaded then.
 		this.partstateversion = 0;
@@ -92,6 +100,18 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		this.builduuid = Assert.OptionalUUIDValue (updateJSON.builduuid);
 		this.scatterplotuuid = Assert.OptionalUUIDValue (updateJSON.scatterplotuuid);
 		this.overlayimageuuid = Assert.OptionalUUIDValue (updateJSON.overlayimageuuid);
+		if (updateJSON.overlayname !== undefined)
+			this.overlayname = Assert.StringValue (updateJSON.overlayname);
+		if (updateJSON.overlayicon !== undefined)
+			this.overlayicon = Assert.StringValue (updateJSON.overlayicon);
+		if (updateJSON.overlayvaluemin !== undefined)
+			this.overlayvaluemin = Assert.NumberValue (updateJSON.overlayvaluemin);
+		if (updateJSON.overlayvaluemax !== undefined)
+			this.overlayvaluemax = Assert.NumberValue (updateJSON.overlayvaluemax);
+		if (updateJSON.overlaycaption !== undefined)
+			this.overlaycaption = Assert.StringValue (updateJSON.overlaycaption);
+		if (updateJSON.overlaynote !== undefined)
+			this.overlaynote = Assert.StringValue (updateJSON.overlaynote);
 		if (updateJSON.highlightpartuuid !== undefined)
 			this.highlightpartuuid = Assert.OptionalUUIDValue (updateJSON.highlightpartuuid);
 		if (updateJSON.partstateversion !== undefined)
@@ -147,6 +167,21 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.scatterplotuuid = attrs.scatterplotuuid;
 		if (attrs.overlayimageuuid !== undefined)
 			this.overlayimageuuid = attrs.overlayimageuuid;
+		if (attrs.overlayname !== undefined)
+			this.overlayname = attrs.overlayname;
+		if (attrs.overlayicon !== undefined)
+			this.overlayicon = attrs.overlayicon;
+		for (let key of ["overlayvaluemin", "overlayvaluemax"]) {
+			if (attrs[key] !== undefined) {
+				let value = parseFloat (attrs[key]);
+				if (!isNaN (value))
+					this[key] = value;
+			}
+		}
+		if (attrs.overlaycaption !== undefined)
+			this.overlaycaption = attrs.overlaycaption;
+		if (attrs.overlaynote !== undefined)
+			this.overlaynote = attrs.overlaynote;
 		if (attrs.highlightpartuuid !== undefined)
 			this.highlightpartuuid = attrs.highlightpartuuid;
 		if (attrs.partstateversion !== undefined) {

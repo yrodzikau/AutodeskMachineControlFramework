@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  */
 
-import { ColorMapSampler, DEFAULT_COLORMAP } from "./AMCImplementation_ColorMaps.js";
+import { ColorMapSampler, DEFAULT_COLORMAP, colorMapLookupTable } from "./AMCImplementation_ColorMaps.js";
 
 const LAYERVIEW_MINSCALING = 0.4;
 const LAYERVIEW_MAXSCALING = 4000.0;
@@ -192,6 +192,12 @@ class LayerViewImpl {
 		this.pointsVisible = true;
 		this.showLaserOffPoints = false;
 		this.filteredToOriginalIndexMap = null;
+
+		// Overlay (scalar field over the platform, for example a heat map): its own color map and value range,
+		// applied to the overlay element whenever it is (re)loaded, see SetOverlayImage.
+		this.overlayColorMapName = DEFAULT_COLORMAP;
+		this.overlayColorMapInverted = false;
+		this.overlayRange = { min: 0.0, max: 1.0 };
 
 		this.gridColor = undefined;
         
@@ -1919,21 +1925,57 @@ class LayerViewImpl {
 		
 	} 
 	
-	// Raster image stretched over the platform rectangle (0..sizeX, 0..sizeY in platform coordinates), for
-	// example a heat map of the layer. It shares the position and the scale of the build plate, between
-	// the plate (z 35) and the toolpath (z 59 and up). null removes it.
-	SetOverlayImage (url, sizeX, sizeY) {
+	// Scalar field image stretched over the platform rectangle (0..sizeX, 0..sizeY in platform coordinates), for
+	// example a heat map of the layer, see WebGLScalarImageElement for the encoding. valueMin and valueMax are the
+	// values of the codes 0 and 65535. The overlay shares the position and the scale of the build plate, between
+	// the plate (z 35) and the toolpath (z 59 and up). A null url removes it. onLoaded and onError are optional.
+	SetOverlayImage (url, sizeX, sizeY, valueMin, valueMax, onLoaded, onError) {
 		if (!this.glInstance)
 			return;
 
 		if (url) {
-			this.glInstance.addImageElement ("overlayimage", url, sizeX, sizeY, 0, 0, 36);
+			this.glInstance.addScalarImageElement ("overlayimage", url, sizeX, sizeY, 0, 0, 36, {
+				valueMin: valueMin,
+				valueMax: valueMax,
+				lookupTable: colorMapLookupTable (this.overlayColorMapName, this.overlayColorMapInverted),
+				rangeMin: this.overlayRange.min,
+				rangeMax: this.overlayRange.max,
+				onLoaded: () => {
+					this.updateTransform ();
+					if (onLoaded)
+						onLoaded ();
+				},
+				onError: onError
+			});
 			this.updateTransform ();
 		} else {
 			this.glInstance.removeElement ("overlayimage");
 			this.RenderScene (true);
 		}
 	}
+
+	setOverlayColorMap (name, inverted)
+	{
+		this.overlayColorMapName = name;
+		this.overlayColorMapInverted = inverted === true;
+		const element = this.glInstance ? this.glInstance.findElement ("overlayimage") : null;
+		if (element && (typeof element.setLookupTable === "function")) {
+			element.setLookupTable (colorMapLookupTable (this.overlayColorMapName, this.overlayColorMapInverted));
+			this.RenderScene (true);
+		}
+	}
+
+	// Value range mapped onto the color map of the overlay; values outside are clamped to its ends.
+	setOverlayRange (minValue, maxValue)
+	{
+		this.overlayRange = { min: minValue, max: maxValue };
+		const element = this.glInstance ? this.glInstance.findElement ("overlayimage") : null;
+		if (element && (typeof element.setValueRange === "function")) {
+			element.setValueRange (minValue, maxValue);
+			this.RenderScene (true);
+		}
+	}
+
 
 	SetBuildPlateSVG (url) {
 		if (this.glInstance) {

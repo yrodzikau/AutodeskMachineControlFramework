@@ -2018,7 +2018,8 @@ void CImageData::writeToRawMemoryEx_RGB16bit(uint32_t nStartX, uint32_t nStartY,
 			}
 
 			pLinePtr += nYLineOffset;
-			nLineAddress += (size_t)m_nPixelCountX * 3;
+			// Source rows are RGBA, four bytes per pixel.
+			nLineAddress += (size_t)m_nPixelCountX * 4;
 		}
 
 		break;
@@ -2153,7 +2154,8 @@ void CImageData::writeToRawMemoryEx_RGB24bit(uint32_t nStartX, uint32_t nStartY,
 			}
 
 			pLinePtr += nYLineOffset;
-			nLineAddress += (size_t)m_nPixelCountX * 3;
+			// Source rows are RGBA, four bytes per pixel.
+			nLineAddress += (size_t)m_nPixelCountX * 4;
 		}
 
 		break;
@@ -2401,7 +2403,8 @@ void CImageData::readFromRawMemoryEx_GreyScale8bit(uint32_t nStartX, uint32_t nS
 			}
 
 			pLinePtr += nYLineOffset;
-			nLineAddress += (size_t)m_nPixelCountX * 3;
+			// Target rows are RGBA, four bytes per pixel.
+			nLineAddress += (size_t)m_nPixelCountX * 4;
 		}
 
 		break;
@@ -2607,12 +2610,14 @@ void CImageData::readFromRawMemoryEx_RGBA32bit(uint32_t nStartX, uint32_t nStart
 				uint32_t nRed = *pPixelPtr; pPixelPtr++;
 				uint32_t nGreen = *pPixelPtr; pPixelPtr++;
 				uint32_t nBlue = *pPixelPtr; pPixelPtr++;
-				pPixelPtr++; // alpha
+				// The alpha channel of the source is kept: an RGBA target has one, and an image with a
+				// transparent background (for example an overlay) would otherwise become opaque.
+				uint32_t nAlpha = *pPixelPtr; pPixelPtr++;
 
 				m_PixelData->at(nPixelAddress) = nRed; nPixelAddress++;
 				m_PixelData->at(nPixelAddress) = nGreen; nPixelAddress++;
 				m_PixelData->at(nPixelAddress) = nBlue; nPixelAddress++;
-				m_PixelData->at(nPixelAddress) = 255; nPixelAddress++;
+				m_PixelData->at(nPixelAddress) = nAlpha; nPixelAddress++;
 			}
 
 			pLinePtr += nYLineOffset;
