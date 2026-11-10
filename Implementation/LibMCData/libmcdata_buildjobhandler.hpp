@@ -100,6 +100,8 @@ public:
 
     IBuildJobExecutionIterator* ListJobExecutionsChangedSince(const LibMCData_uint64 nIncrementalID) override;
 
+    std::string ListRemovedJobExecutionsSince(const LibMCData_uint64 nIncrementalID) override;
+
     LibMCData_uint64 GetBuildListHeadID() override;
 
     LibMCData_uint64 GetExecutionListHeadID() override;

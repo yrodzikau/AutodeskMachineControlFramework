@@ -441,6 +441,9 @@ typedef void * LibMCEnv_pvoid;
 #define LIBMCENV_ERROR_INVALIDWORKINGFILENAME 10344 /** Invalid working file name. */
 #define LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED 10345 /** ZIP entry extraction has not been finished. */
 #define LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED 10346 /** Compression method of the ZIP entry is not supported. */
+#define LIBMCENV_ERROR_EXECUTIONHASRECORDINGCAPTURE 10347 /** Build execution has a data capture that is still recording. */
+#define LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS 10348 /** A storage stream of the build execution is being downloaded. */
+#define LIBMCENV_ERROR_COULDNOTDELETEEXECUTION 10349 /** Build execution could not be deleted completely. */
 
 /*************************************************************************************************************************
  Error strings for LibMCEnv
@@ -794,6 +797,9 @@ inline const char * LIBMCENV_GETERRORSTRING (LibMCEnvResult nErrorCode) {
     case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "Invalid working file name.";
     case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIP entry extraction has not been finished.";
     case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "Compression method of the ZIP entry is not supported.";
+    case LIBMCENV_ERROR_EXECUTIONHASRECORDINGCAPTURE: return "Build execution has a data capture that is still recording.";
+    case LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS: return "A storage stream of the build execution is being downloaded.";
+    case LIBMCENV_ERROR_COULDNOTDELETEEXECUTION: return "Build execution could not be deleted completely.";
     default: return "unknown error";
   }
 }

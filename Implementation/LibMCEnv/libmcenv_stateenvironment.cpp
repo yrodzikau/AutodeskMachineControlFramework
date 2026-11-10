@@ -1393,6 +1393,53 @@ IWorkingDirectory* CStateEnvironment::CreateWorkingDirectory()
 	return new CWorkingDirectory(pProcessDirectoryStructure, pProcessDirectoryStructure->getRootDirectory(), nullptr, nullptr, pChrono, pLogger);
 }
 
+void CStateEnvironment::DeleteBuildExecution(const std::string& sExecutionUUID, const bool bAbortRecordingCaptures)
+{
+	std::string sNormalizedExecutionUUID = AMCCommon::CUtils::normalizeUUIDString(sExecutionUUID);
+
+	auto pDataModel = m_pSystemState->getDataModelInstance();
+	auto pBuildJobHandler = pDataModel->CreateBuildJobHandler();
+
+	// An execution that does not exist (any more) has nothing to delete.
+	LibMCData::PBuildJobExecution pExecution;
+	try {
+		pExecution = pBuildJobHandler->RetrieveJobExecution(sNormalizedExecutionUUID);
+	}
+	catch (const LibMCData::ELibMCDataException& E) {
+		if (E.getErrorCode() == LIBMCDATA_ERROR_BUILDJOBEXECUTIONNOTFOUND)
+			return;
+		throw;
+	}
+
+	// A stream that a browser is downloading, or is about to download, keeps the execution for now.
+	auto pRegistry = m_pSystemState->getStreamDownloadRegistryInstance();
+	auto pSessionHandler = m_pSystemState->getSessionHandler();
+
+	std::vector<std::string> streamUUIDs;
+	AMCCommon::CUtils::splitString(pExecution->ListStorageStreamUUIDs(), ",", streamUUIDs);
+	for (auto& sStreamUUID : streamUUIDs) {
+		if (sStreamUUID.empty())
+			continue;
+
+		if (pRegistry->hasActiveConnections(sStreamUUID))
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS, "build execution " + sNormalizedExecutionUUID + ": storage stream is being downloaded: " + sStreamUUID);
+		if ((pSessionHandler.get() != nullptr) && pSessionHandler->hasUnclaimedClientActionsOfStream(sStreamUUID))
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS, "build execution " + sNormalizedExecutionUUID + ": storage stream has a pending download: " + sStreamUUID);
+	}
+
+	try {
+		pExecution->DeleteExecution(bAbortRecordingCaptures, m_pSystemState->getGlobalChronoInstance()->getUTCTimeStampInMicrosecondsSince1970());
+	}
+	catch (const LibMCData::ELibMCDataException& E) {
+		// The data model names the streams that are left; the caller gets the errors of this API.
+		if (E.getErrorCode() == LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_EXECUTIONHASRECORDINGCAPTURE, E.what());
+		if (E.getErrorCode() == LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_COULDNOTDELETEEXECUTION, E.what());
+		throw;
+	}
+}
+
 
 IDateTime* CStateEnvironment::GetCurrentDateTime()
 {

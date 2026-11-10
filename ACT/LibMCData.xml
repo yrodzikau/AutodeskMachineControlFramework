@@ -474,6 +474,8 @@
 		<error name="DOWNLOADENTRYNOTFOUND" code="472" description="Download access log entry not found." />
 		<error name="STREAMHASACTIVEWRITER" code="473" description="Storage stream is still being written." />
 		<error name="ZIPSTREAMALREADYFINISHED" code="474" description="ZIP stream has already been finished and can not be discarded." />
+		<error name="BUILDJOBEXECUTIONHASRECORDINGCAPTURE" code="475" description="Build job execution has a data capture that is still recording." />
+		<error name="COULDNOTDELETEBUILDJOBEXECUTION" code="476" description="Build job execution could not be deleted completely." />
 
 	</errors>
 	
@@ -1704,6 +1706,15 @@
 			<param name="DataCaptureInstance" type="class" class="DataCapture" pass="return" description="Data capture manifest instance." />
 		</method>
 
+		<method name="ListStorageStreamUUIDs" description="Returns the UUIDs of all storage streams that belong to this execution: the streams of its data attachments and the stored segments of its data captures, separated by commas.">
+			<param name="StreamUUIDs" type="string" pass="return" description="Stream UUIDs separated by commas. Empty if the execution has no streams." />
+		</method>
+
+		<method name="DeleteExecution" description="Deletes the execution with all its data: data attachments, metadata, data captures and their storage streams with the files on disk. The streams are deleted first, one by one; if one of them can not be deleted, the call fails with the list of them and the execution stays in place. It may be called again then and deletes what is left. When no stream is left, the rows of the execution data are removed and the execution is marked as inactive with a new incremental ID, so that lists can report it as removed. Does nothing for an execution that has been deleted already.">
+			<param name="AbortRecordingCaptures" type="bool" pass="in" description="False fails with BUILDJOBEXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording, and changes nothing. True aborts those captures. The status in the database does not tell if a writer is alive: after a hard stop of the process it stays recording forever. The caller guarantees that no writer of a capture of this execution is alive." />
+			<param name="AbsoluteTimeStamp" type="uint64" pass="in" description="Absolute Time Stamp in Microseconds since 1970, used as the end of the aborted captures." />
+		</method>
+
 	</class>
 
     <!-- The BuildJobExecutionIterator class is not thread safe and MUST ONLY be used in a single thread context... -->
@@ -1962,6 +1973,11 @@
 		<method name="ListJobExecutionsChangedSince" description="Retrieves all active build executions whose incremental ID is larger than the given one, ordered by start timestamp descending. Used by the frontend to fetch only the changed rows of the execution list.">
 			<param name="IncrementalID" type="uint64" pass="in" description="Incremental ID to compare against, usually a head ID returned by GetExecutionListHeadID." />
 			<param name="IteratorInstance" type="class" class="BuildJobExecutionIterator" pass="return" description="Returns the list of execution instances that changed. List may be empty." />
+		</method>
+
+		<method name="ListRemovedJobExecutionsSince" description="Returns the UUIDs of the build executions that were deleted and whose incremental ID is larger than the given one. Used by the frontend to remove their rows from the execution list.">
+			<param name="IncrementalID" type="uint64" pass="in" description="Incremental ID to compare against, usually a head ID returned by GetExecutionListHeadID." />
+			<param name="ExecutionUUIDs" type="string" pass="return" description="Execution UUIDs separated by commas. Empty if no execution was deleted." />
 		</method>
 			
 		<method name="RetrieveDataCapture" description="Retrieves the manifest of a data capture by its uuid. Fails if the capture does not exist.">

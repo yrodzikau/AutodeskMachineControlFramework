@@ -14085,6 +14085,16 @@ typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_OpenZIPStreamPtr) (LibMCEnv_S
 */
 typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_CreateWorkingDirectoryPtr) (LibMCEnv_StateEnvironment pStateEnvironment, LibMCEnv_WorkingDirectory * pWorkingDirectory);
 
+/**
+* Deletes a build execution with all its data: attachments, metadata, data captures and their storage streams. The execution disappears from all lists. Fails with EXECUTIONHASACTIVEDOWNLOADS if one of its streams is being downloaded, with EXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording and AbortRecordingCaptures is false, and with COULDNOTDELETEEXECUTION if a stream could not be deleted. May be called again after a failure: it deletes what is left. Does nothing if the execution does not exist. Only a state machine can delete an execution; BuildExecution objects of the deleted execution must not be used any more.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pExecutionUUID - UUID of the build execution.
+* @param[in] bAbortRecordingCaptures - True aborts the data captures of the execution that still have the status recording. The caller guarantees that no DataCapture object of this execution is alive in this process, for example after a server restart or after it has aborted and released its own capture object.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvStateEnvironment_DeleteBuildExecutionPtr) (LibMCEnv_StateEnvironment pStateEnvironment, const char * pExecutionUUID, bool bAbortRecordingCaptures);
+
 /*************************************************************************************************************************
  Class definition for UIItem
 **************************************************************************************************************************/
@@ -16745,6 +16755,7 @@ typedef struct {
 	PLibMCEnvStateEnvironment_EnforceStreamRetentionPtr m_StateEnvironment_EnforceStreamRetention;
 	PLibMCEnvStateEnvironment_OpenZIPStreamPtr m_StateEnvironment_OpenZIPStream;
 	PLibMCEnvStateEnvironment_CreateWorkingDirectoryPtr m_StateEnvironment_CreateWorkingDirectory;
+	PLibMCEnvStateEnvironment_DeleteBuildExecutionPtr m_StateEnvironment_DeleteBuildExecution;
 	PLibMCEnvUIItem_GetNamePtr m_UIItem_GetName;
 	PLibMCEnvUIItem_GetPathPtr m_UIItem_GetPath;
 	PLibMCEnvUIItem_GetUUIDPtr m_UIItem_GetUUID;

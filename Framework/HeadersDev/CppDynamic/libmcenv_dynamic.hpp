@@ -946,6 +946,9 @@ public:
 			case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "INVALIDWORKINGFILENAME";
 			case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIPENTRYEXTRACTIONNOTFINISHED";
 			case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "ZIPENTRYCOMPRESSIONNOTSUPPORTED";
+			case LIBMCENV_ERROR_EXECUTIONHASRECORDINGCAPTURE: return "EXECUTIONHASRECORDINGCAPTURE";
+			case LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS: return "EXECUTIONHASACTIVEDOWNLOADS";
+			case LIBMCENV_ERROR_COULDNOTDELETEEXECUTION: return "COULDNOTDELETEEXECUTION";
 		}
 		return "UNKNOWN";
 	}
@@ -1299,6 +1302,9 @@ public:
 			case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "Invalid working file name.";
 			case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIP entry extraction has not been finished.";
 			case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "Compression method of the ZIP entry is not supported.";
+			case LIBMCENV_ERROR_EXECUTIONHASRECORDINGCAPTURE: return "Build execution has a data capture that is still recording.";
+			case LIBMCENV_ERROR_EXECUTIONHASACTIVEDOWNLOADS: return "A storage stream of the build execution is being downloaded.";
+			case LIBMCENV_ERROR_COULDNOTDELETEEXECUTION: return "Build execution could not be deleted completely.";
 		}
 		return "unknown error";
 	}
@@ -4641,6 +4647,7 @@ public:
 	inline LibMCEnv_uint32 EnforceStreamRetention(const std::string & sName, const LibMCEnv_uint32 nKeepCount);
 	inline PZIPStreamReader OpenZIPStream(const std::string & sUUID);
 	inline PWorkingDirectory CreateWorkingDirectory();
+	inline void DeleteBuildExecution(const std::string & sExecutionUUID, const bool bAbortRecordingCaptures);
 };
 	
 /*************************************************************************************************************************
@@ -6188,6 +6195,7 @@ public:
 		pWrapperTable->m_StateEnvironment_EnforceStreamRetention = nullptr;
 		pWrapperTable->m_StateEnvironment_OpenZIPStream = nullptr;
 		pWrapperTable->m_StateEnvironment_CreateWorkingDirectory = nullptr;
+		pWrapperTable->m_StateEnvironment_DeleteBuildExecution = nullptr;
 		pWrapperTable->m_UIItem_GetName = nullptr;
 		pWrapperTable->m_UIItem_GetPath = nullptr;
 		pWrapperTable->m_UIItem_GetUUID = nullptr;
@@ -18172,6 +18180,15 @@ public:
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_DeleteBuildExecution = (PLibMCEnvStateEnvironment_DeleteBuildExecutionPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_deletebuildexecution");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_DeleteBuildExecution = (PLibMCEnvStateEnvironment_DeleteBuildExecutionPtr) dlsym(hLibrary, "libmcenv_stateenvironment_deletebuildexecution");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_DeleteBuildExecution == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_UIItem_GetName = (PLibMCEnvUIItem_GetNamePtr) GetProcAddress(hLibrary, "libmcenv_uiitem_getname");
 		#else // _WIN32
 		pWrapperTable->m_UIItem_GetName = (PLibMCEnvUIItem_GetNamePtr) dlsym(hLibrary, "libmcenv_uiitem_getname");
@@ -24558,6 +24575,10 @@ public:
 		
 		eLookupError = (*pLookup)("libmcenv_stateenvironment_createworkingdirectory", (void**)&(pWrapperTable->m_StateEnvironment_CreateWorkingDirectory));
 		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_CreateWorkingDirectory == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_deletebuildexecution", (void**)&(pWrapperTable->m_StateEnvironment_DeleteBuildExecution));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_DeleteBuildExecution == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcenv_uiitem_getname", (void**)&(pWrapperTable->m_UIItem_GetName));
@@ -43245,6 +43266,16 @@ public:
 			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
 		}
 		return std::make_shared<CWorkingDirectory>(m_pWrapper, hWorkingDirectory);
+	}
+	
+	/**
+	* CStateEnvironment::DeleteBuildExecution - Deletes a build execution with all its data: attachments, metadata, data captures and their storage streams. The execution disappears from all lists. Fails with EXECUTIONHASACTIVEDOWNLOADS if one of its streams is being downloaded, with EXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording and AbortRecordingCaptures is false, and with COULDNOTDELETEEXECUTION if a stream could not be deleted. May be called again after a failure: it deletes what is left. Does nothing if the execution does not exist. Only a state machine can delete an execution; BuildExecution objects of the deleted execution must not be used any more.
+	* @param[in] sExecutionUUID - UUID of the build execution.
+	* @param[in] bAbortRecordingCaptures - True aborts the data captures of the execution that still have the status recording. The caller guarantees that no DataCapture object of this execution is alive in this process, for example after a server restart or after it has aborted and released its own capture object.
+	*/
+	void CStateEnvironment::DeleteBuildExecution(const std::string & sExecutionUUID, const bool bAbortRecordingCaptures)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_DeleteBuildExecution(m_pHandle, sExecutionUUID.c_str(), bAbortRecordingCaptures));
 	}
 	
 	/**

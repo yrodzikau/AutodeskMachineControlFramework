@@ -100,6 +100,19 @@ public:
 	// Returns false and changes nothing if the file could not be deleted, for example because it is open.
 	static bool purgeSegment(AMCData::PSQLHandler pSQLHandler, AMCData::PStorageState pStorageState, const std::string& sSegmentUUID, const std::string& sStreamUUID);
 
+	// Deletion of a build execution (CBuildJobExecution::DeleteExecution). The status recording of a capture
+	// does not tell if a writer is alive: after a hard stop of the process it stays in the database forever.
+	static bool executionHasRecordingCapture(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID);
+
+	// Sets the captures of the execution that are still recording to aborted, like Abort does as its first step.
+	static void abortRecordingCapturesOfExecution(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID, uint64_t nAbsoluteTimeStamp);
+
+	// Lists the stored segments of all captures of the execution as pairs of segment UUID and stream UUID.
+	static void listStoredSegmentsOfExecution(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID, std::vector<std::pair<std::string, std::string>>& segments);
+
+	// Removes the manifests of all captures of the execution: segments, columns and the captures themselves.
+	static void deleteManifestsOfExecution(AMCData::CSQLTransaction* pTransaction, const std::string& sExecutionUUID);
+
 	// Returns the size of all segments of all captures that are stored on disk.
 	static uint64_t getTotalStoredSize(AMCData::PSQLHandler pSQLHandler);
 

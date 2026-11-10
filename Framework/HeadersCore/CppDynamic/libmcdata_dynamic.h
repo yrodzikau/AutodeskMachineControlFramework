@@ -2276,6 +2276,27 @@ typedef LibMCDataResult (*PLibMCDataBuildJobExecution_GetDataCaptureCountPtr) (L
 */
 typedef LibMCDataResult (*PLibMCDataBuildJobExecution_RetrieveDataCaptureByIndexPtr) (LibMCData_BuildJobExecution pBuildJobExecution, LibMCData_uint32 nIndex, LibMCData_DataCapture * pDataCaptureInstance);
 
+/**
+* Returns the UUIDs of all storage streams that belong to this execution: the streams of its data attachments and the stored segments of its data captures, separated by commas.
+*
+* @param[in] pBuildJobExecution - BuildJobExecution instance.
+* @param[in] nStreamUUIDsBufferSize - size of the buffer (including trailing 0)
+* @param[out] pStreamUUIDsNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pStreamUUIDsBuffer -  buffer of Stream UUIDs separated by commas. Empty if the execution has no streams., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCDataResult (*PLibMCDataBuildJobExecution_ListStorageStreamUUIDsPtr) (LibMCData_BuildJobExecution pBuildJobExecution, const LibMCData_uint32 nStreamUUIDsBufferSize, LibMCData_uint32* pStreamUUIDsNeededChars, char * pStreamUUIDsBuffer);
+
+/**
+* Deletes the execution with all its data: data attachments, metadata, data captures and their storage streams with the files on disk. The streams are deleted first, one by one; if one of them can not be deleted, the call fails with the list of them and the execution stays in place. It may be called again then and deletes what is left. When no stream is left, the rows of the execution data are removed and the execution is marked as inactive with a new incremental ID, so that lists can report it as removed. Does nothing for an execution that has been deleted already.
+*
+* @param[in] pBuildJobExecution - BuildJobExecution instance.
+* @param[in] bAbortRecordingCaptures - False fails with BUILDJOBEXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording, and changes nothing. True aborts those captures. The status in the database does not tell if a writer is alive: after a hard stop of the process it stays recording forever. The caller guarantees that no writer of a capture of this execution is alive.
+* @param[in] nAbsoluteTimeStamp - Absolute Time Stamp in Microseconds since 1970, used as the end of the aborted captures.
+* @return error code or 0 (success)
+*/
+typedef LibMCDataResult (*PLibMCDataBuildJobExecution_DeleteExecutionPtr) (LibMCData_BuildJobExecution pBuildJobExecution, bool bAbortRecordingCaptures, LibMCData_uint64 nAbsoluteTimeStamp);
+
 /*************************************************************************************************************************
  Class definition for BuildJobExecutionIterator
 **************************************************************************************************************************/
@@ -2816,6 +2837,18 @@ typedef LibMCDataResult (*PLibMCDataBuildJobHandler_ListJobsChangedSincePtr) (Li
 * @return error code or 0 (success)
 */
 typedef LibMCDataResult (*PLibMCDataBuildJobHandler_ListJobExecutionsChangedSincePtr) (LibMCData_BuildJobHandler pBuildJobHandler, LibMCData_uint64 nIncrementalID, LibMCData_BuildJobExecutionIterator * pIteratorInstance);
+
+/**
+* Returns the UUIDs of the build executions that were deleted and whose incremental ID is larger than the given one. Used by the frontend to remove their rows from the execution list.
+*
+* @param[in] pBuildJobHandler - BuildJobHandler instance.
+* @param[in] nIncrementalID - Incremental ID to compare against, usually a head ID returned by GetExecutionListHeadID.
+* @param[in] nExecutionUUIDsBufferSize - size of the buffer (including trailing 0)
+* @param[out] pExecutionUUIDsNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pExecutionUUIDsBuffer -  buffer of Execution UUIDs separated by commas. Empty if no execution was deleted., may be NULL
+* @return error code or 0 (success)
+*/
+typedef LibMCDataResult (*PLibMCDataBuildJobHandler_ListRemovedJobExecutionsSincePtr) (LibMCData_BuildJobHandler pBuildJobHandler, LibMCData_uint64 nIncrementalID, const LibMCData_uint32 nExecutionUUIDsBufferSize, LibMCData_uint32* pExecutionUUIDsNeededChars, char * pExecutionUUIDsBuffer);
 
 /**
 * Retrieves the manifest of a data capture by its uuid. Fails if the capture does not exist.
@@ -4595,6 +4628,8 @@ typedef struct {
 	PLibMCDataBuildJobExecution_RetrieveDataCapturePtr m_BuildJobExecution_RetrieveDataCapture;
 	PLibMCDataBuildJobExecution_GetDataCaptureCountPtr m_BuildJobExecution_GetDataCaptureCount;
 	PLibMCDataBuildJobExecution_RetrieveDataCaptureByIndexPtr m_BuildJobExecution_RetrieveDataCaptureByIndex;
+	PLibMCDataBuildJobExecution_ListStorageStreamUUIDsPtr m_BuildJobExecution_ListStorageStreamUUIDs;
+	PLibMCDataBuildJobExecution_DeleteExecutionPtr m_BuildJobExecution_DeleteExecution;
 	PLibMCDataBuildJobExecutionIterator_GetCurrentJobExecutionPtr m_BuildJobExecutionIterator_GetCurrentJobExecution;
 	PLibMCDataBuildJob_GetUUIDPtr m_BuildJob_GetUUID;
 	PLibMCDataBuildJob_GetNamePtr m_BuildJob_GetName;
@@ -4647,6 +4682,7 @@ typedef struct {
 	PLibMCDataBuildJobHandler_GetExecutionListHeadIDPtr m_BuildJobHandler_GetExecutionListHeadID;
 	PLibMCDataBuildJobHandler_ListJobsChangedSincePtr m_BuildJobHandler_ListJobsChangedSince;
 	PLibMCDataBuildJobHandler_ListJobExecutionsChangedSincePtr m_BuildJobHandler_ListJobExecutionsChangedSince;
+	PLibMCDataBuildJobHandler_ListRemovedJobExecutionsSincePtr m_BuildJobHandler_ListRemovedJobExecutionsSince;
 	PLibMCDataBuildJobHandler_RetrieveDataCapturePtr m_BuildJobHandler_RetrieveDataCapture;
 	PLibMCDataUserList_CountPtr m_UserList_Count;
 	PLibMCDataUserList_GetUserPropertiesPtr m_UserList_GetUserProperties;

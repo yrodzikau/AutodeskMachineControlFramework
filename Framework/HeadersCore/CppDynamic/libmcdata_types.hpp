@@ -499,6 +499,8 @@ typedef void * LibMCData_pvoid;
 #define LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND 472 /** Download access log entry not found. */
 #define LIBMCDATA_ERROR_STREAMHASACTIVEWRITER 473 /** Storage stream is still being written. */
 #define LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED 474 /** ZIP stream has already been finished and can not be discarded. */
+#define LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE 475 /** Build job execution has a data capture that is still recording. */
+#define LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION 476 /** Build job execution could not be deleted completely. */
 
 /*************************************************************************************************************************
  Error strings for LibMCData
@@ -910,6 +912,8 @@ inline const char * LIBMCDATA_GETERRORSTRING (LibMCDataResult nErrorCode) {
     case LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND: return "Download access log entry not found.";
     case LIBMCDATA_ERROR_STREAMHASACTIVEWRITER: return "Storage stream is still being written.";
     case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished and can not be discarded.";
+    case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "Build job execution has a data capture that is still recording.";
+    case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "Build job execution could not be deleted completely.";
     default: return "unknown error";
   }
 }

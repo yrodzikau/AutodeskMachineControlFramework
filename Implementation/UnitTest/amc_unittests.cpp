@@ -93,6 +93,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_libmcdata_machineconfig.hpp"
 #include "amc_unittests_libmcdata_customdata.hpp"
 #include "amc_unittests_libmcdata_datacapture.hpp"
+#include "amc_unittests_libmcdata_executiondeletion.hpp"
 
 
 using namespace AMCUnitTest;
@@ -164,4 +165,5 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_MachineConfig>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_CustomData>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_DataCapture>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_ExecutionDeletion>());
 }

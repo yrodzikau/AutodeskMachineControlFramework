@@ -784,3 +784,185 @@ IDataCapture* CBuildJobExecution::RetrieveDataCaptureByIndex(const LibMCData_uin
 {
 	return CDataCapture::makeFromExecutionIndex(m_pSQLHandler, m_pStorageState, m_sExecutionUUID, nIndex);
 }
+
+std::string CBuildJobExecution::ListStorageStreamUUIDs()
+{
+	std::string sResult;
+
+	{
+		auto pStatement = m_pSQLHandler->prepareStatement("SELECT storagestreamuuid FROM buildjobexecutiondata WHERE executionuuid=?");
+		pStatement->setString(1, m_sExecutionUUID);
+		while (pStatement->nextRow()) {
+			if (!sResult.empty())
+				sResult += ",";
+			sResult += AMCCommon::CUtils::normalizeUUIDString(pStatement->getColumnString(1));
+		}
+	}
+
+	std::vector<std::pair<std::string, std::string>> segments;
+	CDataCapture::listStoredSegmentsOfExecution(m_pSQLHandler, m_sExecutionUUID, segments);
+	for (auto& segment : segments) {
+		if (!sResult.empty())
+			sResult += ",";
+		sResult += AMCCommon::CUtils::normalizeUUIDString(segment.second);
+	}
+
+	return sResult;
+}
+
+bool CBuildJobExecution::deleteExecutionDataEx(const std::string& sDataUUID, const std::string& sStreamUUID, std::string& sFailure)
+{
+	std::string sNormalizedStreamUUID = AMCCommon::CUtils::normalizeUUIDString(sStreamUUID);
+
+	// A stream that something else refers to as well stays; only the attachment of this execution goes.
+	bool bStreamIsShared = false;
+	{
+		auto pStatement = m_pSQLHandler->prepareStatement("SELECT uuid FROM buildjobexecutiondata WHERE storagestreamuuid=? AND uuid<>?");
+		pStatement->setString(1, sNormalizedStreamUUID);
+		pStatement->setString(2, sDataUUID);
+		bStreamIsShared = pStatement->nextRow();
+	}
+	if (!bStreamIsShared) {
+		auto pStatement = m_pSQLHandler->prepareStatement("SELECT uuid FROM buildjobdata WHERE storagestreamuuid=?");
+		pStatement->setString(1, sNormalizedStreamUUID);
+		bStreamIsShared = pStatement->nextRow();
+	}
+
+	if (!bStreamIsShared) {
+		if (m_pStorageState->hasPartialWriter(sNormalizedStreamUUID)) {
+			sFailure = "storage stream " + sNormalizedStreamUUID + " is still being written";
+			return false;
+		}
+
+		// The file goes first: a file that is still on disk must keep its reference in the database, so
+		// that the next call finds it again.
+		std::string sPath = m_pStorageState->getStreamPath(sNormalizedStreamUUID);
+		if (AMCCommon::CUtils::fileOrPathExistsOnDisk(sPath)) {
+			AMCCommon::CUtils::deleteFileFromDisk(sPath, false);
+			if (AMCCommon::CUtils::fileOrPathExistsOnDisk(sPath)) {
+				sFailure = "storage stream " + sNormalizedStreamUUID + " is in use";
+				return false;
+			}
+		}
+	}
+
+	auto pTransaction = m_pSQLHandler->beginTransaction();
+
+	auto pDataStatement = pTransaction->prepareStatement("DELETE FROM buildjobexecutiondata WHERE uuid=?");
+	pDataStatement->setString(1, sDataUUID);
+	pDataStatement->execute();
+	pDataStatement = nullptr;
+
+	if (!bStreamIsShared) {
+		auto pLinkStatement = pTransaction->prepareStatement("DELETE FROM journal_tempstreams WHERE streamuuid=?");
+		pLinkStatement->setString(1, sNormalizedStreamUUID);
+		pLinkStatement->execute();
+		pLinkStatement = nullptr;
+
+		auto pTicketStatement = pTransaction->prepareStatement("UPDATE storage_downloadtickets SET revoked=1 WHERE streamuuid=?");
+		pTicketStatement->setString(1, sNormalizedStreamUUID);
+		pTicketStatement->execute();
+		pTicketStatement = nullptr;
+
+		auto pStreamStatement = pTransaction->prepareStatement("DELETE FROM storage_streams WHERE uuid=?");
+		pStreamStatement->setString(1, sNormalizedStreamUUID);
+		pStreamStatement->execute();
+		pStreamStatement = nullptr;
+	}
+
+	pTransaction->commit();
+	return true;
+}
+
+void CBuildJobExecution::DeleteExecution(const bool bAbortRecordingCaptures, const LibMCData_uint64 nAbsoluteTimeStamp)
+{
+	if (!AMCCommon::CChrono::timeStampIsWithinAMillionYears(nAbsoluteTimeStamp))
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDTIMESTAMP, "Invalid build execution timestamp");
+
+	// An execution that was deleted before has nothing left to delete.
+	{
+		auto pStatement = m_pSQLHandler->prepareStatement("SELECT active FROM buildjobexecutions WHERE uuid=?");
+		pStatement->setString(1, m_sExecutionUUID);
+		if (!pStatement->nextRow())
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_BUILDJOBEXECUTIONNOTFOUND, "build job execution not found: " + m_sExecutionUUID);
+		if (pStatement->getColumnInt(1) == 0)
+			return;
+	}
+
+	// The status recording in the database does not tell if a writer is alive, only the caller knows that.
+	if (CDataCapture::executionHasRecordingCapture(m_pSQLHandler, m_sExecutionUUID)) {
+		if (!bAbortRecordingCaptures)
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE, "build job execution has a data capture that is still recording: " + m_sExecutionUUID);
+
+		CDataCapture::abortRecordingCapturesOfExecution(m_pSQLHandler, m_sExecutionUUID, nAbsoluteTimeStamp);
+	}
+
+	// The streams go first, one by one. A stream that can not be deleted (its file is open for a download)
+	// does not stop the others. As long as one is left the execution stays in place, so that a later call
+	// finds it and deletes the rest; marked as deleted first, its files would be orphans.
+	std::vector<std::string> failures;
+
+	std::vector<std::pair<std::string, std::string>> segments;
+	CDataCapture::listStoredSegmentsOfExecution(m_pSQLHandler, m_sExecutionUUID, segments);
+	for (auto& segment : segments) {
+		try {
+			if (!CDataCapture::purgeSegment(m_pSQLHandler, m_pStorageState, segment.first, segment.second))
+				failures.push_back("data capture segment stream " + AMCCommon::CUtils::normalizeUUIDString(segment.second) + " is in use");
+		}
+		catch (const std::exception& E) {
+			failures.push_back("data capture segment stream " + segment.second + ": " + E.what());
+		}
+	}
+
+	std::vector<std::pair<std::string, std::string>> attachments;
+	{
+		auto pStatement = m_pSQLHandler->prepareStatement("SELECT uuid, storagestreamuuid FROM buildjobexecutiondata WHERE executionuuid=?");
+		pStatement->setString(1, m_sExecutionUUID);
+		while (pStatement->nextRow())
+			attachments.push_back(std::make_pair(pStatement->getColumnString(1), pStatement->getColumnString(2)));
+	}
+
+	for (auto& attachment : attachments) {
+		try {
+			std::string sFailure;
+			if (!deleteExecutionDataEx(attachment.first, attachment.second, sFailure))
+				failures.push_back(sFailure);
+		}
+		catch (const std::exception& E) {
+			failures.push_back("storage stream " + attachment.second + ": " + E.what());
+		}
+	}
+
+	if (!failures.empty()) {
+		std::string sMessage = "build job execution " + m_sExecutionUUID + ": " + std::to_string(failures.size()) + " of its streams could not be deleted: ";
+		for (size_t nIndex = 0; nIndex < failures.size(); nIndex++)
+			sMessage += ((nIndex > 0) ? "; " : "") + failures[nIndex];
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION, sMessage);
+	}
+
+	// No stream is left: the rows of the execution go, and the execution is marked as deleted with a new
+	// incremental ID, so that the execution list reports it as removed (ListRemovedJobExecutionsSince).
+	auto pTransaction = m_pSQLHandler->beginTransaction();
+
+	CDataCapture::deleteManifestsOfExecution(pTransaction.get(), m_sExecutionUUID);
+
+	auto pDataStatement = pTransaction->prepareStatement("DELETE FROM buildjobexecutiondata WHERE executionuuid=?");
+	pDataStatement->setString(1, m_sExecutionUUID);
+	pDataStatement->execute();
+	pDataStatement = nullptr;
+
+	auto pMetaDataStatement = pTransaction->prepareStatement("DELETE FROM buildjobexecutionmetadata WHERE executionuuid=?");
+	pMetaDataStatement->setString(1, m_sExecutionUUID);
+	pMetaDataStatement->execute();
+	pMetaDataStatement = nullptr;
+
+	auto pExecutionStatement = pTransaction->prepareStatement("UPDATE buildjobexecutions SET active=0, incremental_id = (SELECT COALESCE(MAX(incremental_id), 0) + 1 FROM buildjobexecutions) WHERE uuid=?");
+	pExecutionStatement->setString(1, m_sExecutionUUID);
+	pExecutionStatement->execute();
+	pExecutionStatement = nullptr;
+
+	// The build list shows the number of executions of a build.
+	CBuildJob::bumpIncrementalID(pTransaction.get(), m_sJobUUID);
+
+	pTransaction->commit();
+}

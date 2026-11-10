@@ -311,6 +311,65 @@ bool CDataCapture::purgeSegment(AMCData::PSQLHandler pSQLHandler, AMCData::PStor
 	return true;
 }
 
+bool CDataCapture::executionHasRecordingCapture(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID)
+{
+	if (pSQLHandler.get() == nullptr)
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDPARAM);
+
+	auto pStatement = pSQLHandler->prepareStatement("SELECT uuid FROM datacaptures WHERE executionuuid=? AND status=?");
+	pStatement->setString(1, AMCCommon::CUtils::normalizeUUIDString(sExecutionUUID));
+	pStatement->setString(2, convertStatusToString(LibMCData::eDataCaptureStatus::Recording));
+	return pStatement->nextRow();
+}
+
+void CDataCapture::abortRecordingCapturesOfExecution(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID, uint64_t nAbsoluteTimeStamp)
+{
+	if (pSQLHandler.get() == nullptr)
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDPARAM);
+
+	auto pStatement = pSQLHandler->prepareStatement("UPDATE datacaptures SET status=?, endtimestamp=? WHERE executionuuid=? AND status=?");
+	pStatement->setString(1, convertStatusToString(LibMCData::eDataCaptureStatus::Aborted));
+	pStatement->setString(2, AMCCommon::CChrono::convertToISO8601TimeUTC(nAbsoluteTimeStamp));
+	pStatement->setString(3, AMCCommon::CUtils::normalizeUUIDString(sExecutionUUID));
+	pStatement->setString(4, convertStatusToString(LibMCData::eDataCaptureStatus::Recording));
+	pStatement->execute();
+}
+
+void CDataCapture::listStoredSegmentsOfExecution(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID, std::vector<std::pair<std::string, std::string>>& segments)
+{
+	if (pSQLHandler.get() == nullptr)
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDPARAM);
+
+	auto pStatement = pSQLHandler->prepareStatement("SELECT datacapture_segments.uuid, datacapture_segments.storagestreamuuid FROM datacapture_segments INNER JOIN datacaptures ON datacaptures.uuid=datacapture_segments.captureuuid WHERE datacaptures.executionuuid=? AND datacapture_segments.status=? ORDER BY datacapture_segments.segmentindex ASC");
+	pStatement->setString(1, AMCCommon::CUtils::normalizeUUIDString(sExecutionUUID));
+	pStatement->setString(2, DATACAPTURE_SEGMENTSTATUS_STORED);
+	while (pStatement->nextRow())
+		segments.push_back(std::make_pair(pStatement->getColumnString(1), pStatement->getColumnString(2)));
+}
+
+void CDataCapture::deleteManifestsOfExecution(AMCData::CSQLTransaction* pTransaction, const std::string& sExecutionUUID)
+{
+	if (pTransaction == nullptr)
+		throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDPARAM);
+
+	std::string sNormalizedExecutionUUID = AMCCommon::CUtils::normalizeUUIDString(sExecutionUUID);
+
+	auto pSegmentStatement = pTransaction->prepareStatement("DELETE FROM datacapture_segments WHERE captureuuid IN (SELECT uuid FROM datacaptures WHERE executionuuid=?)");
+	pSegmentStatement->setString(1, sNormalizedExecutionUUID);
+	pSegmentStatement->execute();
+	pSegmentStatement = nullptr;
+
+	auto pColumnStatement = pTransaction->prepareStatement("DELETE FROM datacapture_columns WHERE captureuuid IN (SELECT uuid FROM datacaptures WHERE executionuuid=?)");
+	pColumnStatement->setString(1, sNormalizedExecutionUUID);
+	pColumnStatement->execute();
+	pColumnStatement = nullptr;
+
+	auto pCaptureStatement = pTransaction->prepareStatement("DELETE FROM datacaptures WHERE executionuuid=?");
+	pCaptureStatement->setString(1, sNormalizedExecutionUUID);
+	pCaptureStatement->execute();
+	pCaptureStatement = nullptr;
+}
+
 uint64_t CDataCapture::getTotalStoredSize(AMCData::PSQLHandler pSQLHandler)
 {
 	if (pSQLHandler.get() == nullptr)

@@ -42679,6 +42679,33 @@ LibMCEnvResult libmcenv_stateenvironment_createworkingdirectory(LibMCEnv_StateEn
 	}
 }
 
+LibMCEnvResult libmcenv_stateenvironment_deletebuildexecution(LibMCEnv_StateEnvironment pStateEnvironment, const char * pExecutionUUID, bool bAbortRecordingCaptures)
+{
+	IBase* pIBaseClass = (IBase *)pStateEnvironment;
+
+	try {
+		if (pExecutionUUID == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sExecutionUUID(pExecutionUUID);
+		IStateEnvironment* pIStateEnvironment = dynamic_cast<IStateEnvironment*>(pIBaseClass);
+		if (!pIStateEnvironment)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		pIStateEnvironment->DeleteBuildExecution(sExecutionUUID, bAbortRecordingCaptures);
+
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 
 /*************************************************************************************************************************
  Class implementation for UIItem
@@ -49412,6 +49439,8 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_stateenvironment_openzipstream;
 	if (sProcName == "libmcenv_stateenvironment_createworkingdirectory") 
 		*ppProcAddress = (void*) &libmcenv_stateenvironment_createworkingdirectory;
+	if (sProcName == "libmcenv_stateenvironment_deletebuildexecution") 
+		*ppProcAddress = (void*) &libmcenv_stateenvironment_deletebuildexecution;
 	if (sProcName == "libmcenv_uiitem_getname") 
 		*ppProcAddress = (void*) &libmcenv_uiitem_getname;
 	if (sProcName == "libmcenv_uiitem_getpath") 

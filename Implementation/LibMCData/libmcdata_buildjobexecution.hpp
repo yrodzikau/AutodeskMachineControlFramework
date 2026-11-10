@@ -107,6 +107,11 @@ private:
 
 	bool isFromCurrentJournal();
 
+	// Deletes one data attachment of the execution with its storage stream. Returns false and the reason if
+	// the stream can not be deleted now; nothing is changed then.
+	bool deleteExecutionDataEx(const std::string& sDataUUID, const std::string& sStreamUUID, std::string& sFailure);
+
+
 public:
 
 	static void bumpIncrementalID(AMCData::PSQLHandler pSQLHandler, const std::string& sExecutionUUID);
@@ -206,6 +211,10 @@ public:
 	LibMCData_uint32 GetDataCaptureCount() override;
 
 	IDataCapture* RetrieveDataCaptureByIndex(const LibMCData_uint32 nIndex) override;
+
+	std::string ListStorageStreamUUIDs() override;
+
+	void DeleteExecution(const bool bAbortRecordingCaptures, const LibMCData_uint64 nAbsoluteTimeStamp) override;
 
 	static std::string convertBuildJobExecutionStatusToString(const LibMCData::eBuildJobExecutionStatus eStatus);
 	static LibMCData::eBuildJobExecutionStatus convertStringToBuildJobExecutionStatus(const std::string& sValue);

@@ -10753,6 +10753,13 @@ public:
 	*/
 	virtual IWorkingDirectory * CreateWorkingDirectory() = 0;
 
+	/**
+	* IStateEnvironment::DeleteBuildExecution - Deletes a build execution with all its data: attachments, metadata, data captures and their storage streams. The execution disappears from all lists. Fails with EXECUTIONHASACTIVEDOWNLOADS if one of its streams is being downloaded, with EXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording and AbortRecordingCaptures is false, and with COULDNOTDELETEEXECUTION if a stream could not be deleted. May be called again after a failure: it deletes what is left. Does nothing if the execution does not exist. Only a state machine can delete an execution; BuildExecution objects of the deleted execution must not be used any more.
+	* @param[in] sExecutionUUID - UUID of the build execution.
+	* @param[in] bAbortRecordingCaptures - True aborts the data captures of the execution that still have the status recording. The caller guarantees that no DataCapture object of this execution is alive in this process, for example after a server restart or after it has aborted and released its own capture object.
+	*/
+	virtual void DeleteBuildExecution(const std::string & sExecutionUUID, const bool bAbortRecordingCaptures) = 0;
+
 };
 
 typedef IBaseSharedPtr<IStateEnvironment> PIStateEnvironment;

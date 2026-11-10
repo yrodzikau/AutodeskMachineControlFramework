@@ -175,7 +175,10 @@ export default class AMCApplicationModule_ExecutionList extends Common.AMCApplic
 				});
 			}
 
-			return { headID: parseInt(data.executionlistheadid), delta: (data.delta === true), rows: rows, removedKeys: [] };
+			// Executions that were deleted since the last head (a cancelled or failed recordings import).
+			let removedKeys = Array.isArray(data.removed) ? data.removed : [];
+
+			return { headID: parseInt(data.executionlistheadid), delta: (data.delta === true), rows: rows, removedKeys: removedKeys };
 		}, error => {
 			this.loaded = true;
 			throw error;

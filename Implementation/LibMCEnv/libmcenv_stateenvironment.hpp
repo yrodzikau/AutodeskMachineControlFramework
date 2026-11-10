@@ -291,6 +291,8 @@ public:
 
 	IWorkingDirectory* CreateWorkingDirectory() override;
 
+	void DeleteBuildExecution(const std::string& sExecutionUUID, const bool bAbortRecordingCaptures) override;
+
 	IDateTime* GetCurrentDateTime() override;
 
 	IDateTime* GetCustomDateTime(const LibMCEnv_uint32 nYear, const LibMCEnv_uint32 nMonth, const LibMCEnv_uint32 nDay, const LibMCEnv_uint32 nHour, const LibMCEnv_uint32 nMinute, const LibMCEnv_uint32 nSecond, const LibMCEnv_uint32 nMicrosecond)  override;

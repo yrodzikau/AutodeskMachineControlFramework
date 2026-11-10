@@ -69,8 +69,10 @@ void CAPIHandler_Executions::handleListExecutionsRequest(CJSONWriter& writer, CA
 	writer.addInteger(AMC_API_KEY_EXECUTIONS_HEADID, (int64_t) pBuildJobHandler->GetExecutionListHeadID());
 
 	uint64_t nSinceHeadID = 0;
+	bool bIsDelta = false;
 	LibMCData::PBuildJobExecutionIterator pExecutionIterator;
 	if (pFormFields.getOptionalUint64RequestParameter(AMC_API_KEY_LIST_SINCE, nSinceHeadID)) {
+		bIsDelta = true;
 		writer.addBoolean(AMC_API_KEY_LIST_DELTA, true);
 		pExecutionIterator = pBuildJobHandler->ListJobExecutionsChangedSince(nSinceHeadID);
 	}
@@ -90,6 +92,20 @@ void CAPIHandler_Executions::handleListExecutionsRequest(CJSONWriter& writer, CA
 	}
 
 	writer.addArray("executions", executionArray);
+
+	// A delta names the executions that were deleted since the given head, so that the list drops their rows.
+	if (bIsDelta) {
+		CJSONWriterArray removedArray(writer);
+
+		std::vector<std::string> removedUUIDs;
+		AMCCommon::CUtils::splitString(pBuildJobHandler->ListRemovedJobExecutionsSince(nSinceHeadID), ",", removedUUIDs);
+		for (auto& sRemovedUUID : removedUUIDs) {
+			if (!sRemovedUUID.empty())
+				removedArray.addString(sRemovedUUID);
+		}
+
+		writer.addArray(AMC_API_KEY_LIST_REMOVED, removedArray);
+	}
 }
 
 PAPIResponse CAPIHandler_Executions::handleRequest(const std::string& sURI, const eAPIRequestType requestType, CAPIFormFields& pFormFields, const uint8_t* pBodyData, const size_t nBodyDataSize, PAPIAuth pAuth)

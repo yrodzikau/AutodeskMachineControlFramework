@@ -384,6 +384,9 @@
 		<error name="INVALIDWORKINGFILENAME" code="10344" description="Invalid working file name." />
 		<error name="ZIPENTRYEXTRACTIONNOTFINISHED" code="10345" description="ZIP entry extraction has not been finished." />
 		<error name="ZIPENTRYCOMPRESSIONNOTSUPPORTED" code="10346" description="Compression method of the ZIP entry is not supported." />
+		<error name="EXECUTIONHASRECORDINGCAPTURE" code="10347" description="Build execution has a data capture that is still recording." />
+		<error name="EXECUTIONHASACTIVEDOWNLOADS" code="10348" description="A storage stream of the build execution is being downloaded." />
+		<error name="COULDNOTDELETEEXECUTION" code="10349" description="Build execution could not be deleted completely." />
 		
 		
 	</errors>
@@ -7471,6 +7474,11 @@
 
 		<method name="CreateWorkingDirectory" description="Creates a temporary working directory below the temp base path of the server, like the working directories of the drivers. Driver and machine resource data can not be stored in it.">
 			<param name="WorkingDirectory" type="class" class="WorkingDirectory" pass="return" description="Working directory instance." />
+		</method>
+
+		<method name="DeleteBuildExecution" description="Deletes a build execution with all its data: attachments, metadata, data captures and their storage streams. The execution disappears from all lists. Fails with EXECUTIONHASACTIVEDOWNLOADS if one of its streams is being downloaded, with EXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording and AbortRecordingCaptures is false, and with COULDNOTDELETEEXECUTION if a stream could not be deleted. May be called again after a failure: it deletes what is left. Does nothing if the execution does not exist. Only a state machine can delete an execution; BuildExecution objects of the deleted execution must not be used any more.">
+			<param name="ExecutionUUID" type="string" pass="in" description="UUID of the build execution." />
+			<param name="AbortRecordingCaptures" type="bool" pass="in" description="True aborts the data captures of the execution that still have the status recording. The caller guarantees that no DataCapture object of this execution is alive in this process, for example after a server restart or after it has aborted and released its own capture object." />
 		</method>
 
 	</class>

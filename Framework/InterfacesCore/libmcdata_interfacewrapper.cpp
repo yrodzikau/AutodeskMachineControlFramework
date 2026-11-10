@@ -7137,6 +7137,78 @@ LibMCDataResult libmcdata_buildjobexecution_retrievedatacapturebyindex(LibMCData
 	}
 }
 
+LibMCDataResult libmcdata_buildjobexecution_liststoragestreamuuids(LibMCData_BuildJobExecution pBuildJobExecution, const LibMCData_uint32 nStreamUUIDsBufferSize, LibMCData_uint32* pStreamUUIDsNeededChars, char * pStreamUUIDsBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pBuildJobExecution;
+
+	try {
+		if ( (!pStreamUUIDsBuffer) && !(pStreamUUIDsNeededChars) )
+			throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_INVALIDPARAM);
+		std::string sStreamUUIDs("");
+		IBuildJobExecution* pIBuildJobExecution = dynamic_cast<IBuildJobExecution*>(pIBaseClass);
+		if (!pIBuildJobExecution)
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pStreamUUIDsBuffer == nullptr);
+		if (isCacheCall) {
+			sStreamUUIDs = pIBuildJobExecution->ListStorageStreamUUIDs();
+
+			pIBuildJobExecution->_setCache (new ParameterCache_1<std::string> (sStreamUUIDs));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIBuildJobExecution->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+			cache->retrieveData (sStreamUUIDs);
+			pIBuildJobExecution->_setCache (nullptr);
+		}
+		
+		if (pStreamUUIDsNeededChars)
+			*pStreamUUIDsNeededChars = (LibMCData_uint32) (sStreamUUIDs.size()+1);
+		if (pStreamUUIDsBuffer) {
+			if (sStreamUUIDs.size() >= nStreamUUIDsBufferSize)
+				throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_BUFFERTOOSMALL);
+			for (size_t iStreamUUIDs = 0; iStreamUUIDs < sStreamUUIDs.size(); iStreamUUIDs++)
+				pStreamUUIDsBuffer[iStreamUUIDs] = sStreamUUIDs[iStreamUUIDs];
+			pStreamUUIDsBuffer[sStreamUUIDs.size()] = 0;
+		}
+		return LIBMCDATA_SUCCESS;
+	}
+	catch (ELibMCDataInterfaceException & Exception) {
+		return handleLibMCDataException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDataResult libmcdata_buildjobexecution_deleteexecution(LibMCData_BuildJobExecution pBuildJobExecution, bool bAbortRecordingCaptures, LibMCData_uint64 nAbsoluteTimeStamp)
+{
+	IBase* pIBaseClass = (IBase *)pBuildJobExecution;
+
+	try {
+		IBuildJobExecution* pIBuildJobExecution = dynamic_cast<IBuildJobExecution*>(pIBaseClass);
+		if (!pIBuildJobExecution)
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+		
+		pIBuildJobExecution->DeleteExecution(bAbortRecordingCaptures, nAbsoluteTimeStamp);
+
+		return LIBMCDATA_SUCCESS;
+	}
+	catch (ELibMCDataInterfaceException & Exception) {
+		return handleLibMCDataException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 
 /*************************************************************************************************************************
  Class implementation for BuildJobExecutionIterator
@@ -8851,6 +8923,54 @@ LibMCDataResult libmcdata_buildjobhandler_listjobexecutionschangedsince(LibMCDat
 		pBaseIteratorInstance = pIBuildJobHandler->ListJobExecutionsChangedSince(nIncrementalID);
 
 		*pIteratorInstance = (IBase*)(pBaseIteratorInstance);
+		return LIBMCDATA_SUCCESS;
+	}
+	catch (ELibMCDataInterfaceException & Exception) {
+		return handleLibMCDataException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
+LibMCDataResult libmcdata_buildjobhandler_listremovedjobexecutionssince(LibMCData_BuildJobHandler pBuildJobHandler, LibMCData_uint64 nIncrementalID, const LibMCData_uint32 nExecutionUUIDsBufferSize, LibMCData_uint32* pExecutionUUIDsNeededChars, char * pExecutionUUIDsBuffer)
+{
+	IBase* pIBaseClass = (IBase *)pBuildJobHandler;
+
+	try {
+		if ( (!pExecutionUUIDsBuffer) && !(pExecutionUUIDsNeededChars) )
+			throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_INVALIDPARAM);
+		std::string sExecutionUUIDs("");
+		IBuildJobHandler* pIBuildJobHandler = dynamic_cast<IBuildJobHandler*>(pIBaseClass);
+		if (!pIBuildJobHandler)
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+		
+		bool isCacheCall = (pExecutionUUIDsBuffer == nullptr);
+		if (isCacheCall) {
+			sExecutionUUIDs = pIBuildJobHandler->ListRemovedJobExecutionsSince(nIncrementalID);
+
+			pIBuildJobHandler->_setCache (new ParameterCache_1<std::string> (sExecutionUUIDs));
+		}
+		else {
+			auto cache = dynamic_cast<ParameterCache_1<std::string>*> (pIBuildJobHandler->_getCache ());
+			if (cache == nullptr)
+				throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+			cache->retrieveData (sExecutionUUIDs);
+			pIBuildJobHandler->_setCache (nullptr);
+		}
+		
+		if (pExecutionUUIDsNeededChars)
+			*pExecutionUUIDsNeededChars = (LibMCData_uint32) (sExecutionUUIDs.size()+1);
+		if (pExecutionUUIDsBuffer) {
+			if (sExecutionUUIDs.size() >= nExecutionUUIDsBufferSize)
+				throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_BUFFERTOOSMALL);
+			for (size_t iExecutionUUIDs = 0; iExecutionUUIDs < sExecutionUUIDs.size(); iExecutionUUIDs++)
+				pExecutionUUIDsBuffer[iExecutionUUIDs] = sExecutionUUIDs[iExecutionUUIDs];
+			pExecutionUUIDsBuffer[sExecutionUUIDs.size()] = 0;
+		}
 		return LIBMCDATA_SUCCESS;
 	}
 	catch (ELibMCDataInterfaceException & Exception) {
@@ -14308,6 +14428,10 @@ LibMCDataResult LibMCData::Impl::LibMCData_GetProcAddress (const char * pProcNam
 		*ppProcAddress = (void*) &libmcdata_buildjobexecution_getdatacapturecount;
 	if (sProcName == "libmcdata_buildjobexecution_retrievedatacapturebyindex") 
 		*ppProcAddress = (void*) &libmcdata_buildjobexecution_retrievedatacapturebyindex;
+	if (sProcName == "libmcdata_buildjobexecution_liststoragestreamuuids") 
+		*ppProcAddress = (void*) &libmcdata_buildjobexecution_liststoragestreamuuids;
+	if (sProcName == "libmcdata_buildjobexecution_deleteexecution") 
+		*ppProcAddress = (void*) &libmcdata_buildjobexecution_deleteexecution;
 	if (sProcName == "libmcdata_buildjobexecutioniterator_getcurrentjobexecution") 
 		*ppProcAddress = (void*) &libmcdata_buildjobexecutioniterator_getcurrentjobexecution;
 	if (sProcName == "libmcdata_buildjob_getuuid") 
@@ -14412,6 +14536,8 @@ LibMCDataResult LibMCData::Impl::LibMCData_GetProcAddress (const char * pProcNam
 		*ppProcAddress = (void*) &libmcdata_buildjobhandler_listjobschangedsince;
 	if (sProcName == "libmcdata_buildjobhandler_listjobexecutionschangedsince") 
 		*ppProcAddress = (void*) &libmcdata_buildjobhandler_listjobexecutionschangedsince;
+	if (sProcName == "libmcdata_buildjobhandler_listremovedjobexecutionssince") 
+		*ppProcAddress = (void*) &libmcdata_buildjobhandler_listremovedjobexecutionssince;
 	if (sProcName == "libmcdata_buildjobhandler_retrievedatacapture") 
 		*ppProcAddress = (void*) &libmcdata_buildjobhandler_retrievedatacapture;
 	if (sProcName == "libmcdata_userlist_count") 

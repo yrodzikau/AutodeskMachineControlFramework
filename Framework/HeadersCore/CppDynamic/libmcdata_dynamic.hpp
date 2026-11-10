@@ -728,6 +728,8 @@ public:
 			case LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND: return "DOWNLOADENTRYNOTFOUND";
 			case LIBMCDATA_ERROR_STREAMHASACTIVEWRITER: return "STREAMHASACTIVEWRITER";
 			case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIPSTREAMALREADYFINISHED";
+			case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "BUILDJOBEXECUTIONHASRECORDINGCAPTURE";
+			case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "COULDNOTDELETEBUILDJOBEXECUTION";
 		}
 		return "UNKNOWN";
 	}
@@ -1139,6 +1141,8 @@ public:
 			case LIBMCDATA_ERROR_DOWNLOADENTRYNOTFOUND: return "Download access log entry not found.";
 			case LIBMCDATA_ERROR_STREAMHASACTIVEWRITER: return "Storage stream is still being written.";
 			case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished and can not be discarded.";
+			case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "Build job execution has a data capture that is still recording.";
+			case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "Build job execution could not be deleted completely.";
 		}
 		return "unknown error";
 	}
@@ -1906,6 +1910,8 @@ public:
 	inline PDataCapture RetrieveDataCapture(const std::string & sIdentifier);
 	inline LibMCData_uint32 GetDataCaptureCount();
 	inline PDataCapture RetrieveDataCaptureByIndex(const LibMCData_uint32 nIndex);
+	inline std::string ListStorageStreamUUIDs();
+	inline void DeleteExecution(const bool bAbortRecordingCaptures, const LibMCData_uint64 nAbsoluteTimeStamp);
 };
 	
 /*************************************************************************************************************************
@@ -2022,6 +2028,7 @@ public:
 	inline LibMCData_uint64 GetExecutionListHeadID();
 	inline PBuildJobIterator ListJobsChangedSince(const LibMCData_uint64 nIncrementalID);
 	inline PBuildJobExecutionIterator ListJobExecutionsChangedSince(const LibMCData_uint64 nIncrementalID);
+	inline std::string ListRemovedJobExecutionsSince(const LibMCData_uint64 nIncrementalID);
 	inline PDataCapture RetrieveDataCapture(const std::string & sDataCaptureUUID);
 };
 	
@@ -2706,6 +2713,8 @@ public:
 		pWrapperTable->m_BuildJobExecution_RetrieveDataCapture = nullptr;
 		pWrapperTable->m_BuildJobExecution_GetDataCaptureCount = nullptr;
 		pWrapperTable->m_BuildJobExecution_RetrieveDataCaptureByIndex = nullptr;
+		pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs = nullptr;
+		pWrapperTable->m_BuildJobExecution_DeleteExecution = nullptr;
 		pWrapperTable->m_BuildJobExecutionIterator_GetCurrentJobExecution = nullptr;
 		pWrapperTable->m_BuildJob_GetUUID = nullptr;
 		pWrapperTable->m_BuildJob_GetName = nullptr;
@@ -2758,6 +2767,7 @@ public:
 		pWrapperTable->m_BuildJobHandler_GetExecutionListHeadID = nullptr;
 		pWrapperTable->m_BuildJobHandler_ListJobsChangedSince = nullptr;
 		pWrapperTable->m_BuildJobHandler_ListJobExecutionsChangedSince = nullptr;
+		pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince = nullptr;
 		pWrapperTable->m_BuildJobHandler_RetrieveDataCapture = nullptr;
 		pWrapperTable->m_UserList_Count = nullptr;
 		pWrapperTable->m_UserList_GetUserProperties = nullptr;
@@ -4721,6 +4731,24 @@ public:
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs = (PLibMCDataBuildJobExecution_ListStorageStreamUUIDsPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_liststoragestreamuuids");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs = (PLibMCDataBuildJobExecution_ListStorageStreamUUIDsPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_liststoragestreamuuids");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobExecution_DeleteExecution = (PLibMCDataBuildJobExecution_DeleteExecutionPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecution_deleteexecution");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobExecution_DeleteExecution = (PLibMCDataBuildJobExecution_DeleteExecutionPtr) dlsym(hLibrary, "libmcdata_buildjobexecution_deleteexecution");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobExecution_DeleteExecution == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_BuildJobExecutionIterator_GetCurrentJobExecution = (PLibMCDataBuildJobExecutionIterator_GetCurrentJobExecutionPtr) GetProcAddress(hLibrary, "libmcdata_buildjobexecutioniterator_getcurrentjobexecution");
 		#else // _WIN32
 		pWrapperTable->m_BuildJobExecutionIterator_GetCurrentJobExecution = (PLibMCDataBuildJobExecutionIterator_GetCurrentJobExecutionPtr) dlsym(hLibrary, "libmcdata_buildjobexecutioniterator_getcurrentjobexecution");
@@ -5186,6 +5214,15 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_BuildJobHandler_ListJobExecutionsChangedSince == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince = (PLibMCDataBuildJobHandler_ListRemovedJobExecutionsSincePtr) GetProcAddress(hLibrary, "libmcdata_buildjobhandler_listremovedjobexecutionssince");
+		#else // _WIN32
+		pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince = (PLibMCDataBuildJobHandler_ListRemovedJobExecutionsSincePtr) dlsym(hLibrary, "libmcdata_buildjobhandler_listremovedjobexecutionssince");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince == nullptr)
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -7243,6 +7280,14 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_RetrieveDataCaptureByIndex == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_liststoragestreamuuids", (void**)&(pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_ListStorageStreamUUIDs == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobexecution_deleteexecution", (void**)&(pWrapperTable->m_BuildJobExecution_DeleteExecution));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecution_DeleteExecution == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdata_buildjobexecutioniterator_getcurrentjobexecution", (void**)&(pWrapperTable->m_BuildJobExecutionIterator_GetCurrentJobExecution));
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobExecutionIterator_GetCurrentJobExecution == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -7449,6 +7494,10 @@ public:
 		
 		eLookupError = (*pLookup)("libmcdata_buildjobhandler_listjobexecutionschangedsince", (void**)&(pWrapperTable->m_BuildJobHandler_ListJobExecutionsChangedSince));
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobHandler_ListJobExecutionsChangedSince == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcdata_buildjobhandler_listremovedjobexecutionssince", (void**)&(pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildJobHandler_ListRemovedJobExecutionsSince == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcdata_buildjobhandler_retrievedatacapture", (void**)&(pWrapperTable->m_BuildJobHandler_RetrieveDataCapture));
@@ -10866,6 +10915,31 @@ public:
 	}
 	
 	/**
+	* CBuildJobExecution::ListStorageStreamUUIDs - Returns the UUIDs of all storage streams that belong to this execution: the streams of its data attachments and the stored segments of its data captures, separated by commas.
+	* @return Stream UUIDs separated by commas. Empty if the execution has no streams.
+	*/
+	std::string CBuildJobExecution::ListStorageStreamUUIDs()
+	{
+		LibMCData_uint32 bytesNeededStreamUUIDs = 0;
+		LibMCData_uint32 bytesWrittenStreamUUIDs = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_ListStorageStreamUUIDs(m_pHandle, 0, &bytesNeededStreamUUIDs, nullptr));
+		std::vector<char> bufferStreamUUIDs(bytesNeededStreamUUIDs);
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_ListStorageStreamUUIDs(m_pHandle, bytesNeededStreamUUIDs, &bytesWrittenStreamUUIDs, &bufferStreamUUIDs[0]));
+		
+		return std::string(&bufferStreamUUIDs[0]);
+	}
+	
+	/**
+	* CBuildJobExecution::DeleteExecution - Deletes the execution with all its data: data attachments, metadata, data captures and their storage streams with the files on disk. The streams are deleted first, one by one; if one of them can not be deleted, the call fails with the list of them and the execution stays in place. It may be called again then and deletes what is left. When no stream is left, the rows of the execution data are removed and the execution is marked as inactive with a new incremental ID, so that lists can report it as removed. Does nothing for an execution that has been deleted already.
+	* @param[in] bAbortRecordingCaptures - False fails with BUILDJOBEXECUTIONHASRECORDINGCAPTURE if a data capture of the execution has the status recording, and changes nothing. True aborts those captures. The status in the database does not tell if a writer is alive: after a hard stop of the process it stays recording forever. The caller guarantees that no writer of a capture of this execution is alive.
+	* @param[in] nAbsoluteTimeStamp - Absolute Time Stamp in Microseconds since 1970, used as the end of the aborted captures.
+	*/
+	void CBuildJobExecution::DeleteExecution(const bool bAbortRecordingCaptures, const LibMCData_uint64 nAbsoluteTimeStamp)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobExecution_DeleteExecution(m_pHandle, bAbortRecordingCaptures, nAbsoluteTimeStamp));
+	}
+	
+	/**
 	 * Method definitions for class CBuildJobExecutionIterator
 	 */
 	
@@ -11607,6 +11681,22 @@ public:
 			CheckError(LIBMCDATA_ERROR_INVALIDPARAM);
 		}
 		return std::make_shared<CBuildJobExecutionIterator>(m_pWrapper, hIteratorInstance);
+	}
+	
+	/**
+	* CBuildJobHandler::ListRemovedJobExecutionsSince - Returns the UUIDs of the build executions that were deleted and whose incremental ID is larger than the given one. Used by the frontend to remove their rows from the execution list.
+	* @param[in] nIncrementalID - Incremental ID to compare against, usually a head ID returned by GetExecutionListHeadID.
+	* @return Execution UUIDs separated by commas. Empty if no execution was deleted.
+	*/
+	std::string CBuildJobHandler::ListRemovedJobExecutionsSince(const LibMCData_uint64 nIncrementalID)
+	{
+		LibMCData_uint32 bytesNeededExecutionUUIDs = 0;
+		LibMCData_uint32 bytesWrittenExecutionUUIDs = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobHandler_ListRemovedJobExecutionsSince(m_pHandle, nIncrementalID, 0, &bytesNeededExecutionUUIDs, nullptr));
+		std::vector<char> bufferExecutionUUIDs(bytesNeededExecutionUUIDs);
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildJobHandler_ListRemovedJobExecutionsSince(m_pHandle, nIncrementalID, bytesNeededExecutionUUIDs, &bytesWrittenExecutionUUIDs, &bufferExecutionUUIDs[0]));
+		
+		return std::string(&bufferExecutionUUIDs[0]);
 	}
 	
 	/**

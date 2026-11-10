@@ -140,7 +140,7 @@ bool CBuildJobHandler::JobExists(const std::string& sJobUUID)
 }
 
 // Columns must match the reading loop in addJobsFromStatement.
-static const std::string sBuildJobListSelect = "SELECT buildjobs.uuid, buildjobs.name, buildjobs.status, buildjobs.timestamp, buildjobs.storagestreamuuid, buildjobs.layercount, buildjobs.useruuid, users.login, (SELECT count(buildjobexecutions.uuid) FROM buildjobexecutions WHERE buildjobexecutions.jobuuid=buildjobs.uuid), buildjobs.thumbnailuuid, storage_streams.size, buildjobs.incremental_id FROM buildjobs LEFT JOIN users On users.uuid=buildjobs.useruuid LEFT JOIN storage_streams ON storage_streams.uuid=buildjobs.storagestreamuuid";
+static const std::string sBuildJobListSelect = "SELECT buildjobs.uuid, buildjobs.name, buildjobs.status, buildjobs.timestamp, buildjobs.storagestreamuuid, buildjobs.layercount, buildjobs.useruuid, users.login, (SELECT count(buildjobexecutions.uuid) FROM buildjobexecutions WHERE buildjobexecutions.jobuuid=buildjobs.uuid AND buildjobexecutions.active=1), buildjobs.thumbnailuuid, storage_streams.size, buildjobs.incremental_id FROM buildjobs LEFT JOIN users On users.uuid=buildjobs.useruuid LEFT JOIN storage_streams ON storage_streams.uuid=buildjobs.storagestreamuuid";
 
 static void addJobsFromStatement(AMCData::PSQLStatement pStatement, CBuildJobIterator* pJobIterator, AMCData::PSQLHandler pSQLHandler, AMCData::PStorageState pStorageState)
 {
@@ -299,6 +299,23 @@ LibMCData_uint64 CBuildJobHandler::GetBuildListHeadID()
     if (!pStatement->nextRow())
         return 0;
     return (uint64_t) pStatement->getColumnInt64(1);
+}
+
+std::string CBuildJobHandler::ListRemovedJobExecutionsSince(const LibMCData_uint64 nIncrementalID)
+{
+    // A deleted execution keeps its row as a marker: inactive, with the incremental ID of its deletion.
+    std::string sResult;
+
+    auto pStatement = m_pSQLHandler->prepareStatement("SELECT uuid FROM buildjobexecutions WHERE active=? AND incremental_id>?");
+    pStatement->setInt(1, 0);
+    pStatement->setInt64(2, (int64_t)nIncrementalID);
+    while (pStatement->nextRow()) {
+        if (!sResult.empty())
+            sResult += ",";
+        sResult += AMCCommon::CUtils::normalizeUUIDString(pStatement->getColumnString(1));
+    }
+
+    return sResult;
 }
 
 LibMCData_uint64 CBuildJobHandler::GetExecutionListHeadID()
