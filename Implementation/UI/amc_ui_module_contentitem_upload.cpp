@@ -57,13 +57,17 @@ PUIModule_ContentUpload CUIModule_ContentUpload::makeFromXML(const pugi::xml_nod
 	auto failureeventAttrib = xmlNode.attribute("failureevent");
 	auto acceptedtypesAttrib = xmlNode.attribute("acceptedtypes");
 
-	return std::make_shared <CUIModule_ContentUpload> (pUIModuleEnvironment->contentRegistry(), classExpression, captionExpression, successeventAttrib.as_string (), failureeventAttrib.as_string (), acceptedtypesAttrib.as_string (), sItemName, sModulePath, pUIModuleEnvironment->stateMachineData ());
+	// busy or sync:busy; an item without the attribute is never busy.
+	CUIExpression busyExpression(xmlNode, "busy", "0");
+	auto busyeventAttrib = xmlNode.attribute("busyevent");
+
+	return std::make_shared <CUIModule_ContentUpload> (pUIModuleEnvironment->contentRegistry(), classExpression, captionExpression, successeventAttrib.as_string (), failureeventAttrib.as_string (), acceptedtypesAttrib.as_string (), busyExpression, busyeventAttrib.as_string (), sItemName, sModulePath, pUIModuleEnvironment->stateMachineData ());
 }
 
 
 
-CUIModule_ContentUpload::CUIModule_ContentUpload(CUIModule_ContentRegistry* pOwner, CUIExpression uploadClass, CUIExpression uploadCaption, const std::string& sSuccessEvent, const std::string& sFailureEvent, const std::string& sAcceptedTypes, const std::string& sItemName, const std::string& sModulePath, PStateMachineData pStateMachineData)
-	: CUIModule_ContentItem(AMCCommon::CUtils::createUUID(), sItemName, sModulePath), m_UploadClass(uploadClass), m_UploadCaption (uploadCaption), m_sSuccessEvent (sSuccessEvent), m_sFailureEvent (sFailureEvent), m_sAcceptedTypes (sAcceptedTypes), m_pStateMachineData (pStateMachineData), m_pOwner (pOwner)
+CUIModule_ContentUpload::CUIModule_ContentUpload(CUIModule_ContentRegistry* pOwner, CUIExpression uploadClass, CUIExpression uploadCaption, const std::string& sSuccessEvent, const std::string& sFailureEvent, const std::string& sAcceptedTypes, CUIExpression busy, const std::string& sBusyEvent, const std::string& sItemName, const std::string& sModulePath, PStateMachineData pStateMachineData)
+	: CUIModule_ContentItem(AMCCommon::CUtils::createUUID(), sItemName, sModulePath), m_UploadClass(uploadClass), m_UploadCaption (uploadCaption), m_sSuccessEvent (sSuccessEvent), m_sFailureEvent (sFailureEvent), m_sAcceptedTypes (sAcceptedTypes), m_Busy (busy), m_sBusyEvent (sBusyEvent), m_pStateMachineData (pStateMachineData), m_pOwner (pOwner)
 {
 	LibMCAssertNotNull(pStateMachineData);
 	LibMCAssertNotNull(pOwner);
@@ -81,6 +85,8 @@ void CUIModule_ContentUpload::configurePostLoading()
 		m_pOwner->ensureUIEventExists(m_sSuccessEvent);
 	if (!m_sFailureEvent.empty())
 		m_pOwner->ensureUIEventExists(m_sFailureEvent);
+	if (!m_sBusyEvent.empty())
+		m_pOwner->ensureUIEventExists(m_sBusyEvent);
 
 }
 
@@ -126,4 +132,8 @@ void CUIModule_ContentUpload::registerFrontendAttributes()
 	CUIExpression acceptedTypesExpr;
 	acceptedTypesExpr.setFixedValue(m_sAcceptedTypes);
 	registerItemStringAttribute("acceptedtypes", acceptedTypesExpr);
+	registerItemBoolAttribute("busy", m_Busy);
+	CUIExpression busyEventExpr;
+	busyEventExpr.setFixedValue(m_sBusyEvent);
+	registerItemStringAttribute("busyevent", busyEventExpr);
 }

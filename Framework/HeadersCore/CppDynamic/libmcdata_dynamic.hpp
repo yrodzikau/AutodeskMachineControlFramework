@@ -730,6 +730,8 @@ public:
 			case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIPSTREAMALREADYFINISHED";
 			case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "BUILDJOBEXECUTIONHASRECORDINGCAPTURE";
 			case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "COULDNOTDELETEBUILDJOBEXECUTION";
+			case LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED: return "PARTIALSTREAMALREADYFINISHED";
+			case LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER: return "PARTIALSTREAMOFOTHERUSER";
 		}
 		return "UNKNOWN";
 	}
@@ -1143,6 +1145,8 @@ public:
 			case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished and can not be discarded.";
 			case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "Build job execution has a data capture that is still recording.";
 			case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "Build job execution could not be deleted completely.";
+			case LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED: return "Partial storage stream has been finished or is being finished.";
+			case LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER: return "Partial storage stream was started by another user.";
 		}
 		return "unknown error";
 	}
@@ -1724,6 +1728,7 @@ public:
 	inline LibMCData_uint32 DiscardUnfinishedZIPStreams();
 	inline std::string ListStreamUUIDsByName(const std::string & sName);
 	inline void AttachStreamToJournal(const std::string & sStreamUUID, const std::string & sJournalUUID);
+	inline void DiscardPartialStream(const std::string & sUUID, const std::string & sUserUUID);
 	inline void DiscardRandomWriteStream(const std::string & sUUID);
 	inline LibMCData_uint64 GetDataCaptureStorageSize();
 	inline LibMCData_uint32 EnforceDataCaptureStorageLimit(const LibMCData_uint64 nLimitInBytes);
@@ -2639,6 +2644,7 @@ public:
 		pWrapperTable->m_Storage_DiscardUnfinishedZIPStreams = nullptr;
 		pWrapperTable->m_Storage_ListStreamUUIDsByName = nullptr;
 		pWrapperTable->m_Storage_AttachStreamToJournal = nullptr;
+		pWrapperTable->m_Storage_DiscardPartialStream = nullptr;
 		pWrapperTable->m_Storage_DiscardRandomWriteStream = nullptr;
 		pWrapperTable->m_Storage_GetDataCaptureStorageSize = nullptr;
 		pWrapperTable->m_Storage_EnforceDataCaptureStorageLimit = nullptr;
@@ -4062,6 +4068,15 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_Storage_AttachStreamToJournal == nullptr)
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_Storage_DiscardPartialStream = (PLibMCDataStorage_DiscardPartialStreamPtr) GetProcAddress(hLibrary, "libmcdata_storage_discardpartialstream");
+		#else // _WIN32
+		pWrapperTable->m_Storage_DiscardPartialStream = (PLibMCDataStorage_DiscardPartialStreamPtr) dlsym(hLibrary, "libmcdata_storage_discardpartialstream");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_Storage_DiscardPartialStream == nullptr)
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -6984,6 +6999,10 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_Storage_AttachStreamToJournal == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcdata_storage_discardpartialstream", (void**)&(pWrapperTable->m_Storage_DiscardPartialStream));
+		if ( (eLookupError != 0) || (pWrapperTable->m_Storage_DiscardPartialStream == nullptr) )
+			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcdata_storage_discardrandomwritestream", (void**)&(pWrapperTable->m_Storage_DiscardRandomWriteStream));
 		if ( (eLookupError != 0) || (pWrapperTable->m_Storage_DiscardRandomWriteStream == nullptr) )
 			return LIBMCDATA_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -9847,6 +9866,16 @@ public:
 	void CStorage::AttachStreamToJournal(const std::string & sStreamUUID, const std::string & sJournalUUID)
 	{
 		CheckError(m_pWrapper->m_WrapperTable.m_Storage_AttachStreamToJournal(m_pHandle, sStreamUUID.c_str(), sJournalUUID.c_str()));
+	}
+	
+	/**
+	* CStorage::DiscardPartialStream - Discards a stream that was started with BeginPartialStream and has not been finished: the data on disk and the stream entry are deleted, and chunks that arrive later are rejected. Fails with STORAGESTREAMNOTFOUND if the stream does not exist, with PARTIALSTREAMOFOTHERUSER if another user started it, and with PARTIALSTREAMALREADYFINISHED if the stream has been finished or is being finished right now; the stream is not touched then.
+	* @param[in] sUUID - UUID of storage stream. MUST have been created with BeginPartialStream.
+	* @param[in] sUserUUID - Currently authenticated user. MUST be the user that started the stream.
+	*/
+	void CStorage::DiscardPartialStream(const std::string & sUUID, const std::string & sUserUUID)
+	{
+		CheckError(m_pWrapper->m_WrapperTable.m_Storage_DiscardPartialStream(m_pHandle, sUUID.c_str(), sUserUUID.c_str()));
 	}
 	
 	/**

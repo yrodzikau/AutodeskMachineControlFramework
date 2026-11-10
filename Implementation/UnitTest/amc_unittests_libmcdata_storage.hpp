@@ -84,6 +84,7 @@ namespace AMCUnitTest {
 			registerTest("StreamGetUserUUID", "Get stream user UUID", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_LibMCData_Storage::testStreamGetUserUUID, this));
 			registerTest("StreamWithDifferentMimes", "Different MIME types", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_LibMCData_Storage::testStreamWithDifferentMimes, this));
 			registerTest("PartialStreamAbort", "Abort partial stream", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_LibMCData_Storage::testPartialStreamAbort, this));
+			registerTest("DiscardPartialStream", "A cancelled upload is discarded by its user, a finished one is not", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_LibMCData_Storage::testDiscardPartialStream, this));
 			registerTest("BinaryContent", "Binary content storage", eUnitTestCategory::utMandatoryPass, std::bind(&CUnitTestGroup_LibMCData_Storage::testBinaryContent, this));
 			
 			// Additional Storage Tests for Coverage (12 tests)
@@ -894,6 +895,69 @@ namespace AMCUnitTest {
 			assertFalse(fixture.m_pStorage->StreamIsReady(sUUID2), "Second unfinished partial should not be ready");
 		}
 		
+		// The cancel of an upload (POST /upload/cancel): the unfinished stream is deleted with its file, later
+		// chunks are rejected and create nothing. Only the user that started the upload cancels it, and a
+		// stream that has been finished stays.
+		void testDiscardPartialStream()
+		{
+			auto fixture = createFixture("partial_discard");
+
+			auto errorCodeOf = [](std::function<void()> call) -> int32_t {
+				try {
+					call();
+				}
+				catch (LibMCData::ELibMCDataException& dataException) {
+					return dataException.getErrorCode();
+				}
+				return 0;
+			};
+
+			std::string sUserUUID = AMCCommon::CUtils::createUUID();
+			std::string sOtherUserUUID = AMCCommon::CUtils::createUUID();
+			std::vector<uint8_t> chunk(4096, 0x41);
+
+			// An upload with one of its two chunks stored.
+			std::string sUUID = AMCCommon::CUtils::createUUID();
+			std::string sStreamFile = fixture.m_sBasePath + "/" + AMCCommon::CUtils::normalizeUUIDString(sUUID) + ".stream";
+			fixture.m_pStorage->BeginPartialStream(sUUID, "recordings.zip", "application/zip", 8192, sUserUUID, getCurrentTimestamp());
+			fixture.m_pStorage->StorePartialStream(sUUID, 0, chunk);
+			assertTrue(AMCCommon::CUtils::fileOrPathExistsOnDisk(sStreamFile), "The unfinished upload has a file");
+
+			// Another user can not cancel it.
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->DiscardPartialStream(sUUID, sOtherUserUUID); }) == LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER, "Another user can not discard the upload");
+			assertTrue(AMCCommon::CUtils::fileOrPathExistsOnDisk(sStreamFile), "The refused discard leaves the file");
+			fixture.m_pStorage->StorePartialStream(sUUID, 4096, chunk);
+
+			fixture.m_pStorage->DiscardPartialStream(sUUID, sUserUUID);
+			assertFalse(AMCCommon::CUtils::fileOrPathExistsOnDisk(sStreamFile), "The discarded upload has no file");
+			assertFalse(fixture.m_pStorage->StreamIsReady(sUUID), "The discarded upload is no stream");
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->RetrieveStream(sUUID); }) != 0, "The discarded upload can not be retrieved");
+
+			// A chunk that arrives after the cancel is rejected and creates neither a file nor an entry.
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->StorePartialStream(sUUID, 0, chunk); }) == LIBMCDATA_ERROR_INVALIDPARTIALUPLOAD, "A chunk after the discard is rejected");
+			assertFalse(AMCCommon::CUtils::fileOrPathExistsOnDisk(sStreamFile), "A chunk after the discard creates no file");
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->DiscardPartialStream(sUUID, sUserUUID); }) == LIBMCDATA_ERROR_STORAGESTREAMNOTFOUND, "A second discard finds no stream");
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->FinishPartialStream(sUUID, AMCCommon::CUtils::calculateSHA256FromData(chunk.data(), chunk.size())); }) != 0, "A discarded upload can not be finished");
+
+			// The UUID is free again: nothing of the discarded stream is left in the database.
+			fixture.m_pStorage->BeginPartialStream(sUUID, "recordings.zip", "application/zip", 4096, sUserUUID, getCurrentTimestamp());
+			fixture.m_pStorage->DiscardPartialStream(sUUID, sUserUUID);
+
+			// A finished upload is not discarded: the cancel came too late, the stream stays.
+			std::string sFinishedUUID = AMCCommon::CUtils::createUUID();
+			std::string sFinishedFile = fixture.m_sBasePath + "/" + AMCCommon::CUtils::normalizeUUIDString(sFinishedUUID) + ".stream";
+			fixture.m_pStorage->BeginPartialStream(sFinishedUUID, "finished.zip", "application/zip", 4096, sUserUUID, getCurrentTimestamp());
+			fixture.m_pStorage->StorePartialStream(sFinishedUUID, 0, chunk);
+			fixture.m_pStorage->FinishPartialStream(sFinishedUUID, AMCCommon::CUtils::calculateSHA256FromData(chunk.data(), chunk.size()));
+			assertTrue(fixture.m_pStorage->StreamIsReady(sFinishedUUID), "The finished upload is a stream");
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->DiscardPartialStream(sFinishedUUID, sUserUUID); }) == LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED, "A finished upload is not discarded");
+			assertTrue(fixture.m_pStorage->StreamIsReady(sFinishedUUID), "The finished upload stays after the refused discard");
+			assertTrue(AMCCommon::CUtils::fileOrPathExistsOnDisk(sFinishedFile), "The finished upload keeps its file");
+
+			// An unknown stream.
+			assertTrue(errorCodeOf([&]() { fixture.m_pStorage->DiscardPartialStream(AMCCommon::CUtils::createUUID(), sUserUUID); }) == LIBMCDATA_ERROR_STORAGESTREAMNOTFOUND, "An unknown upload is not found");
+		}
+
 		void testBinaryContent()
 		{
 			auto fixture = createFixture("binary");

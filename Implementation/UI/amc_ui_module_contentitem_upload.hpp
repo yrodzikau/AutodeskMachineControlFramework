@@ -62,13 +62,17 @@ namespace AMC {
 		std::string m_sSuccessEvent;
 		std::string m_sFailureEvent;
 		std::string m_sAcceptedTypes;
+		// Busy mode: while the busy expression is true the upload zone is the button of a running operation.
+		// It shows its caption, opens no file dialog and triggers the busy event on a click.
+		CUIExpression m_Busy;
+		std::string m_sBusyEvent;
 		CUIModule_ContentRegistry* m_pOwner;
 
 	public:
 
 		static PUIModule_ContentUpload makeFromXML(const pugi::xml_node& xmlNode, const std::string& sItemName, const std::string& sModulePath, PUIModuleEnvironment pUIModuleEnvironment);
 
-		CUIModule_ContentUpload(CUIModule_ContentRegistry* pOwner, CUIExpression uploadClass, CUIExpression uploadCaption, const std::string & sSuccessEvent, const std::string& sFailureEvent, const std::string& sAcceptedTypes, const std::string& sItemName, const std::string& sModulePath, PStateMachineData pStateMachineData);
+		CUIModule_ContentUpload(CUIModule_ContentRegistry* pOwner, CUIExpression uploadClass, CUIExpression uploadCaption, const std::string & sSuccessEvent, const std::string& sFailureEvent, const std::string& sAcceptedTypes, CUIExpression busy, const std::string& sBusyEvent, const std::string& sItemName, const std::string& sModulePath, PStateMachineData pStateMachineData);
 
 		virtual ~CUIModule_ContentUpload();
 

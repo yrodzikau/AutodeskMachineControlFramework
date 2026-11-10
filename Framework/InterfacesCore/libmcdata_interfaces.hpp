@@ -1412,6 +1412,13 @@ public:
 	virtual void AttachStreamToJournal(const std::string & sStreamUUID, const std::string & sJournalUUID) = 0;
 
 	/**
+	* IStorage::DiscardPartialStream - Discards a stream that was started with BeginPartialStream and has not been finished: the data on disk and the stream entry are deleted, and chunks that arrive later are rejected. Fails with STORAGESTREAMNOTFOUND if the stream does not exist, with PARTIALSTREAMOFOTHERUSER if another user started it, and with PARTIALSTREAMALREADYFINISHED if the stream has been finished or is being finished right now; the stream is not touched then.
+	* @param[in] sUUID - UUID of storage stream. MUST have been created with BeginPartialStream.
+	* @param[in] sUserUUID - Currently authenticated user. MUST be the user that started the stream.
+	*/
+	virtual void DiscardPartialStream(const std::string & sUUID, const std::string & sUserUUID) = 0;
+
+	/**
 	* IStorage::DiscardRandomWriteStream - Discards an unfinished random write stream. The data on disk and the stream entry are deleted.
 	* @param[in] sUUID - UUID of storage stream. MUST have been created with BeginRandomWriteStream first and MUST NOT be finished.
 	*/

@@ -97,7 +97,7 @@ const MODULE_SCHEMAS = {
 	},
 	upload: {
 		required: ['uuid', 'type'],
-		optional: ['caption', 'visible', 'uploadcaption', 'acceptedtypes', 'uploadclass'],
+		optional: ['caption', 'visible', 'uploadcaption', 'acceptedtypes', 'uploadclass', 'busy', 'busyevent'],
 	},
 	buildlist: {
 		required: ['uuid', 'type'],

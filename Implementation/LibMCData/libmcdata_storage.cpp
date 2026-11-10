@@ -532,6 +532,62 @@ void CStorage::AttachStreamToJournal(const std::string& sStreamUUID, const std::
 }
 
 
+void CStorage::DiscardPartialStream(const std::string& sUUID, const std::string& sUserUUID)
+{
+    std::string sParsedUUID = AMCCommon::CUtils::normalizeUUIDString(sUUID);
+    std::string sNormalizedUserUUID = AMCCommon::CUtils::normalizeUUIDString(sUserUUID);
+
+    {
+        auto pStatement = m_pSQLHandler->prepareStatement("SELECT status, useruuid FROM storage_streams WHERE uuid=?");
+        pStatement->setString(1, sParsedUUID);
+        if (!pStatement->nextRow())
+            throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_STORAGESTREAMNOTFOUND, "storage stream not found: " + sParsedUUID);
+
+        std::string sStatus = pStatement->getColumnString(1);
+        std::string sStreamUserUUID = pStatement->getColumnString(2);
+
+        if (sStatus != AMCData::CStorageState::storageStreamStatusToString(AMCData::eStorageStreamStatus::sssNew))
+            throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED, "storage stream has been finished: " + sParsedUUID);
+
+        // An upload is cancelled by the user that started it.
+        if (AMCCommon::CUtils::normalizeUUIDString(sStreamUserUUID) != sNormalizedUserUUID)
+            throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER, "storage stream was started by another user: " + sParsedUUID);
+    }
+
+    {
+        // A new stream without a writer is being finished right now: its checksums are computed, and the
+        // finish request will store it. It can not be discarded any more.
+        auto pWriter = m_pStorageState->findPartialWriter(sParsedUUID, false);
+        if (pWriter == nullptr)
+            throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED, "storage stream is being finished: " + sParsedUUID);
+
+        auto pPartialWriter = dynamic_cast<AMCData::CStorageWriter_Partial*> (pWriter.get());
+        if (pPartialWriter == nullptr)
+            throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_STORAGESTREAMNOTPARTIAL, "storage stream not partial: " + sParsedUUID);
+
+        // From here on a chunk of this stream finds no writer and is rejected.
+        m_pStorageState->deletePartialWriter(sParsedUUID);
+
+        // An unfinished writer deletes its file when the last reference is released: at the end of this
+        // scope, or when a chunk that is being written at this moment has been written.
+    }
+
+    auto pTransaction = m_pSQLHandler->beginTransaction();
+
+    auto pLinkStatement = pTransaction->prepareStatement("DELETE FROM journal_tempstreams WHERE streamuuid=?");
+    pLinkStatement->setString(1, sParsedUUID);
+    pLinkStatement->execute();
+    pLinkStatement = nullptr;
+
+    auto pStreamStatement = pTransaction->prepareStatement("DELETE FROM storage_streams WHERE uuid=? AND status=?");
+    pStreamStatement->setString(1, sParsedUUID);
+    pStreamStatement->setString(2, AMCData::CStorageState::storageStreamStatusToString(AMCData::eStorageStreamStatus::sssNew));
+    pStreamStatement->execute();
+    pStreamStatement = nullptr;
+
+    pTransaction->commit();
+}
+
 void CStorage::DiscardRandomWriteStream(const std::string& sUUID)
 {
     std::string sParsedUUID = AMCCommon::CUtils::normalizeUUIDString(sUUID);

@@ -4409,6 +4409,36 @@ LibMCDataResult libmcdata_storage_attachstreamtojournal(LibMCData_Storage pStora
 	}
 }
 
+LibMCDataResult libmcdata_storage_discardpartialstream(LibMCData_Storage pStorage, const char * pUUID, const char * pUserUUID)
+{
+	IBase* pIBaseClass = (IBase *)pStorage;
+
+	try {
+		if (pUUID == nullptr)
+			throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_INVALIDPARAM);
+		if (pUserUUID == nullptr)
+			throw ELibMCDataInterfaceException (LIBMCDATA_ERROR_INVALIDPARAM);
+		std::string sUUID(pUUID);
+		std::string sUserUUID(pUserUUID);
+		IStorage* pIStorage = dynamic_cast<IStorage*>(pIBaseClass);
+		if (!pIStorage)
+			throw ELibMCDataInterfaceException(LIBMCDATA_ERROR_INVALIDCAST);
+		
+		pIStorage->DiscardPartialStream(sUUID, sUserUUID);
+
+		return LIBMCDATA_SUCCESS;
+	}
+	catch (ELibMCDataInterfaceException & Exception) {
+		return handleLibMCDataException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 LibMCDataResult libmcdata_storage_discardrandomwritestream(LibMCData_Storage pStorage, const char * pUUID)
 {
 	IBase* pIBaseClass = (IBase *)pStorage;
@@ -14280,6 +14310,8 @@ LibMCDataResult LibMCData::Impl::LibMCData_GetProcAddress (const char * pProcNam
 		*ppProcAddress = (void*) &libmcdata_storage_liststreamuuidsbyname;
 	if (sProcName == "libmcdata_storage_attachstreamtojournal") 
 		*ppProcAddress = (void*) &libmcdata_storage_attachstreamtojournal;
+	if (sProcName == "libmcdata_storage_discardpartialstream") 
+		*ppProcAddress = (void*) &libmcdata_storage_discardpartialstream;
 	if (sProcName == "libmcdata_storage_discardrandomwritestream") 
 		*ppProcAddress = (void*) &libmcdata_storage_discardrandomwritestream;
 	if (sProcName == "libmcdata_storage_getdatacapturestoragesize") 

@@ -501,6 +501,8 @@ typedef void * LibMCData_pvoid;
 #define LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED 474 /** ZIP stream has already been finished and can not be discarded. */
 #define LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE 475 /** Build job execution has a data capture that is still recording. */
 #define LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION 476 /** Build job execution could not be deleted completely. */
+#define LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED 477 /** Partial storage stream has been finished or is being finished. */
+#define LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER 478 /** Partial storage stream was started by another user. */
 
 /*************************************************************************************************************************
  Error strings for LibMCData
@@ -914,6 +916,8 @@ inline const char * LIBMCDATA_GETERRORSTRING (LibMCDataResult nErrorCode) {
     case LIBMCDATA_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished and can not be discarded.";
     case LIBMCDATA_ERROR_BUILDJOBEXECUTIONHASRECORDINGCAPTURE: return "Build job execution has a data capture that is still recording.";
     case LIBMCDATA_ERROR_COULDNOTDELETEBUILDJOBEXECUTION: return "Build job execution could not be deleted completely.";
+    case LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED: return "Partial storage stream has been finished or is being finished.";
+    case LIBMCDATA_ERROR_PARTIALSTREAMOFOTHERUSER: return "Partial storage stream was started by another user.";
     default: return "unknown error";
   }
 }

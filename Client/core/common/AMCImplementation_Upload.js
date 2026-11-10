@@ -33,9 +33,16 @@ import * as Common from "./AMCCommon.js"
 import { sha256Hex } from "./AMCCrypto.js";
 
 
+// Block size of the blockwise checksum of the server (sha256block64k): the SHA-256 of the concatenated lower
+// case hex SHA-256 values of all blocks of 64 KiB of the file.
+const BLOCKWISE_CHECKSUM_BLOCKSIZE = 64 * 1024;
+
+// useBlockwiseChecksum: the checksum is computed block by block while the chunks are read, and no chunk is
+// kept. Without it the chunks are kept and hashed as a whole at the end, which limits the file size to what
+// the browser can hold in memory twice.
 export default class AMCUpload extends Common.AMCObject {
 	
-	constructor (itemState, streamuuid) 
+	constructor (itemState, streamuuid, useBlockwiseChecksum) 
 	{		
 		super ();
 		
@@ -63,6 +70,12 @@ export default class AMCUpload extends Common.AMCObject {
 		this.currentPosition = 0;
 
 		this.chunkBuffers = [];
+
+		this.useBlockwiseChecksum = (useBlockwiseChecksum === true);
+		this.blockHashes = [];
+		// A block must never cross the border of two chunks.
+		if (this.useBlockwiseChecksum && ((this.chunkSize % BLOCKWISE_CHECKSUM_BLOCKSIZE) !== 0))
+			throw "upload chunk size is not a multiple of the checksum block size";
 				
 	}
 		
@@ -122,7 +135,8 @@ export default class AMCUpload extends Common.AMCObject {
 				
 					this.currentPosition = this.currentPosition + bytesToRead;
 					
-					this.chunkBuffers.push(dataBuffer);
+					if (!this.useBlockwiseChecksum)
+						this.chunkBuffers.push(dataBuffer);
 					if (callback)
 						callback (ownerInstance, this, dataBuffer, uploadOffset);
 				}
@@ -186,8 +200,30 @@ export default class AMCUpload extends Common.AMCObject {
 		}
 	}
 	
+	// Blockwise checksum: adds the blocks of a chunk. The chunks must be added in the order of the file.
+	async addChunkToBlockwiseChecksum (dataBuffer, uploadOffset)
+	{
+		if (!this.useBlockwiseChecksum)
+			throw "upload has no blockwise checksum";
+		if ((uploadOffset % BLOCKWISE_CHECKSUM_BLOCKSIZE) !== 0)
+			throw "upload chunk does not start at a checksum block";
+		if (uploadOffset !== this.blockHashes.length * BLOCKWISE_CHECKSUM_BLOCKSIZE)
+			throw "upload chunks are hashed out of order";
+
+		const bytes = new Uint8Array (dataBuffer);
+		for (let blockOffset = 0; blockOffset < bytes.length; blockOffset += BLOCKWISE_CHECKSUM_BLOCKSIZE) {
+			const block = bytes.subarray (blockOffset, Math.min (blockOffset + BLOCKWISE_CHECKSUM_BLOCKSIZE, bytes.length));
+			this.blockHashes.push (await sha256Hex (block));
+		}
+	}
+
 	async calculateChecksum ()
 	{
+		if (this.useBlockwiseChecksum) {
+			this.sha256sum = await sha256Hex (this.blockHashes.join (""));
+			return this.sha256sum;
+		}
+
 		const totalLength = this.chunkBuffers.reduce((sum, buf) => sum + buf.byteLength, 0);
 		const combined = new Uint8Array(totalLength);
 		let offset = 0;

@@ -476,6 +476,8 @@
 		<error name="ZIPSTREAMALREADYFINISHED" code="474" description="ZIP stream has already been finished and can not be discarded." />
 		<error name="BUILDJOBEXECUTIONHASRECORDINGCAPTURE" code="475" description="Build job execution has a data capture that is still recording." />
 		<error name="COULDNOTDELETEBUILDJOBEXECUTION" code="476" description="Build job execution could not be deleted completely." />
+		<error name="PARTIALSTREAMALREADYFINISHED" code="477" description="Partial storage stream has been finished or is being finished." />
+		<error name="PARTIALSTREAMOFOTHERUSER" code="478" description="Partial storage stream was started by another user." />
 
 	</errors>
 	
@@ -1331,6 +1333,11 @@
 			<param name="StreamUUID" type="string" pass="in" description="UUID of stream. Call fails if stream does not exist." />	
 			<param name="JournalUUID" type="string" pass="in" description="UUID of journal. Call fails if journal does not exist." />	
 		</method>	
+
+		<method name="DiscardPartialStream" description="Discards a stream that was started with BeginPartialStream and has not been finished: the data on disk and the stream entry are deleted, and chunks that arrive later are rejected. Fails with STORAGESTREAMNOTFOUND if the stream does not exist, with PARTIALSTREAMOFOTHERUSER if another user started it, and with PARTIALSTREAMALREADYFINISHED if the stream has been finished or is being finished right now; the stream is not touched then.">
+			<param name="UUID" type="string" pass="in" description="UUID of storage stream. MUST have been created with BeginPartialStream." />
+			<param name="UserUUID" type="string" pass="in" description="Currently authenticated user. MUST be the user that started the stream." />
+		</method>
 
 		<method name="DiscardRandomWriteStream" description="Discards an unfinished random write stream. The data on disk and the stream entry are deleted.">
 			<param name="UUID" type="string" pass="in" description="UUID of storage stream. MUST have been created with BeginRandomWriteStream first and MUST NOT be finished." />

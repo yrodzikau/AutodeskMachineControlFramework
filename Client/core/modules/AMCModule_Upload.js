@@ -53,6 +53,10 @@ export default class AMCApplicationModule_Upload extends Common.AMCApplicationMo
 		this.uploadisinitial      = 1;
 		this.uploadissaving       = 0;
 		this.acceptedtypes        = moduleJSON.acceptedtypes || "";
+		// Busy mode: while busy is set the upload zone is the button of a running operation. It shows the
+		// upload caption, opens no file dialog and triggers busyevent on a click.
+		this.busy                 = (moduleJSON.busy === true) || (moduleJSON.busy === "1") || (moduleJSON.busy === "true");
+		this.busyevent            = Assert.OptionalIdentifierString (moduleJSON.busyevent) || "";
 
 		if (!this.acceptedtypes) {
 			if (this.uploadclass === "build")  this.acceptedtypes = ".3mf";
@@ -77,6 +81,10 @@ export default class AMCApplicationModule_Upload extends Common.AMCApplicationMo
 			this.uploadfailureevent = attrs.failureevent;
 		if (attrs.acceptedtypes !== undefined)
 			this.acceptedtypes = attrs.acceptedtypes;
+		if (attrs.busy !== undefined)
+			this.busy = (attrs.busy === "1" || attrs.busy === true || attrs.busy === "true");
+		if (attrs.busyevent !== undefined)
+			this.busyevent = attrs.busyevent;
 		if (attrs.caption !== undefined)
 			this.caption = attrs.caption;
 		if (attrs.visible !== undefined)

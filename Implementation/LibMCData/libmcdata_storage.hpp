@@ -116,6 +116,8 @@ public:
 
     void AttachStreamToJournal(const std::string& sStreamUUID, const std::string& sJournalUUID) override;
 
+    void DiscardPartialStream(const std::string& sUUID, const std::string& sUserUUID) override;
+
     void DiscardRandomWriteStream(const std::string& sUUID) override;
 
     LibMCData_uint64 GetDataCaptureStorageSize() override;

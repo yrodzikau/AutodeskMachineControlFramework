@@ -91,6 +91,11 @@ APIHandler_UploadType CAPIHandler_Upload::parseRequest(const std::string& sURI, 
 				return APIHandler_UploadType::utFinishUpload;
 			}
 
+			if (sParameterString == "/cancel") {
+				// Discards an upload that has been started and not finished; the stream is named in the body.
+				return APIHandler_UploadType::utCancelUpload;
+			}
+
 
 			if ((sParameterString.substr(0, 1) == "/") && (sParameterString.length() == 44)) {
 				std::string sAdditionalPath = sParameterString.substr(37, 7);
@@ -122,6 +127,7 @@ bool CAPIHandler_Upload::expectsRawBody(const std::string& sURI, const eAPIReque
 	switch (parseRequest(sURI, requestType, uploadUUID)) {
 		case APIHandler_UploadType::utInitUpload:
 		case APIHandler_UploadType::utFinishUpload:
+		case APIHandler_UploadType::utCancelUpload:
 			return true;
 
 		default:
@@ -261,6 +267,11 @@ void CAPIHandler_Upload::handleFinishUploadRequest(CJSONWriter& writer, const ui
 	else if ((sContext == "image") || (sContext == "file")) {
 		// The stream itself is the result: the UI event of the upload item receives its UUID.
 		writer.addString(AMC_API_KEY_UPLOAD_CONTEXTUUID, sUUID);
+
+		// Nothing but that UI event refers to an uploaded file. The log entry allows to find a file whose
+		// event never arrived (the browser was closed in between).
+		if (sContext == "file")
+			m_pSystemState->logger()->logMessage("File upload finished: " + pStreamObject->GetName() + " (" + std::to_string(pStreamObject->GetSize()) + " bytes) stored as stream " + pStreamObject->GetUUID(), LOG_SUBSYSTEM_SYSTEM, AMC::eLogLevel::Message);
 	}
 	else {
 		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDUPLOADCONTEXT);
@@ -268,6 +279,40 @@ void CAPIHandler_Upload::handleFinishUploadRequest(CJSONWriter& writer, const ui
 
 
 
+}
+
+void CAPIHandler_Upload::handleCancelUploadRequest(CJSONWriter& writer, const uint8_t* pBodyData, const size_t nBodyDataSize, PAPIAuth pAuth)
+{
+	if (pBodyData == nullptr)
+		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
+	if (pAuth.get() == nullptr)
+		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
+
+	auto pDataModel = m_pSystemState->getDataModelInstance();
+	auto pStorage = pDataModel->CreateStorage();
+
+	CAPIJSONRequest jsonRequest(pBodyData, nBodyDataSize);
+	auto sUUID = jsonRequest.getUUID(AMC_API_KEY_UPLOAD_STREAMUUID, LIBMC_ERROR_INVALIDSTREAMUUID);
+
+	writer.addString(AMC_API_KEY_UPLOAD_STREAMUUID, sUUID);
+
+	try {
+		// Only the user that started the upload cancels it.
+		pStorage->DiscardPartialStream(sUUID, pAuth->getUserUUID());
+
+		writer.addBoolean(AMC_API_KEY_UPLOAD_CANCELLED, true);
+		writer.addBoolean(AMC_API_KEY_UPLOAD_FINISHED, false);
+	}
+	catch (const LibMCData::ELibMCDataException& E) {
+		// The cancel lost the race against the last chunk: the upload is finished (or is being finished)
+		// and stays. The client is told so and goes on as if it had not cancelled. Every other failure is
+		// an error of the request.
+		if (E.getErrorCode() != LIBMCDATA_ERROR_PARTIALSTREAMALREADYFINISHED)
+			throw;
+
+		writer.addBoolean(AMC_API_KEY_UPLOAD_CANCELLED, false);
+		writer.addBoolean(AMC_API_KEY_UPLOAD_FINISHED, true);
+	}
 }
 
 void CAPIHandler_Upload::handleStreamUploadRequest(CJSONWriter& writer, CAPIFormFields & pFormFields, const std::string& sStreamUUID, PAPIAuth pAuth)
@@ -315,6 +360,10 @@ PAPIResponse CAPIHandler_Upload::handleRequest(const std::string& sURI, const eA
 
 			case APIHandler_UploadType::utStreamUpload:
 				handleStreamUploadRequest(writer, pFormFields, sUploadUUID, pAuth);
+				break;
+
+			case APIHandler_UploadType::utCancelUpload:
+				handleCancelUploadRequest(writer, pBodyData, nBodyDataSize, pAuth);
 				break;
 
 			default:

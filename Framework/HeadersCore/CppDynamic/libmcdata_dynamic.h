@@ -1472,6 +1472,16 @@ typedef LibMCDataResult (*PLibMCDataStorage_ListStreamUUIDsByNamePtr) (LibMCData
 typedef LibMCDataResult (*PLibMCDataStorage_AttachStreamToJournalPtr) (LibMCData_Storage pStorage, const char * pStreamUUID, const char * pJournalUUID);
 
 /**
+* Discards a stream that was started with BeginPartialStream and has not been finished: the data on disk and the stream entry are deleted, and chunks that arrive later are rejected. Fails with STORAGESTREAMNOTFOUND if the stream does not exist, with PARTIALSTREAMOFOTHERUSER if another user started it, and with PARTIALSTREAMALREADYFINISHED if the stream has been finished or is being finished right now; the stream is not touched then.
+*
+* @param[in] pStorage - Storage instance.
+* @param[in] pUUID - UUID of storage stream. MUST have been created with BeginPartialStream.
+* @param[in] pUserUUID - Currently authenticated user. MUST be the user that started the stream.
+* @return error code or 0 (success)
+*/
+typedef LibMCDataResult (*PLibMCDataStorage_DiscardPartialStreamPtr) (LibMCData_Storage pStorage, const char * pUUID, const char * pUserUUID);
+
+/**
 * Discards an unfinished random write stream. The data on disk and the stream entry are deleted.
 *
 * @param[in] pStorage - Storage instance.
@@ -4554,6 +4564,7 @@ typedef struct {
 	PLibMCDataStorage_DiscardUnfinishedZIPStreamsPtr m_Storage_DiscardUnfinishedZIPStreams;
 	PLibMCDataStorage_ListStreamUUIDsByNamePtr m_Storage_ListStreamUUIDsByName;
 	PLibMCDataStorage_AttachStreamToJournalPtr m_Storage_AttachStreamToJournal;
+	PLibMCDataStorage_DiscardPartialStreamPtr m_Storage_DiscardPartialStream;
 	PLibMCDataStorage_DiscardRandomWriteStreamPtr m_Storage_DiscardRandomWriteStream;
 	PLibMCDataStorage_GetDataCaptureStorageSizePtr m_Storage_GetDataCaptureStorageSize;
 	PLibMCDataStorage_EnforceDataCaptureStorageLimitPtr m_Storage_EnforceDataCaptureStorageLimit;

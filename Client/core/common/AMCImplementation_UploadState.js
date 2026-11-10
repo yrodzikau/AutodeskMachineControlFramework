@@ -57,6 +57,27 @@ export default class AMCUploadState extends Common.AMCObject {
 		this._onComplete = null;
 		this._onError = null;
 		this._onProgress = null;
+
+		// Uploads of the class "file": the local state of the upload zone, one field instead of a set of flags.
+		//   idle        no upload of this session
+		//   uploading   the chunks are being sent; the upload can be cancelled
+		//   verifying   the finish request is under way, the server verifies the checksum; not cancellable
+		//   starting    the upload is stored, the operation that follows it has not reported yet
+		//   message     a short message (phaseMessage) about the end of the upload
+		this.phase = "idle";
+		this.phaseMessage = "";
+		this.streamUUID = null;
+		this.abortController = null;
+		this._onPhase = null;
+	}
+
+	setPhase (phase, message)
+	{
+		this.phase = Assert.StringValue (phase);
+		this.phaseMessage = message ? Assert.StringValue (message) : "";
+		if (this._onPhase) {
+			try { this._onPhase (this.phase, this.phaseMessage); } catch (error) { console.error ("Upload phase callback failed", error); }
+		}
 	}
 
 	// Reports upload progress as a percentage (0..100). Invokes the optional

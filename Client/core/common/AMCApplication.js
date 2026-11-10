@@ -2188,22 +2188,41 @@ export default class AMCApplication extends Common.AMCObject {
 
 
 	// Upload class "file": stores a file of any accepted type as a storage stream. The success event of the
-	// upload item receives the UUID of the stream as its upload value. Every failing step ends the upload
-	// with the failure state of the item and triggers the failure event, if the item has one.
-	performFileUpload (itemState, successEventName, failureEventName) {
+	// upload item receives the UUID of the stream as its upload value. The checksum is the blockwise checksum
+	// of the server, computed chunk by chunk, so the file is never in memory as a whole and can be of any size.
+	//
+	// The upload state of the item carries the phase that the upload zone shows (see AMCUploadState): uploading
+	// while the chunks are sent (cancelFileUpload stops it), verifying while the finish request runs, then
+	// starting (options.operationFollows: a server operation takes the file over and reports through the busy
+	// attribute of the zone) or a message. Every failing step ends the upload with the message "Upload failed."
+	// and triggers the failure event, if the item has one.
+	performFileUpload (itemState, successEventName, failureEventName, options) {
 
 		Assert.ObjectInstance (itemState, "amcUploadState");
 
 		let chosenfile = itemState.getChosenFile ();
+		let fileName = chosenfile.name;
 		let uploadID = itemState.generateUploadID ();
+		let operationFollows = (options && (options.operationFollows === true));
+
+		let abortController = (typeof AbortController === "function") ? new AbortController () : null;
+		itemState.streamUUID = null;
+		itemState.abortController = abortController;
+		itemState.setPhase ("uploading", "");
+
+		// An upload that was cancelled or replaced meanwhile reports nothing: the errors of its requests that
+		// were under way are expected.
+		let isActive = () => (itemState.getUploadID () === uploadID);
 
 		let failUpload = (err) => {
-			// An upload that was cancelled or replaced meanwhile reports nothing.
-			if (itemState.getUploadID () !== uploadID)
+			if (!isActive ())
 				return;
 
 			console.error ("File upload failed", err);
+			itemState.streamUUID = null;
+			itemState.abortController = null;
 			itemState.cancelUpload ();
+			itemState.setPhase ("message", "Upload failed.");
 			if (failureEventName)
 				this.triggerUIEvent (failureEventName, itemState.getItemUUID (), {});
 		};
@@ -2211,28 +2230,23 @@ export default class AMCApplication extends Common.AMCObject {
 		let finishUpload = async (uploadObject) => {
 			try {
 				let checkSum = await uploadObject.calculateChecksum ();
-				if (!uploadObject.checkIfUploadIsActive ())
+				if (!isActive ())
 					return;
 
+				// From here on the upload is not cancelled any more: the server verifies the checksum of the
+				// whole file within the finish request, which takes a while for a large file.
+				itemState.setPhase ("verifying", "");
 				uploadObject.setStateMessageToWaiting ();
 
 				let resultUploadFinish = await this.axiosPostRequest ("/upload/finish", {
 					"streamuuid": uploadObject.streamuuid,
 					"context": "file",
-					"sha256": checkSum
+					"sha256block64k": checkSum
 				}, { timeout: FILE_UPLOAD_FINISH_TIMEOUT_MS });
 
 				let contextuuid = Assert.UUIDValue (resultUploadFinish.data.contextuuid);
 
-				uploadObject.clearUploadState ();
-
-				if (successEventName) {
-					let itemuuid = uploadObject.getItemUUID ();
-					let eventValues = {}
-					eventValues[itemuuid] = contextuuid;
-
-					this.triggerUIEvent (successEventName, itemuuid, eventValues);
-				}
+				this._completeFileUpload (itemState, fileName, contextuuid, successEventName, operationFollows);
 			} catch (err) {
 				failUpload (err);
 			}
@@ -2241,25 +2255,36 @@ export default class AMCApplication extends Common.AMCObject {
 		let sendNextChunk = (uploadObject) => {
 			let hasChunk = uploadObject.readChunk (this, (application, upload, chunkData, uploadOffset) => {
 
-				if (!upload.checkIfUploadIsActive ())
+				if (!isActive ())
 					return;
 
 				upload.setStateMessageToProgress ();
 
-				const formData = new FormData ();
-				formData.append ("size", chunkData.byteLength);
-				formData.append ("offset", uploadOffset);
-				formData.append ("data", new Blob ([chunkData], { type: upload.getMimeType () }), upload.getFileName ());
-
-				application.axiosPostFormData ("/upload/" + upload.streamuuid, formData, {
-					timeout: FILE_UPLOAD_CHUNK_TIMEOUT_MS,
-					onUploadProgress: (progressEvent) => upload.reportChunkProgress (uploadOffset, progressEvent.loaded)
-				})
+				upload.addChunkToBlockwiseChecksum (chunkData, uploadOffset)
 					.then (() => {
-						if (!upload.checkIfUploadIsActive ())
-							return;
+						if (!isActive ())
+							return null;
 
-						sendNextChunk (upload);
+						const formData = new FormData ();
+						formData.append ("size", chunkData.byteLength);
+						formData.append ("offset", uploadOffset);
+						formData.append ("data", new Blob ([chunkData], { type: upload.getMimeType () }), upload.getFileName ());
+
+						let config = {
+							timeout: FILE_UPLOAD_CHUNK_TIMEOUT_MS,
+							onUploadProgress: (progressEvent) => { if (isActive ()) upload.reportChunkProgress (uploadOffset, progressEvent.loaded); }
+						};
+						// A cancel stops the chunk that is under way.
+						if (abortController)
+							config.signal = abortController.signal;
+
+						return application.axiosPostFormData ("/upload/" + upload.streamuuid, formData, config)
+							.then (() => {
+								if (!isActive ())
+									return;
+
+								sendNextChunk (upload);
+							});
 					})
 					.catch (failUpload);
 			});
@@ -2280,12 +2305,78 @@ export default class AMCApplication extends Common.AMCObject {
 				Assert.ObjectValue (resultUploadInit.data);
 				let streamuuid = Assert.UUIDValue (resultUploadInit.data.streamuuid);
 
-				if (itemState.getUploadID () !== uploadID)
+				if (!isActive ()) {
+					// Cancelled before the server had answered: the stream that it has just created is discarded.
+					this.axiosPostRequest ("/upload/cancel", { "streamuuid": streamuuid })
+						.catch (err => console.error ("Could not discard the cancelled upload", err));
 					return;
+				}
 
-				sendNextChunk (new AMCUpload (itemState, streamuuid));
+				itemState.streamUUID = streamuuid;
+				sendNextChunk (new AMCUpload (itemState, streamuuid, true));
 			})
 			.catch (failUpload);
+	}
+
+	// The end of a file upload that is stored on the server: the item is told, the success event is triggered.
+	_completeFileUpload (itemState, fileName, streamUUID, successEventName, operationFollows) {
+
+		let itemuuid = itemState.getItemUUID ();
+
+		itemState.streamUUID = null;
+		itemState.abortController = null;
+		itemState.finishUpload ();
+		if (operationFollows)
+			itemState.setPhase ("starting", "");
+		else
+			itemState.setPhase ("message", fileName + " uploaded.");
+
+		if (successEventName) {
+			let eventValues = {}
+			eventValues[itemuuid] = streamUUID;
+
+			this.triggerUIEvent (successEventName, itemuuid, eventValues);
+		}
+	}
+
+	// Cancels a file upload of this session while its chunks are being sent. The chunk that is under way is
+	// aborted and the server discards the unfinished stream. Does nothing in any other phase: the finish
+	// request can not be taken back. message is shown by the upload zone, default "Upload cancelled.".
+	// successEventName and operationFollows are those of performFileUpload: should the server answer that the
+	// stream has been finished already, the upload counts as successful and goes on as if nobody had cancelled.
+	cancelFileUpload (itemState, message, successEventName, operationFollows) {
+
+		Assert.ObjectInstance (itemState, "amcUploadState");
+
+		if (itemState.phase !== "uploading")
+			return false;
+
+		let streamUUID = itemState.streamUUID;
+		let abortController = itemState.abortController;
+		let fileName = itemState.chosenFile ? itemState.chosenFile.name : "";
+
+		// The upload ID changes first: the chunk chain stops, and the errors of its aborted requests are not shown.
+		itemState.streamUUID = null;
+		itemState.abortController = null;
+		itemState.uploadID = 0;
+		itemState.chosenFile = null;
+		itemState.progress = 0;
+		itemState.setPhase ("message", message || "Upload cancelled.");
+
+		if (abortController)
+			abortController.abort ();
+
+		// Without a stream UUID the init request is still under way; its answer discards the stream.
+		if (streamUUID) {
+			this.axiosPostRequest ("/upload/cancel", { "streamuuid": streamUUID })
+				.then (resultCancel => {
+					if (resultCancel && resultCancel.data && (resultCancel.data.finished === true))
+						this._completeFileUpload (itemState, fileName, streamUUID, successEventName, operationFollows === true);
+				})
+				.catch (err => console.error ("Could not discard the cancelled upload", err));
+		}
+
+		return true;
 	}
 
 

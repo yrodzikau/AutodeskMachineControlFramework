@@ -44,7 +44,8 @@ namespace AMC {
 		utUnknown = 0,
 		utInitUpload = 1,
 		utStreamUpload = 2,
-		utFinishUpload = 3
+		utFinishUpload = 3,
+		utCancelUpload = 4
 	};
 
 	class CAPIHandler_Upload : public CAPIHandler {
@@ -59,6 +60,7 @@ namespace AMC {
 		void handleInitUploadRequest(CJSONWriter & writer, const uint8_t* pBodyData, const size_t nBodyDataSize, PAPIAuth pAuth);
 		void handleFinishUploadRequest(CJSONWriter& writer, const uint8_t* pBodyData, const size_t nBodyDataSize, PAPIAuth pAuth);
 		void handleStreamUploadRequest(CJSONWriter& writer, CAPIFormFields & pFormFields, const std::string & sStreamUUID, PAPIAuth pAuth);
+		void handleCancelUploadRequest(CJSONWriter& writer, const uint8_t* pBodyData, const size_t nBodyDataSize, PAPIAuth pAuth);
 
 		std::string createNewBuild (const std::string & sName, const std::string & sStorageStreamUUID, PAPIAuth pAuth);
 
