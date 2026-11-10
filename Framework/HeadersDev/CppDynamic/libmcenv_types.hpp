@@ -433,6 +433,14 @@ typedef void * LibMCEnv_pvoid;
 #define LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS 10336 /** Storage stream has active downloads. */
 #define LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED 10337 /** ZIP stream has already been finished. */
 #define LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE 10338 /** Session handler is not available. */
+#define LIBMCENV_ERROR_COULDNOTOPENZIPSTREAM 10339 /** Could not open ZIP stream. */
+#define LIBMCENV_ERROR_ZIPENTRYNOTFOUND 10340 /** ZIP entry not found. */
+#define LIBMCENV_ERROR_INVALIDZIPENTRYINDEX 10341 /** Invalid ZIP entry index. */
+#define LIBMCENV_ERROR_ZIPENTRYTOOLARGE 10342 /** ZIP entry is too large. */
+#define LIBMCENV_ERROR_COULDNOTEXTRACTZIPENTRY 10343 /** Could not extract ZIP entry. */
+#define LIBMCENV_ERROR_INVALIDWORKINGFILENAME 10344 /** Invalid working file name. */
+#define LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED 10345 /** ZIP entry extraction has not been finished. */
+#define LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED 10346 /** Compression method of the ZIP entry is not supported. */
 
 /*************************************************************************************************************************
  Error strings for LibMCEnv
@@ -778,6 +786,14 @@ inline const char * LIBMCENV_GETERRORSTRING (LibMCEnvResult nErrorCode) {
     case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
     case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished.";
     case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
+    case LIBMCENV_ERROR_COULDNOTOPENZIPSTREAM: return "Could not open ZIP stream.";
+    case LIBMCENV_ERROR_ZIPENTRYNOTFOUND: return "ZIP entry not found.";
+    case LIBMCENV_ERROR_INVALIDZIPENTRYINDEX: return "Invalid ZIP entry index.";
+    case LIBMCENV_ERROR_ZIPENTRYTOOLARGE: return "ZIP entry is too large.";
+    case LIBMCENV_ERROR_COULDNOTEXTRACTZIPENTRY: return "Could not extract ZIP entry.";
+    case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "Invalid working file name.";
+    case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIP entry extraction has not been finished.";
+    case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "Compression method of the ZIP entry is not supported.";
     default: return "unknown error";
   }
 }
@@ -853,6 +869,8 @@ typedef LibMCEnvHandle LibMCEnv_SignalHandler;
 typedef LibMCEnvHandle LibMCEnv_BaseTempStreamWriter;
 typedef LibMCEnvHandle LibMCEnv_TempStreamWriter;
 typedef LibMCEnvHandle LibMCEnv_ZIPStreamWriter;
+typedef LibMCEnvHandle LibMCEnv_ZIPEntryExtractor;
+typedef LibMCEnvHandle LibMCEnv_ZIPStreamReader;
 typedef LibMCEnvHandle LibMCEnv_StreamReader;
 typedef LibMCEnvHandle LibMCEnv_UniformJournalSampling;
 typedef LibMCEnvHandle LibMCEnv_JournalVariable;

@@ -287,6 +287,10 @@ public:
 
 	LibMCEnv_uint32 EnforceStreamRetention(const std::string& sName, const LibMCEnv_uint32 nKeepCount) override;
 
+	IZIPStreamReader* OpenZIPStream(const std::string& sUUID) override;
+
+	IWorkingDirectory* CreateWorkingDirectory() override;
+
 	IDateTime* GetCurrentDateTime() override;
 
 	IDateTime* GetCustomDateTime(const LibMCEnv_uint32 nYear, const LibMCEnv_uint32 nMonth, const LibMCEnv_uint32 nDay, const LibMCEnv_uint32 nHour, const LibMCEnv_uint32 nMinute, const LibMCEnv_uint32 nSecond, const LibMCEnv_uint32 nMicrosecond)  override;

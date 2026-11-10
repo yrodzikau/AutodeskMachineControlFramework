@@ -84,6 +84,10 @@ const UPLOAD_FINISH_TIMEOUT_MS = 0;
 // takes 10-50 s), so they get a much longer timeout than plain status requests.
 const EVENT_REQUEST_TIMEOUT_MS = 120000;
 const EVENT_ERROR_SNACKBAR_TIMEOUT_MS = 8000;
+// Uploads of the class "file" can be several GB: a chunk of 16 MiB may take long on a slow link, and the
+// finish request verifies the checksum of the whole file on the server before it answers.
+const FILE_UPLOAD_CHUNK_TIMEOUT_MS = 10 * 60 * 1000;
+const FILE_UPLOAD_FINISH_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
 // Client reactivity metrics: aggregate /api/frontend roundtrips over this window
@@ -2181,6 +2185,108 @@ export default class AMCApplication extends Common.AMCObject {
 		
 
     }
+
+
+	// Upload class "file": stores a file of any accepted type as a storage stream. The success event of the
+	// upload item receives the UUID of the stream as its upload value. Every failing step ends the upload
+	// with the failure state of the item and triggers the failure event, if the item has one.
+	performFileUpload (itemState, successEventName, failureEventName) {
+
+		Assert.ObjectInstance (itemState, "amcUploadState");
+
+		let chosenfile = itemState.getChosenFile ();
+		let uploadID = itemState.generateUploadID ();
+
+		let failUpload = (err) => {
+			// An upload that was cancelled or replaced meanwhile reports nothing.
+			if (itemState.getUploadID () !== uploadID)
+				return;
+
+			console.error ("File upload failed", err);
+			itemState.cancelUpload ();
+			if (failureEventName)
+				this.triggerUIEvent (failureEventName, itemState.getItemUUID (), {});
+		};
+
+		let finishUpload = async (uploadObject) => {
+			try {
+				let checkSum = await uploadObject.calculateChecksum ();
+				if (!uploadObject.checkIfUploadIsActive ())
+					return;
+
+				uploadObject.setStateMessageToWaiting ();
+
+				let resultUploadFinish = await this.axiosPostRequest ("/upload/finish", {
+					"streamuuid": uploadObject.streamuuid,
+					"context": "file",
+					"sha256": checkSum
+				}, { timeout: FILE_UPLOAD_FINISH_TIMEOUT_MS });
+
+				let contextuuid = Assert.UUIDValue (resultUploadFinish.data.contextuuid);
+
+				uploadObject.clearUploadState ();
+
+				if (successEventName) {
+					let itemuuid = uploadObject.getItemUUID ();
+					let eventValues = {}
+					eventValues[itemuuid] = contextuuid;
+
+					this.triggerUIEvent (successEventName, itemuuid, eventValues);
+				}
+			} catch (err) {
+				failUpload (err);
+			}
+		};
+
+		let sendNextChunk = (uploadObject) => {
+			let hasChunk = uploadObject.readChunk (this, (application, upload, chunkData, uploadOffset) => {
+
+				if (!upload.checkIfUploadIsActive ())
+					return;
+
+				upload.setStateMessageToProgress ();
+
+				const formData = new FormData ();
+				formData.append ("size", chunkData.byteLength);
+				formData.append ("offset", uploadOffset);
+				formData.append ("data", new Blob ([chunkData], { type: upload.getMimeType () }), upload.getFileName ());
+
+				application.axiosPostFormData ("/upload/" + upload.streamuuid, formData, {
+					timeout: FILE_UPLOAD_CHUNK_TIMEOUT_MS,
+					onUploadProgress: (progressEvent) => upload.reportChunkProgress (uploadOffset, progressEvent.loaded)
+				})
+					.then (() => {
+						if (!upload.checkIfUploadIsActive ())
+							return;
+
+						sendNextChunk (upload);
+					})
+					.catch (failUpload);
+			});
+
+			if (!hasChunk)
+				finishUpload (uploadObject);
+		};
+
+		this.axiosPostRequest ("/upload/", {
+			"context": "file",
+			"name": chosenfile.name,
+			"size": chosenfile.size,
+			"mimetype": itemState.getMimeType (),
+		})
+			.then (resultUploadInit => {
+
+				Assert.ObjectValue (resultUploadInit);
+				Assert.ObjectValue (resultUploadInit.data);
+				let streamuuid = Assert.UUIDValue (resultUploadInit.data.streamuuid);
+
+				if (itemState.getUploadID () !== uploadID)
+					return;
+
+				sendNextChunk (new AMCUpload (itemState, streamuuid));
+			})
+			.catch (failUpload);
+	}
 
 
     changePage(page) {

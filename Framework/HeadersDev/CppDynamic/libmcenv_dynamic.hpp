@@ -126,6 +126,8 @@ class CSignalHandler;
 class CBaseTempStreamWriter;
 class CTempStreamWriter;
 class CZIPStreamWriter;
+class CZIPEntryExtractor;
+class CZIPStreamReader;
 class CStreamReader;
 class CUniformJournalSampling;
 class CJournalVariable;
@@ -241,6 +243,8 @@ typedef CSignalHandler CLibMCEnvSignalHandler;
 typedef CBaseTempStreamWriter CLibMCEnvBaseTempStreamWriter;
 typedef CTempStreamWriter CLibMCEnvTempStreamWriter;
 typedef CZIPStreamWriter CLibMCEnvZIPStreamWriter;
+typedef CZIPEntryExtractor CLibMCEnvZIPEntryExtractor;
+typedef CZIPStreamReader CLibMCEnvZIPStreamReader;
 typedef CStreamReader CLibMCEnvStreamReader;
 typedef CUniformJournalSampling CLibMCEnvUniformJournalSampling;
 typedef CJournalVariable CLibMCEnvJournalVariable;
@@ -356,6 +360,8 @@ typedef std::shared_ptr<CSignalHandler> PSignalHandler;
 typedef std::shared_ptr<CBaseTempStreamWriter> PBaseTempStreamWriter;
 typedef std::shared_ptr<CTempStreamWriter> PTempStreamWriter;
 typedef std::shared_ptr<CZIPStreamWriter> PZIPStreamWriter;
+typedef std::shared_ptr<CZIPEntryExtractor> PZIPEntryExtractor;
+typedef std::shared_ptr<CZIPStreamReader> PZIPStreamReader;
 typedef std::shared_ptr<CStreamReader> PStreamReader;
 typedef std::shared_ptr<CUniformJournalSampling> PUniformJournalSampling;
 typedef std::shared_ptr<CJournalVariable> PJournalVariable;
@@ -471,6 +477,8 @@ typedef PSignalHandler PLibMCEnvSignalHandler;
 typedef PBaseTempStreamWriter PLibMCEnvBaseTempStreamWriter;
 typedef PTempStreamWriter PLibMCEnvTempStreamWriter;
 typedef PZIPStreamWriter PLibMCEnvZIPStreamWriter;
+typedef PZIPEntryExtractor PLibMCEnvZIPEntryExtractor;
+typedef PZIPStreamReader PLibMCEnvZIPStreamReader;
 typedef PStreamReader PLibMCEnvStreamReader;
 typedef PUniformJournalSampling PLibMCEnvUniformJournalSampling;
 typedef PJournalVariable PLibMCEnvJournalVariable;
@@ -930,6 +938,14 @@ public:
 			case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "STREAMHASACTIVEDOWNLOADS";
 			case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIPSTREAMALREADYFINISHED";
 			case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "SESSIONHANDLERNOTAVAILABLE";
+			case LIBMCENV_ERROR_COULDNOTOPENZIPSTREAM: return "COULDNOTOPENZIPSTREAM";
+			case LIBMCENV_ERROR_ZIPENTRYNOTFOUND: return "ZIPENTRYNOTFOUND";
+			case LIBMCENV_ERROR_INVALIDZIPENTRYINDEX: return "INVALIDZIPENTRYINDEX";
+			case LIBMCENV_ERROR_ZIPENTRYTOOLARGE: return "ZIPENTRYTOOLARGE";
+			case LIBMCENV_ERROR_COULDNOTEXTRACTZIPENTRY: return "COULDNOTEXTRACTZIPENTRY";
+			case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "INVALIDWORKINGFILENAME";
+			case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIPENTRYEXTRACTIONNOTFINISHED";
+			case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "ZIPENTRYCOMPRESSIONNOTSUPPORTED";
 		}
 		return "UNKNOWN";
 	}
@@ -1275,6 +1291,14 @@ public:
 			case LIBMCENV_ERROR_STREAMHASACTIVEDOWNLOADS: return "Storage stream has active downloads.";
 			case LIBMCENV_ERROR_ZIPSTREAMALREADYFINISHED: return "ZIP stream has already been finished.";
 			case LIBMCENV_ERROR_SESSIONHANDLERNOTAVAILABLE: return "Session handler is not available.";
+			case LIBMCENV_ERROR_COULDNOTOPENZIPSTREAM: return "Could not open ZIP stream.";
+			case LIBMCENV_ERROR_ZIPENTRYNOTFOUND: return "ZIP entry not found.";
+			case LIBMCENV_ERROR_INVALIDZIPENTRYINDEX: return "Invalid ZIP entry index.";
+			case LIBMCENV_ERROR_ZIPENTRYTOOLARGE: return "ZIP entry is too large.";
+			case LIBMCENV_ERROR_COULDNOTEXTRACTZIPENTRY: return "Could not extract ZIP entry.";
+			case LIBMCENV_ERROR_INVALIDWORKINGFILENAME: return "Invalid working file name.";
+			case LIBMCENV_ERROR_ZIPENTRYEXTRACTIONNOTFINISHED: return "ZIP entry extraction has not been finished.";
+			case LIBMCENV_ERROR_ZIPENTRYCOMPRESSIONNOTSUPPORTED: return "Compression method of the ZIP entry is not supported.";
 		}
 		return "unknown error";
 	}
@@ -1458,6 +1482,8 @@ private:
 	friend class CBaseTempStreamWriter;
 	friend class CTempStreamWriter;
 	friend class CZIPStreamWriter;
+	friend class CZIPEntryExtractor;
+	friend class CZIPStreamReader;
 	friend class CStreamReader;
 	friend class CUniformJournalSampling;
 	friend class CJournalVariable;
@@ -3460,6 +3486,51 @@ public:
 };
 	
 /*************************************************************************************************************************
+ Class CZIPEntryExtractor 
+**************************************************************************************************************************/
+class CZIPEntryExtractor : public CBase {
+public:
+	
+	/**
+	* CZIPEntryExtractor::CZIPEntryExtractor - Constructor for ZIPEntryExtractor class.
+	*/
+	CZIPEntryExtractor(CWrapper* pWrapper, LibMCEnvHandle pHandle)
+		: CBase(pWrapper, pHandle)
+	{
+	}
+	
+	inline bool ExtractChunk(const LibMCEnv_uint64 nMaxBytes);
+	inline LibMCEnv_uint64 GetExtractedBytes();
+	inline LibMCEnv_uint64 GetEntrySize();
+	inline bool IsFinished();
+	inline PWorkingFile GetWorkingFile();
+};
+	
+/*************************************************************************************************************************
+ Class CZIPStreamReader 
+**************************************************************************************************************************/
+class CZIPStreamReader : public CBase {
+public:
+	
+	/**
+	* CZIPStreamReader::CZIPStreamReader - Constructor for ZIPStreamReader class.
+	*/
+	CZIPStreamReader(CWrapper* pWrapper, LibMCEnvHandle pHandle)
+		: CBase(pWrapper, pHandle)
+	{
+	}
+	
+	inline LibMCEnv_uint64 GetEntryCount();
+	inline std::string GetEntryName(const LibMCEnv_uint64 nIndex);
+	inline LibMCEnv_uint64 GetEntrySize(const LibMCEnv_uint64 nIndex);
+	inline bool HasEntry(const std::string & sName);
+	inline LibMCEnv_uint64 GetEntrySizeByName(const std::string & sName);
+	inline std::string ReadEntryAsString(const std::string & sName, const LibMCEnv_uint64 nMaxSize);
+	inline std::string ReadEntryHead(const std::string & sName, const LibMCEnv_uint64 nMaxBytes);
+	inline PZIPEntryExtractor CreateEntryExtractor(const std::string & sName, classParam<CWorkingDirectory> pWorkingDirectory, const std::string & sFileName);
+};
+	
+/*************************************************************************************************************************
  Class CStreamReader 
 **************************************************************************************************************************/
 class CStreamReader : public CBase {
@@ -4568,6 +4639,8 @@ public:
 	inline bool CancelStreamDownloads(const std::string & sStreamUUID);
 	inline void DeleteStorageStream(const std::string & sUUID);
 	inline LibMCEnv_uint32 EnforceStreamRetention(const std::string & sName, const LibMCEnv_uint32 nKeepCount);
+	inline PZIPStreamReader OpenZIPStream(const std::string & sUUID);
+	inline PWorkingDirectory CreateWorkingDirectory();
 };
 	
 /*************************************************************************************************************************
@@ -5645,6 +5718,19 @@ public:
 		pWrapperTable->m_ZIPStreamWriter_CreateZIPEntry = nullptr;
 		pWrapperTable->m_ZIPStreamWriter_CreateZIPEntryFromStream = nullptr;
 		pWrapperTable->m_ZIPStreamWriter_Discard = nullptr;
+		pWrapperTable->m_ZIPEntryExtractor_ExtractChunk = nullptr;
+		pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes = nullptr;
+		pWrapperTable->m_ZIPEntryExtractor_GetEntrySize = nullptr;
+		pWrapperTable->m_ZIPEntryExtractor_IsFinished = nullptr;
+		pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile = nullptr;
+		pWrapperTable->m_ZIPStreamReader_GetEntryCount = nullptr;
+		pWrapperTable->m_ZIPStreamReader_GetEntryName = nullptr;
+		pWrapperTable->m_ZIPStreamReader_GetEntrySize = nullptr;
+		pWrapperTable->m_ZIPStreamReader_HasEntry = nullptr;
+		pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName = nullptr;
+		pWrapperTable->m_ZIPStreamReader_ReadEntryAsString = nullptr;
+		pWrapperTable->m_ZIPStreamReader_ReadEntryHead = nullptr;
+		pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor = nullptr;
 		pWrapperTable->m_StreamReader_GetUUID = nullptr;
 		pWrapperTable->m_StreamReader_GetName = nullptr;
 		pWrapperTable->m_StreamReader_GetMIMEType = nullptr;
@@ -6100,6 +6186,8 @@ public:
 		pWrapperTable->m_StateEnvironment_CancelStreamDownloads = nullptr;
 		pWrapperTable->m_StateEnvironment_DeleteStorageStream = nullptr;
 		pWrapperTable->m_StateEnvironment_EnforceStreamRetention = nullptr;
+		pWrapperTable->m_StateEnvironment_OpenZIPStream = nullptr;
+		pWrapperTable->m_StateEnvironment_CreateWorkingDirectory = nullptr;
 		pWrapperTable->m_UIItem_GetName = nullptr;
 		pWrapperTable->m_UIItem_GetPath = nullptr;
 		pWrapperTable->m_UIItem_GetUUID = nullptr;
@@ -13854,6 +13942,123 @@ public:
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_ExtractChunk = (PLibMCEnvZIPEntryExtractor_ExtractChunkPtr) GetProcAddress(hLibrary, "libmcenv_zipentryextractor_extractchunk");
+		#else // _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_ExtractChunk = (PLibMCEnvZIPEntryExtractor_ExtractChunkPtr) dlsym(hLibrary, "libmcenv_zipentryextractor_extractchunk");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPEntryExtractor_ExtractChunk == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes = (PLibMCEnvZIPEntryExtractor_GetExtractedBytesPtr) GetProcAddress(hLibrary, "libmcenv_zipentryextractor_getextractedbytes");
+		#else // _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes = (PLibMCEnvZIPEntryExtractor_GetExtractedBytesPtr) dlsym(hLibrary, "libmcenv_zipentryextractor_getextractedbytes");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetEntrySize = (PLibMCEnvZIPEntryExtractor_GetEntrySizePtr) GetProcAddress(hLibrary, "libmcenv_zipentryextractor_getentrysize");
+		#else // _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetEntrySize = (PLibMCEnvZIPEntryExtractor_GetEntrySizePtr) dlsym(hLibrary, "libmcenv_zipentryextractor_getentrysize");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPEntryExtractor_GetEntrySize == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_IsFinished = (PLibMCEnvZIPEntryExtractor_IsFinishedPtr) GetProcAddress(hLibrary, "libmcenv_zipentryextractor_isfinished");
+		#else // _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_IsFinished = (PLibMCEnvZIPEntryExtractor_IsFinishedPtr) dlsym(hLibrary, "libmcenv_zipentryextractor_isfinished");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPEntryExtractor_IsFinished == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile = (PLibMCEnvZIPEntryExtractor_GetWorkingFilePtr) GetProcAddress(hLibrary, "libmcenv_zipentryextractor_getworkingfile");
+		#else // _WIN32
+		pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile = (PLibMCEnvZIPEntryExtractor_GetWorkingFilePtr) dlsym(hLibrary, "libmcenv_zipentryextractor_getworkingfile");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntryCount = (PLibMCEnvZIPStreamReader_GetEntryCountPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_getentrycount");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntryCount = (PLibMCEnvZIPStreamReader_GetEntryCountPtr) dlsym(hLibrary, "libmcenv_zipstreamreader_getentrycount");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_GetEntryCount == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntryName = (PLibMCEnvZIPStreamReader_GetEntryNamePtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_getentryname");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntryName = (PLibMCEnvZIPStreamReader_GetEntryNamePtr) dlsym(hLibrary, "libmcenv_zipstreamreader_getentryname");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_GetEntryName == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntrySize = (PLibMCEnvZIPStreamReader_GetEntrySizePtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_getentrysize");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntrySize = (PLibMCEnvZIPStreamReader_GetEntrySizePtr) dlsym(hLibrary, "libmcenv_zipstreamreader_getentrysize");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_GetEntrySize == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_HasEntry = (PLibMCEnvZIPStreamReader_HasEntryPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_hasentry");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_HasEntry = (PLibMCEnvZIPStreamReader_HasEntryPtr) dlsym(hLibrary, "libmcenv_zipstreamreader_hasentry");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_HasEntry == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName = (PLibMCEnvZIPStreamReader_GetEntrySizeByNamePtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_getentrysizebyname");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName = (PLibMCEnvZIPStreamReader_GetEntrySizeByNamePtr) dlsym(hLibrary, "libmcenv_zipstreamreader_getentrysizebyname");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_ReadEntryAsString = (PLibMCEnvZIPStreamReader_ReadEntryAsStringPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_readentryasstring");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_ReadEntryAsString = (PLibMCEnvZIPStreamReader_ReadEntryAsStringPtr) dlsym(hLibrary, "libmcenv_zipstreamreader_readentryasstring");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_ReadEntryAsString == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_ReadEntryHead = (PLibMCEnvZIPStreamReader_ReadEntryHeadPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_readentryhead");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_ReadEntryHead = (PLibMCEnvZIPStreamReader_ReadEntryHeadPtr) dlsym(hLibrary, "libmcenv_zipstreamreader_readentryhead");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_ReadEntryHead == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor = (PLibMCEnvZIPStreamReader_CreateEntryExtractorPtr) GetProcAddress(hLibrary, "libmcenv_zipstreamreader_createentryextractor");
+		#else // _WIN32
+		pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor = (PLibMCEnvZIPStreamReader_CreateEntryExtractorPtr) dlsym(hLibrary, "libmcenv_zipstreamreader_createentryextractor");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
 		pWrapperTable->m_StreamReader_GetUUID = (PLibMCEnvStreamReader_GetUUIDPtr) GetProcAddress(hLibrary, "libmcenv_streamreader_getuuid");
 		#else // _WIN32
 		pWrapperTable->m_StreamReader_GetUUID = (PLibMCEnvStreamReader_GetUUIDPtr) dlsym(hLibrary, "libmcenv_streamreader_getuuid");
@@ -17946,6 +18151,24 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_StateEnvironment_EnforceStreamRetention == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_OpenZIPStream = (PLibMCEnvStateEnvironment_OpenZIPStreamPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_openzipstream");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_OpenZIPStream = (PLibMCEnvStateEnvironment_OpenZIPStreamPtr) dlsym(hLibrary, "libmcenv_stateenvironment_openzipstream");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_OpenZIPStream == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_StateEnvironment_CreateWorkingDirectory = (PLibMCEnvStateEnvironment_CreateWorkingDirectoryPtr) GetProcAddress(hLibrary, "libmcenv_stateenvironment_createworkingdirectory");
+		#else // _WIN32
+		pWrapperTable->m_StateEnvironment_CreateWorkingDirectory = (PLibMCEnvStateEnvironment_CreateWorkingDirectoryPtr) dlsym(hLibrary, "libmcenv_stateenvironment_createworkingdirectory");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_StateEnvironment_CreateWorkingDirectory == nullptr)
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -22457,6 +22680,58 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamWriter_Discard == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcenv_zipentryextractor_extractchunk", (void**)&(pWrapperTable->m_ZIPEntryExtractor_ExtractChunk));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPEntryExtractor_ExtractChunk == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipentryextractor_getextractedbytes", (void**)&(pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPEntryExtractor_GetExtractedBytes == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipentryextractor_getentrysize", (void**)&(pWrapperTable->m_ZIPEntryExtractor_GetEntrySize));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPEntryExtractor_GetEntrySize == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipentryextractor_isfinished", (void**)&(pWrapperTable->m_ZIPEntryExtractor_IsFinished));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPEntryExtractor_IsFinished == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipentryextractor_getworkingfile", (void**)&(pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPEntryExtractor_GetWorkingFile == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_getentrycount", (void**)&(pWrapperTable->m_ZIPStreamReader_GetEntryCount));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_GetEntryCount == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_getentryname", (void**)&(pWrapperTable->m_ZIPStreamReader_GetEntryName));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_GetEntryName == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_getentrysize", (void**)&(pWrapperTable->m_ZIPStreamReader_GetEntrySize));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_GetEntrySize == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_hasentry", (void**)&(pWrapperTable->m_ZIPStreamReader_HasEntry));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_HasEntry == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_getentrysizebyname", (void**)&(pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_GetEntrySizeByName == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_readentryasstring", (void**)&(pWrapperTable->m_ZIPStreamReader_ReadEntryAsString));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_ReadEntryAsString == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_readentryhead", (void**)&(pWrapperTable->m_ZIPStreamReader_ReadEntryHead));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_ReadEntryHead == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_zipstreamreader_createentryextractor", (void**)&(pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor));
+		if ( (eLookupError != 0) || (pWrapperTable->m_ZIPStreamReader_CreateEntryExtractor == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcenv_streamreader_getuuid", (void**)&(pWrapperTable->m_StreamReader_GetUUID));
 		if ( (eLookupError != 0) || (pWrapperTable->m_StreamReader_GetUUID == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -24275,6 +24550,14 @@ public:
 		
 		eLookupError = (*pLookup)("libmcenv_stateenvironment_enforcestreamretention", (void**)&(pWrapperTable->m_StateEnvironment_EnforceStreamRetention));
 		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_EnforceStreamRetention == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_openzipstream", (void**)&(pWrapperTable->m_StateEnvironment_OpenZIPStream));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_OpenZIPStream == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		eLookupError = (*pLookup)("libmcenv_stateenvironment_createworkingdirectory", (void**)&(pWrapperTable->m_StateEnvironment_CreateWorkingDirectory));
+		if ( (eLookupError != 0) || (pWrapperTable->m_StateEnvironment_CreateWorkingDirectory == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		eLookupError = (*pLookup)("libmcenv_uiitem_getname", (void**)&(pWrapperTable->m_UIItem_GetName));
@@ -36105,6 +36388,198 @@ public:
 	}
 	
 	/**
+	 * Method definitions for class CZIPEntryExtractor
+	 */
+	
+	/**
+	* CZIPEntryExtractor::ExtractChunk - Extracts the next piece of the entry. Checks size and CRC when the entry is complete. On failure the partial file is deleted.
+	* @param[in] nMaxBytes - Maximum number of uncompressed bytes to extract in this call. MUST be larger than 0.
+	* @return True if the entry has been extracted completely.
+	*/
+	bool CZIPEntryExtractor::ExtractChunk(const LibMCEnv_uint64 nMaxBytes)
+	{
+		bool resultFinished = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPEntryExtractor_ExtractChunk(m_pHandle, nMaxBytes, &resultFinished));
+		
+		return resultFinished;
+	}
+	
+	/**
+	* CZIPEntryExtractor::GetExtractedBytes - Returns the number of uncompressed bytes extracted so far.
+	* @return Extracted bytes.
+	*/
+	LibMCEnv_uint64 CZIPEntryExtractor::GetExtractedBytes()
+	{
+		LibMCEnv_uint64 resultExtractedBytes = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPEntryExtractor_GetExtractedBytes(m_pHandle, &resultExtractedBytes));
+		
+		return resultExtractedBytes;
+	}
+	
+	/**
+	* CZIPEntryExtractor::GetEntrySize - Returns the uncompressed size of the entry.
+	* @return Uncompressed size in bytes.
+	*/
+	LibMCEnv_uint64 CZIPEntryExtractor::GetEntrySize()
+	{
+		LibMCEnv_uint64 resultEntrySize = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPEntryExtractor_GetEntrySize(m_pHandle, &resultEntrySize));
+		
+		return resultEntrySize;
+	}
+	
+	/**
+	* CZIPEntryExtractor::IsFinished - Returns if the entry has been extracted completely.
+	* @return True if the entry has been extracted completely.
+	*/
+	bool CZIPEntryExtractor::IsFinished()
+	{
+		bool resultFinished = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPEntryExtractor_IsFinished(m_pHandle, &resultFinished));
+		
+		return resultFinished;
+	}
+	
+	/**
+	* CZIPEntryExtractor::GetWorkingFile - Returns the extracted file. Fails before the extraction is complete.
+	* @return Working file instance.
+	*/
+	PWorkingFile CZIPEntryExtractor::GetWorkingFile()
+	{
+		LibMCEnvHandle hWorkingFile = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPEntryExtractor_GetWorkingFile(m_pHandle, &hWorkingFile));
+		
+		if (!hWorkingFile) {
+			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<CWorkingFile>(m_pWrapper, hWorkingFile);
+	}
+	
+	/**
+	 * Method definitions for class CZIPStreamReader
+	 */
+	
+	/**
+	* CZIPStreamReader::GetEntryCount - Returns the number of entries of the ZIP file.
+	* @return Number of entries.
+	*/
+	LibMCEnv_uint64 CZIPStreamReader::GetEntryCount()
+	{
+		LibMCEnv_uint64 resultCount = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_GetEntryCount(m_pHandle, &resultCount));
+		
+		return resultCount;
+	}
+	
+	/**
+	* CZIPStreamReader::GetEntryName - Returns the name of an entry.
+	* @param[in] nIndex - Index of the entry. 0-based.
+	* @return Name of the entry as stored in the ZIP file.
+	*/
+	std::string CZIPStreamReader::GetEntryName(const LibMCEnv_uint64 nIndex)
+	{
+		LibMCEnv_uint32 bytesNeededName = 0;
+		LibMCEnv_uint32 bytesWrittenName = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_GetEntryName(m_pHandle, nIndex, 0, &bytesNeededName, nullptr));
+		std::vector<char> bufferName(bytesNeededName);
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_GetEntryName(m_pHandle, nIndex, bytesNeededName, &bytesWrittenName, &bufferName[0]));
+		
+		return std::string(&bufferName[0]);
+	}
+	
+	/**
+	* CZIPStreamReader::GetEntrySize - Returns the uncompressed size of an entry.
+	* @param[in] nIndex - Index of the entry. 0-based.
+	* @return Uncompressed size in bytes.
+	*/
+	LibMCEnv_uint64 CZIPStreamReader::GetEntrySize(const LibMCEnv_uint64 nIndex)
+	{
+		LibMCEnv_uint64 resultSize = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_GetEntrySize(m_pHandle, nIndex, &resultSize));
+		
+		return resultSize;
+	}
+	
+	/**
+	* CZIPStreamReader::HasEntry - Returns if an entry with the given name exists.
+	* @param[in] sName - Name of the entry.
+	* @return True if the entry exists.
+	*/
+	bool CZIPStreamReader::HasEntry(const std::string & sName)
+	{
+		bool resultExists = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_HasEntry(m_pHandle, sName.c_str(), &resultExists));
+		
+		return resultExists;
+	}
+	
+	/**
+	* CZIPStreamReader::GetEntrySizeByName - Returns the uncompressed size of an entry. Fails if the entry does not exist.
+	* @param[in] sName - Name of the entry.
+	* @return Uncompressed size in bytes.
+	*/
+	LibMCEnv_uint64 CZIPStreamReader::GetEntrySizeByName(const std::string & sName)
+	{
+		LibMCEnv_uint64 resultSize = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_GetEntrySizeByName(m_pHandle, sName.c_str(), &resultSize));
+		
+		return resultSize;
+	}
+	
+	/**
+	* CZIPStreamReader::ReadEntryAsString - Reads an entry completely and checks its CRC. Fails if the entry is larger than MaxSize or if its compression method is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] nMaxSize - Maximum uncompressed size in bytes.
+	* @return Content of the entry.
+	*/
+	std::string CZIPStreamReader::ReadEntryAsString(const std::string & sName, const LibMCEnv_uint64 nMaxSize)
+	{
+		LibMCEnv_uint32 bytesNeededContent = 0;
+		LibMCEnv_uint32 bytesWrittenContent = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_ReadEntryAsString(m_pHandle, sName.c_str(), nMaxSize, 0, &bytesNeededContent, nullptr));
+		std::vector<char> bufferContent(bytesNeededContent);
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_ReadEntryAsString(m_pHandle, sName.c_str(), nMaxSize, bytesNeededContent, &bytesWrittenContent, &bufferContent[0]));
+		
+		return std::string(&bufferContent[0]);
+	}
+	
+	/**
+	* CZIPStreamReader::ReadEntryHead - Returns at most MaxBytes from the beginning of the uncompressed entry, the whole entry if it is shorter. No CRC check. Used to look at the first line of a large entry without extracting it. Fails if the compression method of the entry is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] nMaxBytes - Maximum number of bytes to read. MUST NOT be larger than 16 MiB.
+	* @return Beginning of the entry.
+	*/
+	std::string CZIPStreamReader::ReadEntryHead(const std::string & sName, const LibMCEnv_uint64 nMaxBytes)
+	{
+		LibMCEnv_uint32 bytesNeededContent = 0;
+		LibMCEnv_uint32 bytesWrittenContent = 0;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_ReadEntryHead(m_pHandle, sName.c_str(), nMaxBytes, 0, &bytesNeededContent, nullptr));
+		std::vector<char> bufferContent(bytesNeededContent);
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_ReadEntryHead(m_pHandle, sName.c_str(), nMaxBytes, bytesNeededContent, &bytesWrittenContent, &bufferContent[0]));
+		
+		return std::string(&bufferContent[0]);
+	}
+	
+	/**
+	* CZIPStreamReader::CreateEntryExtractor - Prepares the extraction of an entry into a managed file of a working directory. The file name is given by the caller, entry paths are never used as file paths. Fails if the compression method of the entry is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] pWorkingDirectory - Working directory that receives the file.
+	* @param[in] sFileName - File name in the working directory. Can not include any path delimiters or ..
+	* @return Extractor instance.
+	*/
+	PZIPEntryExtractor CZIPStreamReader::CreateEntryExtractor(const std::string & sName, classParam<CWorkingDirectory> pWorkingDirectory, const std::string & sFileName)
+	{
+		LibMCEnvHandle hWorkingDirectory = pWorkingDirectory.GetHandle();
+		LibMCEnvHandle hExtractor = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_ZIPStreamReader_CreateEntryExtractor(m_pHandle, sName.c_str(), hWorkingDirectory, sFileName.c_str(), &hExtractor));
+		
+		if (!hExtractor) {
+			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<CZIPEntryExtractor>(m_pWrapper, hExtractor);
+	}
+	
+	/**
 	 * Method definitions for class CStreamReader
 	 */
 	
@@ -42739,6 +43214,37 @@ public:
 		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_EnforceStreamRetention(m_pHandle, sName.c_str(), nKeepCount, &resultDeletedCount));
 		
 		return resultDeletedCount;
+	}
+	
+	/**
+	* CStateEnvironment::OpenZIPStream - Opens a ZIP file of the storage for reading. Fails if the stream does not exist, is not finished or is not a readable ZIP file.
+	* @param[in] sUUID - UUID of the storage stream.
+	* @return ZIP stream reader instance.
+	*/
+	PZIPStreamReader CStateEnvironment::OpenZIPStream(const std::string & sUUID)
+	{
+		LibMCEnvHandle hZIPStreamReader = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_OpenZIPStream(m_pHandle, sUUID.c_str(), &hZIPStreamReader));
+		
+		if (!hZIPStreamReader) {
+			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<CZIPStreamReader>(m_pWrapper, hZIPStreamReader);
+	}
+	
+	/**
+	* CStateEnvironment::CreateWorkingDirectory - Creates a temporary working directory below the temp base path of the server, like the working directories of the drivers. Driver and machine resource data can not be stored in it.
+	* @return Working directory instance.
+	*/
+	PWorkingDirectory CStateEnvironment::CreateWorkingDirectory()
+	{
+		LibMCEnvHandle hWorkingDirectory = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_StateEnvironment_CreateWorkingDirectory(m_pHandle, &hWorkingDirectory));
+		
+		if (!hWorkingDirectory) {
+			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<CWorkingDirectory>(m_pWrapper, hWorkingDirectory);
 	}
 	
 	/**

@@ -376,6 +376,14 @@
 		<error name="STREAMHASACTIVEDOWNLOADS" code="10336" description="Storage stream has active downloads." />
 		<error name="ZIPSTREAMALREADYFINISHED" code="10337" description="ZIP stream has already been finished." />
 		<error name="SESSIONHANDLERNOTAVAILABLE" code="10338" description="Session handler is not available." />
+		<error name="COULDNOTOPENZIPSTREAM" code="10339" description="Could not open ZIP stream." />
+		<error name="ZIPENTRYNOTFOUND" code="10340" description="ZIP entry not found." />
+		<error name="INVALIDZIPENTRYINDEX" code="10341" description="Invalid ZIP entry index." />
+		<error name="ZIPENTRYTOOLARGE" code="10342" description="ZIP entry is too large." />
+		<error name="COULDNOTEXTRACTZIPENTRY" code="10343" description="Could not extract ZIP entry." />
+		<error name="INVALIDWORKINGFILENAME" code="10344" description="Invalid working file name." />
+		<error name="ZIPENTRYEXTRACTIONNOTFINISHED" code="10345" description="ZIP entry extraction has not been finished." />
+		<error name="ZIPENTRYCOMPRESSIONNOTSUPPORTED" code="10346" description="Compression method of the ZIP entry is not supported." />
 		
 		
 	</errors>
@@ -5136,6 +5144,78 @@
 
 	</class>
 
+	<class name="ZIPEntryExtractor" parent="Base" description="Extracts one ZIP entry piece by piece into a managed file of a working directory, so that the caller can stop between two pieces. Released before completion, it deletes the partial file.">
+
+		<method name="ExtractChunk" description="Extracts the next piece of the entry. Checks size and CRC when the entry is complete. On failure the partial file is deleted.">
+			<param name="MaxBytes" type="uint64" pass="in" description="Maximum number of uncompressed bytes to extract in this call. MUST be larger than 0." />
+			<param name="Finished" type="bool" pass="return" description="True if the entry has been extracted completely." />
+		</method>
+
+		<method name="GetExtractedBytes" description="Returns the number of uncompressed bytes extracted so far.">
+			<param name="ExtractedBytes" type="uint64" pass="return" description="Extracted bytes." />
+		</method>
+
+		<method name="GetEntrySize" description="Returns the uncompressed size of the entry.">
+			<param name="EntrySize" type="uint64" pass="return" description="Uncompressed size in bytes." />
+		</method>
+
+		<method name="IsFinished" description="Returns if the entry has been extracted completely.">
+			<param name="Finished" type="bool" pass="return" description="True if the entry has been extracted completely." />
+		</method>
+
+		<method name="GetWorkingFile" description="Returns the extracted file. Fails before the extraction is complete.">
+			<param name="WorkingFile" type="class" class="WorkingFile" pass="return" description="Working file instance." />
+		</method>
+
+	</class>
+
+	<class name="ZIPStreamReader" parent="Base" description="Read access to a ZIP file in the storage. The entries are read directly from the storage stream; the file is never loaded as a whole.">
+
+		<method name="GetEntryCount" description="Returns the number of entries of the ZIP file.">
+			<param name="Count" type="uint64" pass="return" description="Number of entries." />
+		</method>
+
+		<method name="GetEntryName" description="Returns the name of an entry.">
+			<param name="Index" type="uint64" pass="in" description="Index of the entry. 0-based." />
+			<param name="Name" type="string" pass="return" description="Name of the entry as stored in the ZIP file." />
+		</method>
+
+		<method name="GetEntrySize" description="Returns the uncompressed size of an entry.">
+			<param name="Index" type="uint64" pass="in" description="Index of the entry. 0-based." />
+			<param name="Size" type="uint64" pass="return" description="Uncompressed size in bytes." />
+		</method>
+
+		<method name="HasEntry" description="Returns if an entry with the given name exists.">
+			<param name="Name" type="string" pass="in" description="Name of the entry." />
+			<param name="Exists" type="bool" pass="return" description="True if the entry exists." />
+		</method>
+
+		<method name="GetEntrySizeByName" description="Returns the uncompressed size of an entry. Fails if the entry does not exist.">
+			<param name="Name" type="string" pass="in" description="Name of the entry." />
+			<param name="Size" type="uint64" pass="return" description="Uncompressed size in bytes." />
+		</method>
+
+		<method name="ReadEntryAsString" description="Reads an entry completely and checks its CRC. Fails if the entry is larger than MaxSize or if its compression method is not supported.">
+			<param name="Name" type="string" pass="in" description="Name of the entry." />
+			<param name="MaxSize" type="uint64" pass="in" description="Maximum uncompressed size in bytes." />
+			<param name="Content" type="string" pass="return" description="Content of the entry." />
+		</method>
+
+		<method name="ReadEntryHead" description="Returns at most MaxBytes from the beginning of the uncompressed entry, the whole entry if it is shorter. No CRC check. Used to look at the first line of a large entry without extracting it. Fails if the compression method of the entry is not supported.">
+			<param name="Name" type="string" pass="in" description="Name of the entry." />
+			<param name="MaxBytes" type="uint64" pass="in" description="Maximum number of bytes to read. MUST NOT be larger than 16 MiB." />
+			<param name="Content" type="string" pass="return" description="Beginning of the entry." />
+		</method>
+
+		<method name="CreateEntryExtractor" description="Prepares the extraction of an entry into a managed file of a working directory. The file name is given by the caller, entry paths are never used as file paths. Fails if the compression method of the entry is not supported.">
+			<param name="Name" type="string" pass="in" description="Name of the entry." />
+			<param name="WorkingDirectory" type="class" class="WorkingDirectory" pass="in" description="Working directory that receives the file." />
+			<param name="FileName" type="string" pass="in" description="File name in the working directory. Can not include any path delimiters or .." />
+			<param name="Extractor" type="class" class="ZIPEntryExtractor" pass="return" description="Extractor instance." />
+		</method>
+
+	</class>
+
 	
 	<class name="StreamReader" parent="Base" description="A reader class that allows to access a storage stream.">
 	
@@ -7382,6 +7462,15 @@
 			<param name="Name" type="string" pass="in" description="Name of the streams." />
 			<param name="KeepCount" type="uint32" pass="in" description="Number of newest streams to keep." />
 			<param name="DeletedCount" type="uint32" pass="return" description="Number of deleted streams." />
+		</method>
+
+		<method name="OpenZIPStream" description="Opens a ZIP file of the storage for reading. Fails if the stream does not exist, is not finished or is not a readable ZIP file.">
+			<param name="UUID" type="string" pass="in" description="UUID of the storage stream." />
+			<param name="ZIPStreamReader" type="class" class="ZIPStreamReader" pass="return" description="ZIP stream reader instance." />
+		</method>
+
+		<method name="CreateWorkingDirectory" description="Creates a temporary working directory below the temp base path of the server, like the working directories of the drivers. Driver and machine resource data can not be stored in it.">
+			<param name="WorkingDirectory" type="class" class="WorkingDirectory" pass="return" description="Working directory instance." />
 		</method>
 
 	</class>

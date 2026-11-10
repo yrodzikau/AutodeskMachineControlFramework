@@ -204,3 +204,8 @@ void CDriverHandler::setTempBasePath(const std::string& sTempBasePath)
 {
 	m_sTempBasePath = sTempBasePath;
 }
+
+std::string CDriverHandler::getTempBasePath()
+{
+	return m_sTempBasePath;
+}

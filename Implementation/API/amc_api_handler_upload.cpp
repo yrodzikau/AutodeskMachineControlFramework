@@ -258,7 +258,8 @@ void CAPIHandler_Upload::handleFinishUploadRequest(CJSONWriter& writer, const ui
 
 		writer.addString(AMC_API_KEY_UPLOAD_CONTEXTUUID, sBuildUUID);
 	}
-	else if (sContext == "image") {
+	else if ((sContext == "image") || (sContext == "file")) {
+		// The stream itself is the result: the UI event of the upload item receives its UUID.
 		writer.addString(AMC_API_KEY_UPLOAD_CONTEXTUUID, sUUID);
 	}
 	else {

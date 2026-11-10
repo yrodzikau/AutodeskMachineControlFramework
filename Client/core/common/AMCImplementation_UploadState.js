@@ -120,6 +120,13 @@ export default class AMCUploadState extends Common.AMCObject {
 		Assert.ObjectValue (file);
 		this.chosenFile = file;
 
+		// Browsers report different types for ZIP files (Windows: application/x-zip-compressed), the server stores one.
+		const lowerCaseName = (file.name || "").toLowerCase ();
+		if (lowerCaseName.endsWith (".zip")) {
+			this.mimeType = "application/zip";
+			return;
+		}
+
 		if (file.type && file.type.length > 0) {
 			this.mimeType = file.type;
 		} else {

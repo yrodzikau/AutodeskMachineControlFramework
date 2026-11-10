@@ -75,6 +75,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_unittests_parquetwriter.hpp"
 #include "amc_unittests_eventformvalues.hpp"
 #include "amc_unittests_uifrontend.hpp"
+#include "amc_unittests_zipstreamreader.hpp"
 
 // LibMCData unit tests
 #include "amc_unittests_libmcdata_storage.hpp"
@@ -145,6 +146,7 @@ CUnitTests::CUnitTests (PUnitTestIO pIO)
 	registerTestGroup(std::make_shared <CUnitTestGroup_ParquetWriter>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_EventFormValues>());
 	registerTestGroup(std::make_shared <CUnitTestGroup_UIFrontend>());
+	registerTestGroup(std::make_shared <CUnitTestGroup_ZIPStreamReader>());
 
 	// LibMCData unit tests
 	registerTestGroup(std::make_shared <CUnitTestGroup_LibMCData_Storage>());

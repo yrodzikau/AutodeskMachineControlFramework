@@ -54,6 +54,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "libmcenv_cryptocontext.hpp"
 #include "libmcenv_tempstreamwriter.hpp"
 #include "libmcenv_zipstreamwriter.hpp"
+#include "libmcenv_zipstreamreader.hpp"
+#include "libmcenv_workingdirectory.hpp"
 #include "libmcenv_streamreader.hpp"
 #include "libmcenv_datatable.hpp"
 #include "libmcenv_machineconfigurationhandler.hpp"
@@ -69,6 +71,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_operationsequencehandler.hpp"
 #include "amc_logger.hpp"
 #include "amc_driverhandler.hpp"
+#include "amc_processdirectory.hpp"
 #include "amc_parameterhandler.hpp"
 #include "amc_ui_handler.hpp"
 #include "amc_statemachinedata.hpp"
@@ -1362,6 +1365,32 @@ LibMCEnv_uint32 CStateEnvironment::EnforceStreamRetention(const std::string& sNa
 	}
 
 	return nDeleted;
+}
+
+IZIPStreamReader* CStateEnvironment::OpenZIPStream(const std::string& sUUID)
+{
+	std::string sNormalizedUUID = AMCCommon::CUtils::normalizeUUIDString(sUUID);
+
+	auto pStorage = m_pSystemState->getDataModelInstance()->CreateStorage();
+	if (!pStorage->StreamIsReady(sNormalizedUUID))
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_STORAGESTREAMNOTFOUND, "Storage Stream not found: " + sNormalizedUUID);
+
+	auto pStorageStream = pStorage->RetrieveStream(sNormalizedUUID);
+	return new CZIPStreamReader(pStorageStream);
+}
+
+IWorkingDirectory* CStateEnvironment::CreateWorkingDirectory()
+{
+	std::string sTempBasePath = m_pSystemState->driverHandler()->getTempBasePath();
+	if (sTempBasePath.empty())
+		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM, "temp base path of the server is not set");
+
+	auto pChrono = m_pSystemState->getGlobalChronoInstance();
+	auto pLogger = m_pSystemState->getLoggerInstance();
+
+	// A state machine has no driver package; resource data can not be stored in this directory.
+	auto pProcessDirectoryStructure = std::make_shared<AMC::CProcessDirectoryStructure>(sTempBasePath, pChrono, pLogger);
+	return new CWorkingDirectory(pProcessDirectoryStructure, pProcessDirectoryStructure->getRootDirectory(), nullptr, nullptr, pChrono, pLogger);
 }
 
 

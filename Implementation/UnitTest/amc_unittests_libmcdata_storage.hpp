@@ -234,6 +234,11 @@ namespace AMCUnitTest {
 			// At minimum, verify the function returns a boolean without throwing
 			assertTrue(bResult1 || !bResult1, "ContentTypeIsAccepted should return a boolean");
 			assertTrue(bResult2 || !bResult2, "ContentTypeIsAccepted should return a boolean");
+
+			// ZIP uploads: browsers on Windows report application/x-zip-compressed.
+			assertTrue(fixture.m_pStorage->ContentTypeIsAccepted("application/zip"), "application/zip should be accepted");
+			assertTrue(fixture.m_pStorage->ContentTypeIsAccepted("application/x-zip-compressed"), "application/x-zip-compressed should be accepted");
+			assertFalse(bResult2, "An unknown content type should not be accepted");
 		}
 
 		void testLargeStream()

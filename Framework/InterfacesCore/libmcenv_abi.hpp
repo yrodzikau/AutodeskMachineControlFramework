@@ -9025,6 +9025,149 @@ LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamwriter_createzipentryfromstre
 LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamwriter_discard(LibMCEnv_ZIPStreamWriter pZIPStreamWriter);
 
 /*************************************************************************************************************************
+ Class definition for ZIPEntryExtractor
+**************************************************************************************************************************/
+
+/**
+* Extracts the next piece of the entry. Checks size and CRC when the entry is complete. On failure the partial file is deleted.
+*
+* @param[in] pZIPEntryExtractor - ZIPEntryExtractor instance.
+* @param[in] nMaxBytes - Maximum number of uncompressed bytes to extract in this call. MUST be larger than 0.
+* @param[out] pFinished - True if the entry has been extracted completely.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipentryextractor_extractchunk(LibMCEnv_ZIPEntryExtractor pZIPEntryExtractor, LibMCEnv_uint64 nMaxBytes, bool * pFinished);
+
+/**
+* Returns the number of uncompressed bytes extracted so far.
+*
+* @param[in] pZIPEntryExtractor - ZIPEntryExtractor instance.
+* @param[out] pExtractedBytes - Extracted bytes.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipentryextractor_getextractedbytes(LibMCEnv_ZIPEntryExtractor pZIPEntryExtractor, LibMCEnv_uint64 * pExtractedBytes);
+
+/**
+* Returns the uncompressed size of the entry.
+*
+* @param[in] pZIPEntryExtractor - ZIPEntryExtractor instance.
+* @param[out] pEntrySize - Uncompressed size in bytes.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipentryextractor_getentrysize(LibMCEnv_ZIPEntryExtractor pZIPEntryExtractor, LibMCEnv_uint64 * pEntrySize);
+
+/**
+* Returns if the entry has been extracted completely.
+*
+* @param[in] pZIPEntryExtractor - ZIPEntryExtractor instance.
+* @param[out] pFinished - True if the entry has been extracted completely.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipentryextractor_isfinished(LibMCEnv_ZIPEntryExtractor pZIPEntryExtractor, bool * pFinished);
+
+/**
+* Returns the extracted file. Fails before the extraction is complete.
+*
+* @param[in] pZIPEntryExtractor - ZIPEntryExtractor instance.
+* @param[out] pWorkingFile - Working file instance.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipentryextractor_getworkingfile(LibMCEnv_ZIPEntryExtractor pZIPEntryExtractor, LibMCEnv_WorkingFile * pWorkingFile);
+
+/*************************************************************************************************************************
+ Class definition for ZIPStreamReader
+**************************************************************************************************************************/
+
+/**
+* Returns the number of entries of the ZIP file.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[out] pCount - Number of entries.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_getentrycount(LibMCEnv_ZIPStreamReader pZIPStreamReader, LibMCEnv_uint64 * pCount);
+
+/**
+* Returns the name of an entry.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] nIndex - Index of the entry. 0-based.
+* @param[in] nNameBufferSize - size of the buffer (including trailing 0)
+* @param[out] pNameNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pNameBuffer -  buffer of Name of the entry as stored in the ZIP file., may be NULL
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_getentryname(LibMCEnv_ZIPStreamReader pZIPStreamReader, LibMCEnv_uint64 nIndex, const LibMCEnv_uint32 nNameBufferSize, LibMCEnv_uint32* pNameNeededChars, char * pNameBuffer);
+
+/**
+* Returns the uncompressed size of an entry.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] nIndex - Index of the entry. 0-based.
+* @param[out] pSize - Uncompressed size in bytes.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_getentrysize(LibMCEnv_ZIPStreamReader pZIPStreamReader, LibMCEnv_uint64 nIndex, LibMCEnv_uint64 * pSize);
+
+/**
+* Returns if an entry with the given name exists.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] pName - Name of the entry.
+* @param[out] pExists - True if the entry exists.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_hasentry(LibMCEnv_ZIPStreamReader pZIPStreamReader, const char * pName, bool * pExists);
+
+/**
+* Returns the uncompressed size of an entry. Fails if the entry does not exist.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] pName - Name of the entry.
+* @param[out] pSize - Uncompressed size in bytes.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_getentrysizebyname(LibMCEnv_ZIPStreamReader pZIPStreamReader, const char * pName, LibMCEnv_uint64 * pSize);
+
+/**
+* Reads an entry completely and checks its CRC. Fails if the entry is larger than MaxSize or if its compression method is not supported.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] pName - Name of the entry.
+* @param[in] nMaxSize - Maximum uncompressed size in bytes.
+* @param[in] nContentBufferSize - size of the buffer (including trailing 0)
+* @param[out] pContentNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pContentBuffer -  buffer of Content of the entry., may be NULL
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_readentryasstring(LibMCEnv_ZIPStreamReader pZIPStreamReader, const char * pName, LibMCEnv_uint64 nMaxSize, const LibMCEnv_uint32 nContentBufferSize, LibMCEnv_uint32* pContentNeededChars, char * pContentBuffer);
+
+/**
+* Returns at most MaxBytes from the beginning of the uncompressed entry, the whole entry if it is shorter. No CRC check. Used to look at the first line of a large entry without extracting it. Fails if the compression method of the entry is not supported.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] pName - Name of the entry.
+* @param[in] nMaxBytes - Maximum number of bytes to read. MUST NOT be larger than 16 MiB.
+* @param[in] nContentBufferSize - size of the buffer (including trailing 0)
+* @param[out] pContentNeededChars - will be filled with the count of the written bytes, or needed buffer size.
+* @param[out] pContentBuffer -  buffer of Beginning of the entry., may be NULL
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_readentryhead(LibMCEnv_ZIPStreamReader pZIPStreamReader, const char * pName, LibMCEnv_uint64 nMaxBytes, const LibMCEnv_uint32 nContentBufferSize, LibMCEnv_uint32* pContentNeededChars, char * pContentBuffer);
+
+/**
+* Prepares the extraction of an entry into a managed file of a working directory. The file name is given by the caller, entry paths are never used as file paths. Fails if the compression method of the entry is not supported.
+*
+* @param[in] pZIPStreamReader - ZIPStreamReader instance.
+* @param[in] pName - Name of the entry.
+* @param[in] pWorkingDirectory - Working directory that receives the file.
+* @param[in] pFileName - File name in the working directory. Can not include any path delimiters or ..
+* @param[out] pExtractor - Extractor instance.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_zipstreamreader_createentryextractor(LibMCEnv_ZIPStreamReader pZIPStreamReader, const char * pName, LibMCEnv_WorkingDirectory pWorkingDirectory, const char * pFileName, LibMCEnv_ZIPEntryExtractor * pExtractor);
+
+/*************************************************************************************************************************
  Class definition for StreamReader
 **************************************************************************************************************************/
 
@@ -13935,6 +14078,25 @@ LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_stateenvironment_deletestoragestream(L
 * @return error code or 0 (success)
 */
 LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_stateenvironment_enforcestreamretention(LibMCEnv_StateEnvironment pStateEnvironment, const char * pName, LibMCEnv_uint32 nKeepCount, LibMCEnv_uint32 * pDeletedCount);
+
+/**
+* Opens a ZIP file of the storage for reading. Fails if the stream does not exist, is not finished or is not a readable ZIP file.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[in] pUUID - UUID of the storage stream.
+* @param[out] pZIPStreamReader - ZIP stream reader instance.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_stateenvironment_openzipstream(LibMCEnv_StateEnvironment pStateEnvironment, const char * pUUID, LibMCEnv_ZIPStreamReader * pZIPStreamReader);
+
+/**
+* Creates a temporary working directory below the temp base path of the server, like the working directories of the drivers. Driver and machine resource data can not be stored in it.
+*
+* @param[in] pStateEnvironment - StateEnvironment instance.
+* @param[out] pWorkingDirectory - Working directory instance.
+* @return error code or 0 (success)
+*/
+LIBMCENV_DECLSPEC LibMCEnvResult libmcenv_stateenvironment_createworkingdirectory(LibMCEnv_StateEnvironment pStateEnvironment, LibMCEnv_WorkingDirectory * pWorkingDirectory);
 
 /*************************************************************************************************************************
  Class definition for UIItem

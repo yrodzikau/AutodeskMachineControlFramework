@@ -129,6 +129,8 @@ namespace AMC {
 		void releaseDriverLocks (const std::string& sInstanceName);
 
 		void setTempBasePath (const std::string& sTempBasePath);
+
+		std::string getTempBasePath ();
 				
 	};
 	

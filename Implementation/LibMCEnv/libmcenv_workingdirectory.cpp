@@ -54,10 +54,8 @@ CWorkingDirectory::CWorkingDirectory(AMC::PProcessDirectoryStructure pProcessDir
     m_pProcessDirectory (pProcessDirectory)
 
 {
-    if (pDriverResourcePackage.get() == nullptr)
-        throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM);
-    if (pMachineResourcePackage.get() == nullptr)
-        throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM);
+    // The resource packages are null for the working directory of a state machine. Only the methods that
+    // store resource data need them.
     if (pProcessDirectoryStructure.get() == nullptr)
         throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM);
 
@@ -170,6 +168,9 @@ IWorkingFile * CWorkingDirectory::StoreDriverData(const std::string & sFileName,
     std::string sAbsoluteFileName = pProcessDirectoryInstance->getAbsoluteFileName(sFileName);
     pProcessDirectoryInstance->addNewMonitoredFile(sFileName);
 
+    if (m_pDriverResourcePackage.get() == nullptr)
+        throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM, "working directory has no driver resource package");
+
     std::vector<uint8_t> Buffer;
     m_pDriverResourcePackage->readEntry(sIdentifier, Buffer);
 
@@ -191,6 +192,9 @@ IWorkingFile* CWorkingDirectory::StoreMachineResourceData(const std::string& sFi
 
     std::string sAbsoluteFileName = pProcessDirectoryInstance->getAbsoluteFileName(sFileName);
     pProcessDirectoryInstance->addNewMonitoredFile(sFileName);
+
+    if (m_pMachineResourcePackage.get() == nullptr)
+        throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDPARAM, "working directory has no machine resource package");
 
     std::vector<uint8_t> Buffer;
     m_pMachineResourcePackage->readEntry(sIdentifier, Buffer);

@@ -15,8 +15,9 @@
 	let statusMessage = $state('');
 	let uploadProgress = $state(0);
 
-	let acceptedTypes = $derived(module.acceptedtypes || (module.uploadclass === 'image' ? '.png,.jpg' : '.3mf'));
-	let caption = $derived(module.uploadcaption || `Select ${module.uploadclass === 'image' ? 'image' : '3MF'} files to upload`);
+	// The upload class "file" accepts any file unless the item restricts the types.
+	let acceptedTypes = $derived(module.acceptedtypes || (module.uploadclass === 'image' ? '.png,.jpg' : (module.uploadclass === 'file' ? '' : '.3mf')));
+	let caption = $derived(module.uploadcaption || (module.uploadclass === 'file' ? 'Select files to upload' : `Select ${module.uploadclass === 'image' ? 'image' : '3MF'} files to upload`));
 
 	function handleFiles (files: FileList | null) {
 		if (!files || files.length === 0 || !app) return;
@@ -46,6 +47,8 @@
 		try {
 			if (module.uploadclass === 'image')
 				app.performImageUpload(module.state, module.uploadsuccessevent, module.uploadfailureevent);
+			else if (module.uploadclass === 'file')
+				app.performFileUpload(module.state, module.uploadsuccessevent, module.uploadfailureevent);
 			else
 				app.performJobUpload(module.state, module.uploadsuccessevent, module.uploadfailureevent);
 		} catch (e) {

@@ -121,6 +121,8 @@ class ISignalHandler;
 class IBaseTempStreamWriter;
 class ITempStreamWriter;
 class IZIPStreamWriter;
+class IZIPEntryExtractor;
+class IZIPStreamReader;
 class IStreamReader;
 class IUniformJournalSampling;
 class IJournalVariable;
@@ -7056,6 +7058,118 @@ typedef IBaseSharedPtr<IZIPStreamWriter> PIZIPStreamWriter;
 
 
 /*************************************************************************************************************************
+ Class interface for ZIPEntryExtractor 
+**************************************************************************************************************************/
+
+class IZIPEntryExtractor : public virtual IBase {
+public:
+	/**
+	* IZIPEntryExtractor::ExtractChunk - Extracts the next piece of the entry. Checks size and CRC when the entry is complete. On failure the partial file is deleted.
+	* @param[in] nMaxBytes - Maximum number of uncompressed bytes to extract in this call. MUST be larger than 0.
+	* @return True if the entry has been extracted completely.
+	*/
+	virtual bool ExtractChunk(const LibMCEnv_uint64 nMaxBytes) = 0;
+
+	/**
+	* IZIPEntryExtractor::GetExtractedBytes - Returns the number of uncompressed bytes extracted so far.
+	* @return Extracted bytes.
+	*/
+	virtual LibMCEnv_uint64 GetExtractedBytes() = 0;
+
+	/**
+	* IZIPEntryExtractor::GetEntrySize - Returns the uncompressed size of the entry.
+	* @return Uncompressed size in bytes.
+	*/
+	virtual LibMCEnv_uint64 GetEntrySize() = 0;
+
+	/**
+	* IZIPEntryExtractor::IsFinished - Returns if the entry has been extracted completely.
+	* @return True if the entry has been extracted completely.
+	*/
+	virtual bool IsFinished() = 0;
+
+	/**
+	* IZIPEntryExtractor::GetWorkingFile - Returns the extracted file. Fails before the extraction is complete.
+	* @return Working file instance.
+	*/
+	virtual IWorkingFile * GetWorkingFile() = 0;
+
+};
+
+typedef IBaseSharedPtr<IZIPEntryExtractor> PIZIPEntryExtractor;
+
+
+/*************************************************************************************************************************
+ Class interface for ZIPStreamReader 
+**************************************************************************************************************************/
+
+class IZIPStreamReader : public virtual IBase {
+public:
+	/**
+	* IZIPStreamReader::GetEntryCount - Returns the number of entries of the ZIP file.
+	* @return Number of entries.
+	*/
+	virtual LibMCEnv_uint64 GetEntryCount() = 0;
+
+	/**
+	* IZIPStreamReader::GetEntryName - Returns the name of an entry.
+	* @param[in] nIndex - Index of the entry. 0-based.
+	* @return Name of the entry as stored in the ZIP file.
+	*/
+	virtual std::string GetEntryName(const LibMCEnv_uint64 nIndex) = 0;
+
+	/**
+	* IZIPStreamReader::GetEntrySize - Returns the uncompressed size of an entry.
+	* @param[in] nIndex - Index of the entry. 0-based.
+	* @return Uncompressed size in bytes.
+	*/
+	virtual LibMCEnv_uint64 GetEntrySize(const LibMCEnv_uint64 nIndex) = 0;
+
+	/**
+	* IZIPStreamReader::HasEntry - Returns if an entry with the given name exists.
+	* @param[in] sName - Name of the entry.
+	* @return True if the entry exists.
+	*/
+	virtual bool HasEntry(const std::string & sName) = 0;
+
+	/**
+	* IZIPStreamReader::GetEntrySizeByName - Returns the uncompressed size of an entry. Fails if the entry does not exist.
+	* @param[in] sName - Name of the entry.
+	* @return Uncompressed size in bytes.
+	*/
+	virtual LibMCEnv_uint64 GetEntrySizeByName(const std::string & sName) = 0;
+
+	/**
+	* IZIPStreamReader::ReadEntryAsString - Reads an entry completely and checks its CRC. Fails if the entry is larger than MaxSize or if its compression method is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] nMaxSize - Maximum uncompressed size in bytes.
+	* @return Content of the entry.
+	*/
+	virtual std::string ReadEntryAsString(const std::string & sName, const LibMCEnv_uint64 nMaxSize) = 0;
+
+	/**
+	* IZIPStreamReader::ReadEntryHead - Returns at most MaxBytes from the beginning of the uncompressed entry, the whole entry if it is shorter. No CRC check. Used to look at the first line of a large entry without extracting it. Fails if the compression method of the entry is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] nMaxBytes - Maximum number of bytes to read. MUST NOT be larger than 16 MiB.
+	* @return Beginning of the entry.
+	*/
+	virtual std::string ReadEntryHead(const std::string & sName, const LibMCEnv_uint64 nMaxBytes) = 0;
+
+	/**
+	* IZIPStreamReader::CreateEntryExtractor - Prepares the extraction of an entry into a managed file of a working directory. The file name is given by the caller, entry paths are never used as file paths. Fails if the compression method of the entry is not supported.
+	* @param[in] sName - Name of the entry.
+	* @param[in] pWorkingDirectory - Working directory that receives the file.
+	* @param[in] sFileName - File name in the working directory. Can not include any path delimiters or ..
+	* @return Extractor instance.
+	*/
+	virtual IZIPEntryExtractor * CreateEntryExtractor(const std::string & sName, IWorkingDirectory* pWorkingDirectory, const std::string & sFileName) = 0;
+
+};
+
+typedef IBaseSharedPtr<IZIPStreamReader> PIZIPStreamReader;
+
+
+/*************************************************************************************************************************
  Class interface for StreamReader 
 **************************************************************************************************************************/
 
@@ -10625,6 +10739,19 @@ public:
 	* @return Number of deleted streams.
 	*/
 	virtual LibMCEnv_uint32 EnforceStreamRetention(const std::string & sName, const LibMCEnv_uint32 nKeepCount) = 0;
+
+	/**
+	* IStateEnvironment::OpenZIPStream - Opens a ZIP file of the storage for reading. Fails if the stream does not exist, is not finished or is not a readable ZIP file.
+	* @param[in] sUUID - UUID of the storage stream.
+	* @return ZIP stream reader instance.
+	*/
+	virtual IZIPStreamReader * OpenZIPStream(const std::string & sUUID) = 0;
+
+	/**
+	* IStateEnvironment::CreateWorkingDirectory - Creates a temporary working directory below the temp base path of the server, like the working directories of the drivers. Driver and machine resource data can not be stored in it.
+	* @return Working directory instance.
+	*/
+	virtual IWorkingDirectory * CreateWorkingDirectory() = 0;
 
 };
 
