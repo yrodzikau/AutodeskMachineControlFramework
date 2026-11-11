@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component xmlns="http://schemas.autodesk.com/netfabb/automaticcomponenttoolkit/2018" 
 	libraryname="MC Driver ScanLab RTC" namespace="LibMCDriver_ScanLab" copyright="Autodesk Inc." year="2020" basename="libmcdriver_scanlab"
-	version="2.0.0">
+	version="2.1.0">
 	<license>
 		<line value="All rights reserved." />
 		<line value="" />
@@ -1226,6 +1226,12 @@ Custom implementation
 		<method name="AddLaserPinOutToList" description="Adds the laser pin command to the current open list.">
 			<param name="LaserOut1" type="bool" pass="in" description="Value for Laser Out Pin 1" />
 			<param name="LaserOut2" type="bool" pass="in" description="Value for Laser Out Pin 2" />
+		</method>
+
+		<method name="LaserSignalOff" description="Switches the laser control signals (LASERON, LASER1, LASER2) off immediately. Control command (laser_signal_off); the card does not execute it while a list is running.">
+		</method>
+
+		<method name="AddLaserSignalOffToList" description="Adds laser_signal_off_list to the current open list: the laser control signals are switched off when the list reaches the command.">
 		</method>
 				
 		<method name="AddWriteDigitalIOList" description="Adds the change of all 16 digital IO Ports to the current open list.">

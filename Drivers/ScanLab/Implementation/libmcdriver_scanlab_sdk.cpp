@@ -275,6 +275,8 @@ CScanLabSDK::CScanLabSDK(const std::string& sDLLNameUTF8)
 	this->ptr_n_set_laser_pin_out = (PScanLabPtr_n_set_laser_pin_out)_loadScanLabAddress(hLibrary, "n_set_laser_pin_out");
 	this->ptr_n_get_laser_pin_in = (PScanLabPtr_n_get_laser_pin_in)_loadScanLabAddress(hLibrary, "n_get_laser_pin_in");
 	this->ptr_n_set_laser_pin_out_list = (PScanLabPtr_n_set_laser_pin_out_list)_loadScanLabAddress(hLibrary, "n_set_laser_pin_out_list");
+	this->ptr_n_laser_signal_off = (PScanLabPtr_n_laser_signal_off)_loadScanLabAddress(hLibrary, "n_laser_signal_off");
+	this->ptr_n_laser_signal_off_list = (PScanLabPtr_n_laser_signal_off_list)_loadScanLabAddress(hLibrary, "n_laser_signal_off_list");
 	this->ptr_n_set_sky_writing_para = (PScanLabPtr_n_set_sky_writing_para)_loadScanLabAddress(hLibrary, "n_set_sky_writing_para");
 	this->ptr_n_set_sky_writing_limit = (PScanLabPtr_n_set_sky_writing_limit)_loadScanLabAddress(hLibrary, "n_set_sky_writing_limit");
 	this->ptr_n_set_sky_writing_mode = (PScanLabPtr_n_set_sky_writing_mode)_loadScanLabAddress(hLibrary, "n_set_sky_writing_mode");
@@ -503,6 +505,8 @@ void CScanLabSDK::resetFunctionPtrs()
 	ptr_n_set_laser_pin_out = nullptr;
 	ptr_n_get_laser_pin_in = nullptr;
 	ptr_n_set_laser_pin_out_list = nullptr;
+	ptr_n_laser_signal_off = nullptr;
+	ptr_n_laser_signal_off_list = nullptr;
 	ptr_n_set_sky_writing_para = nullptr;
 	ptr_n_set_sky_writing_limit = nullptr;
 	ptr_n_set_sky_writing_mode = nullptr;
@@ -1308,6 +1312,22 @@ void CScanLabSDK::n_set_laser_pin_out_list(uint32_t nCardNo, uint32_t nPins)
 		m_pLogJournal->logCall("n_set_laser_pin_out_list", std::to_string(nCardNo) + ", " + std::to_string(nPins));
 
 	ptr_n_set_laser_pin_out_list(nCardNo, nPins);
+}
+
+void CScanLabSDK::n_laser_signal_off(uint32_t nCardNo)
+{
+	if (m_pLogJournal.get() != nullptr)
+		m_pLogJournal->logCall("n_laser_signal_off", std::to_string(nCardNo));
+
+	ptr_n_laser_signal_off(nCardNo);
+}
+
+void CScanLabSDK::n_laser_signal_off_list(uint32_t nCardNo)
+{
+	if (m_pLogJournal.get() != nullptr)
+		m_pLogJournal->logCall("n_laser_signal_off_list", std::to_string(nCardNo));
+
+	ptr_n_laser_signal_off_list(nCardNo);
 }
 
 uint32_t CScanLabSDK::n_get_laser_pin_in(uint32_t nCardNo)

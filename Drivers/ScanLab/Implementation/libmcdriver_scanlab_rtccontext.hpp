@@ -561,6 +561,10 @@ public:
 
 	void AddLaserPinOutToList(const bool bLaserOut1, const bool bLaserOut2) override;
 
+	void LaserSignalOff() override;
+
+	void AddLaserSignalOffToList() override;
+
 	void AddWriteDigitalIOList(const LibMCDriver_ScanLab_uint32 nDigitalOutput) override;
 
 	void AddWriteMaskedDigitalIOList(const LibMCDriver_ScanLab_uint32 nDigitalOutput, const LibMCDriver_ScanLab_uint32 nOutputMask) override;

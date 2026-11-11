@@ -2939,6 +2939,22 @@ void CRTCContext::AddLaserPinOutToList(const bool bLaserOut1, const bool bLaserO
 
 }
 
+void CRTCContext::LaserSignalOff()
+{
+	// RTC6 manual p. 564: laser_signal_off is not executed while a list is running; the card
+	// reports RTC6_BUSY then, and checkLastErrorOfCard throws.
+	m_pScanLabSDK->checkGlobalErrorOfCard(m_CardNo);
+	m_pScanLabSDK->n_laser_signal_off(m_CardNo);
+	m_pScanLabSDK->checkLastErrorOfCard(m_CardNo);
+}
+
+void CRTCContext::AddLaserSignalOffToList()
+{
+	m_pScanLabSDK->checkGlobalErrorOfCard(m_CardNo);
+	m_pScanLabSDK->n_laser_signal_off_list(m_CardNo);
+	m_pScanLabSDK->checkLastErrorOfCard(m_CardNo);
+}
+
 
 void CRTCContext::AddWriteDigitalIOList(const LibMCDriver_ScanLab_uint32 nDigitalOutput)
 {
