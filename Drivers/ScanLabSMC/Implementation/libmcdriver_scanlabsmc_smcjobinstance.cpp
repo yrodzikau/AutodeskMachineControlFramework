@@ -279,8 +279,14 @@ void CSMCJobInstance::drawPolylineEx(slscHandle contextHandle, const uint64_t nP
     if (pPointsBuffer == nullptr)
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
 
-    double dPowerFactor = dPowerInWatts / m_dMaxPowerInWatts;
-    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_write_analog_x(contextHandle, slsc_AnalogOutput::slsc_AnalogOutput_1, dPowerFactor, 0.0));
+    // The laser power of a polyline is given in the same way as for hatches (drawHatchesEx): as
+    // the ramp parameter of the active channel of the automatic laser control. SCANmotionControl
+    // stores that parameter with every sampled position of the planned trajectory, and this is
+    // where the consumers of the trajectory read the power from. slsc_job_write_analog_x, which
+    // was used here before, only adds an output trigger for ANALOGOUT1 and leaves the ramp
+    // parameter at the value of the preceding hatch, so contours were exposed with the hatch power.
+    std::array<double, 1> paraPower;
+    paraPower[0] = dPowerInWatts / m_dMaxPowerInWatts;
 
     auto& startPoint = pPointsBuffer[0];
     std::array<double, 3> startPosition;
@@ -288,6 +294,7 @@ void CSMCJobInstance::drawPolylineEx(slscHandle contextHandle, const uint64_t nP
     startPosition[1] = startPoint.m_Y;
     startPosition[2] = 0.0;
     m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, startPosition.data()));
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower.data()));
 
     slsc_PolylineOptions polyLineOptions;
     if (bIsClosed) {
@@ -305,7 +312,7 @@ void CSMCJobInstance::drawPolylineEx(slscHandle contextHandle, const uint64_t nP
         nextPosition[0] = nextPoint.m_X;
         nextPosition[1] = nextPoint.m_Y;
 		nextPosition[2] = 0.0;
-        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_line(contextHandle, nextPosition.data()));
+        m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_line(contextHandle, nextPosition.data(), paraPower.data()));
     }
 
     m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_end_polyline(contextHandle));
