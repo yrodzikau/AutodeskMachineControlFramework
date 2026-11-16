@@ -198,6 +198,7 @@ class LayerViewImpl {
 		this.overlayColorMapName = DEFAULT_COLORMAP;
 		this.overlayColorMapInverted = false;
 		this.overlayRange = { min: 0.0, max: 1.0 };
+		this.overlaySmoothing = false;
 
 		this.gridColor = undefined;
         
@@ -1940,6 +1941,7 @@ class LayerViewImpl {
 				lookupTable: colorMapLookupTable (this.overlayColorMapName, this.overlayColorMapInverted),
 				rangeMin: this.overlayRange.min,
 				rangeMax: this.overlayRange.max,
+				smoothing: this.overlaySmoothing,
 				onLoaded: () => {
 					this.updateTransform ();
 					if (onLoaded)
@@ -1963,6 +1965,24 @@ class LayerViewImpl {
 			element.setLookupTable (colorMapLookupTable (this.overlayColorMapName, this.overlayColorMapInverted));
 			this.RenderScene (true);
 		}
+	}
+
+	// Interpolates between the pixels of the magnified overlay instead of drawing every pixel as a square, see
+	// WebGLScalarImageElement.setSmoothing. Kept for the overlays of the following layers.
+	setOverlaySmoothing (enabled)
+	{
+		this.overlaySmoothing = (enabled === true);
+		const element = this.glInstance ? this.glInstance.findElement ("overlayimage") : null;
+		if (element && (typeof element.setSmoothing === "function")) {
+			element.setSmoothing (this.overlaySmoothing);
+			this.RenderScene (true);
+		}
+	}
+
+	// False if the browser cannot filter the overlay texture; setOverlaySmoothing then changes nothing.
+	supportsOverlaySmoothing ()
+	{
+		return !!this.glInstance && (typeof this.glInstance.supportsScalarImageSmoothing === "function") && this.glInstance.supportsScalarImageSmoothing ();
 	}
 
 	// Value range mapped onto the color map of the overlay; values outside are clamped to its ends.

@@ -1089,7 +1089,10 @@ function disposeImageResources (object3d) {
 // channel, blue is 255 where the pixel holds a value and 0 where it does not. The codes are decoded into a float
 // texture of (value * coverage, coverage) and drawn through a color lookup table over an adjustable value range,
 // so a new range or color map costs one render and no new download. Linear filtering of the float texture needs
-// OES_texture_float_linear; without it the texels are sampled nearest.
+// OES_texture_float_linear; without it the texels are sampled nearest. With it the texture is always filtered
+// linearly and the shader decides what a magnified texel looks like: a sharp square (smoothing off, the lookup
+// goes to the centre of the texel, where the filter returns the texel itself) or an interpolation between the
+// texels (smoothing on). Switching between the two costs one render and no new upload of the texture.
 const SCALARIMAGE_VERTEXSHADER = `
     varying vec2 vUv;
     void main () {
@@ -1102,13 +1105,22 @@ const SCALARIMAGE_FRAGMENTSHADER = `
     precision highp float;
     uniform sampler2D fieldMap;
     uniform sampler2D lookupTable;
+    uniform vec2 fieldSize;
+    uniform float smoothing;
     uniform float rangeMin;
     uniform float rangeMax;
     uniform float opacity;
     varying vec2 vUv;
     void main () {
+        // Texels per screen pixel: below 1 the field is magnified. A minified field is averaged in both modes.
+        vec2 uv = vUv;
+        if (smoothing < 0.5) {
+            vec2 texelsPerPixel = fwidth (vUv * fieldSize);
+            if (max (texelsPerPixel.x, texelsPerPixel.y) < 1.0)
+                uv = (floor (vUv * fieldSize) + 0.5) / fieldSize;
+        }
         // (value * coverage, coverage): filtering averages the values of the covered texels only.
-        vec2 field = texture2D (fieldMap, vUv).rg;
+        vec2 field = texture2D (fieldMap, uv).rg;
         if (field.g < 0.001)
             discard;
         float value = field.r / field.g;
@@ -1128,6 +1140,7 @@ class WebGLScalarImageElement extends WebGLElement {
         this.material = null;
         this.lookupTexture = null;
         this.filterable = filterable === true;
+        this.smoothing = false;
         this.rangeMin = 0.0;
         this.rangeMax = 1.0;
         this.visible = true;
@@ -1176,12 +1189,12 @@ class WebGLScalarImageElement extends WebGLElement {
             }
 
             console.debug ("[WebGL] scalar image " + decoded.width + " x " + decoded.height + ", " + decoded.covered + " pixels hold a value, values "
-                + valueMin + ".." + valueMax + (this.filterable ? ", linear minification" : ", nearest filtering"));
+                + valueMin + ".." + valueMax + (this.filterable ? ", linear filtering" : ", nearest filtering"));
 
             const texture = new THREE.DataTexture (decoded.data, decoded.width, decoded.height, THREE.RGFormat, THREE.FloatType);
             // Row 0 of a PNG is its top row; flipY puts it on the local +Y side of the plane, like the TextureLoader does.
             texture.flipY = true;
-            texture.magFilter = THREE.NearestFilter;
+            texture.magFilter = this.filterable ? THREE.LinearFilter : THREE.NearestFilter;
             texture.minFilter = this.filterable ? THREE.LinearFilter : THREE.NearestFilter;
             texture.generateMipmaps = false;
             texture.colorSpace = THREE.NoColorSpace;
@@ -1191,6 +1204,8 @@ class WebGLScalarImageElement extends WebGLElement {
                 uniforms: {
                     fieldMap: { value: texture },
                     lookupTable: { value: this.lookupTexture },
+                    fieldSize: { value: new THREE.Vector2 (decoded.width, decoded.height) },
+                    smoothing: { value: this.smoothing ? 1.0 : 0.0 },
                     rangeMin: { value: this.rangeMin },
                     rangeMax: { value: this.rangeMax },
                     opacity: { value: 1.0 }
@@ -1254,6 +1269,15 @@ class WebGLScalarImageElement extends WebGLElement {
             this.material.uniforms.rangeMin.value = minValue;
             this.material.uniforms.rangeMax.value = maxValue;
         }
+    }
+
+    // Smoothing interpolates between the texels of a magnified field; without it every texel is a sharp square.
+    // It needs a filterable float texture and changes nothing without one.
+    setSmoothing (enabled)
+    {
+        this.smoothing = (enabled === true);
+        if (this.material)
+            this.material.uniforms.smoothing.value = this.smoothing ? 1.0 : 0.0;
     }
 
     setVisible (visible)
@@ -1701,10 +1725,16 @@ class WebGLImpl {
         return imageElement;
 	}
 
+	// True if float textures are filtered linearly, which the smoothing of a scalar image needs.
+	supportsScalarImageSmoothing ()
+	{
+		return !!this.renderer && this.renderer.extensions.has ("OES_texture_float_linear");
+	}
+
 	// Scalar field image over a rectangle of the scene, see WebGLScalarImageElement. options: valueMin and valueMax
 	// (values of the codes 0 and 65535), lookupTable (RGBA bytes), rangeMin and rangeMax (values mapped onto the
-	// table), visible, onLoaded and onError callbacks. The image loads asynchronously; an element that was removed
-	// or replaced in the meantime is not added to the scene.
+	// table), smoothing, visible, onLoaded and onError callbacks. The image loads asynchronously; an element that
+	// was removed or replaced in the meantime is not added to the scene.
 	addScalarImageElement (identifier, url, width, height, offsetX, offsetY, zValue, options)
 	{
         if (!identifier)
@@ -1718,6 +1748,7 @@ class WebGLImpl {
         if (settings.lookupTable)
             element.setLookupTable (settings.lookupTable);
         element.setValueRange (Number.isFinite (settings.rangeMin) ? settings.rangeMin : 0.0, Number.isFinite (settings.rangeMax) ? settings.rangeMax : 1.0);
+        element.setSmoothing (settings.smoothing === true);
         element.setVisible (settings.visible !== false);
 
         element.load (url, width, height, offsetX, offsetY, settings.valueMin, settings.valueMax, (loadedElement) => {

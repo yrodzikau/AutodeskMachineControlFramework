@@ -173,14 +173,28 @@
 
 	// Overlay: a scalar field image over the platform (for example a heat map of the layer), drawn through a color
 	// map by the GPU, see WebGLScalarImageElement. The toolbar button named by platform.overlayname shows it instead
-	// of the recorded points; the legend then edits the color map and the value range of the overlay.
+	// of the recorded points; the legend then edits the color map and the value range of the overlay. The button
+	// has three states that a click steps through: off, pixels (every pixel of the image is a sharp square when
+	// the view is zoomed in) and smooth (the view interpolates between the pixels).
 	let overlayName = $derived.by(() => { poll.v; return String(platform?.overlayname || '').trim(); });
 	let overlayIcon = $derived.by(() => { poll.v; return String(platform?.overlayicon || '').trim(); });
 	let overlayCaption = $derived.by(() => { poll.v; return String(platform?.overlaycaption || '').trim(); });
 	let overlayNote = $derived.by(() => { poll.v; return String(platform?.overlaynote || '').trim(); });
 	// Values of the codes 0 and 65535 of the overlay image, also the default range of its legend.
 	let overlayValueRange = $derived.by((): ColorRange => { poll.v; return readOverlayValueRange(platform); });
-	let overlayMode = $state(false);
+	type OverlayState = 'off' | 'pixels' | 'smooth';
+	let overlayState = $state<OverlayState>('off');
+	let overlayMode = $derived(overlayState !== 'off');
+	// False if the browser cannot filter the overlay texture; the button then has the states off and pixels only.
+	let overlaySmoothingSupported = $state(false);
+	let overlayStateCaption = $derived(overlayState === 'smooth' ? 'Smooth' : (overlayState === 'pixels' ? 'Pixels' : ''));
+	let overlayButtonTitle = $derived.by(() => {
+		const name = overlayName.toLowerCase();
+		const steps = overlaySmoothingSupported ? 'off, pixels, smooth' : 'off, pixels (this browser cannot smooth the image)';
+		if (overlayState === 'off') return `Show the ${name} of the layer over the platform instead of the recorded points. Click steps through ${steps}`;
+		if (overlayState === 'pixels') return `The ${name} is shown with every pixel as a square. Click steps through ${steps}`;
+		return `The ${name} is shown smoothed between its pixels. Click steps through ${steps}`;
+	});
 	// Overlay image of the current layer as the server reports it; the null UUID means none.
 	let overlayUUID = $state(NULL_UUID);
 	let overlayAvailable = $derived(isValidUUID(overlayUUID));
@@ -190,6 +204,14 @@
 	let overlayRange = $derived(editedOverlayRange ?? overlayValueRange);
 	let overlayColorMapName = $state(DEFAULT_COLORMAP);
 	let overlayColorMapInverted = $state(false);
+
+	// A layer view with an overlay button keeps the buttons of its toolbar in place: a button that has nothing to
+	// act on is disabled and grey instead of removed, so the toolbar does not move under the pointer while the
+	// overlay button is clicked through its states.
+	let toolbarFixed = $derived(overlayName !== '');
+	let laserOffAvailable = $derived(pointsLoaded && pointColumns.includes('laseron'));
+	// A hidden toolpath can always be shown again, also where there is nothing else to see.
+	let toolpathToggleAvailable = $derived(pointsLoaded || overlayShown || !toolpathVisible);
 
 	// The legend in the bottom left corner belongs to the overlay while it is shown, otherwise to the color map
 	// display modes of the toolpath and the recorded points.
@@ -388,6 +410,12 @@
 		untrack(() => layerViewer.setOverlayRange(range.min, range.max));
 	});
 
+	$effect(() => {
+		const smoothing = overlayState === 'smooth';
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setOverlaySmoothing(smoothing));
+	});
+
 	// Values of the codes 0 and 65535 of the overlay image; a missing or empty range reads as 0..1.
 	function readOverlayValueRange(currentPlatform: any): ColorRange {
 		const minimum = Number(currentPlatform?.overlayvaluemin);
@@ -542,6 +570,7 @@
 				layerViewer.setTimeCapFraction(timeSliderValue / TIME_SLIDER_STEPS);
 				firstInit = true;
 			}
+			overlaySmoothingSupported = layerViewer.supportsOverlaySmoothing();
 
 			// Re-attach the canvas when the container has been recreated
 			if (!containerEl.contains(glInstance.renderer.domElement))
@@ -663,8 +692,14 @@
 		);
 	}
 
-	function toggleOverlayMode() {
-		overlayMode = !overlayMode;
+	// Steps the overlay button: off, pixels, smooth, off. Between pixels and smooth only the drawing changes
+	// (see the effect on overlayState); the other steps exchange the recorded points and the overlay image.
+	function cycleOverlayState() {
+		const wasShown = overlayState !== 'off';
+		if (overlayState === 'off') overlayState = 'pixels';
+		else if (overlayState === 'pixels' && overlaySmoothingSupported) overlayState = 'smooth';
+		else overlayState = 'off';
+		if (wasShown === (overlayState !== 'off')) return;
 		hideHoverInfo();
 		clearHover();
 		syncScatterPlot();
@@ -1586,11 +1621,14 @@
 					<Spline size={16} />
 					<span>End Points</span>
 				</button>
-				{#if pointsLoaded && pointColumns.includes('laseron')}
+				{#if toolbarFixed || laserOffAvailable}
 					<button
 						class="layerview-btn"
 						onclick={toggleLaserOffPoints}
-						title="Also show points recorded while the laser was off"
+						disabled={!laserOffAvailable}
+						title={laserOffAvailable
+							? 'Also show points recorded while the laser was off'
+							: (overlayMode ? `Recorded points are not shown while the ${overlayName.toLowerCase()} is on` : 'This layer has no recorded points with the laser state')}
 						aria-label="Toggle points with laser off"
 						aria-pressed={showLaserOffPoints}
 					>
@@ -1598,11 +1636,14 @@
 						<span>Laser Off</span>
 					</button>
 				{/if}
-				{#if pointsLoaded || overlayShown}
+				{#if toolbarFixed || pointsLoaded || overlayShown}
 					<button
 						class="layerview-btn"
 						onclick={toggleToolpath}
-						title={overlayShown ? `Show or hide the toolpath above the ${overlayName.toLowerCase()}` : 'Show or hide the toolpath below the recorded points'}
+						disabled={!toolpathToggleAvailable}
+						title={!toolpathToggleAvailable
+							? 'The toolpath is all there is to see on this layer'
+							: (overlayShown ? `Show or hide the toolpath above the ${overlayName.toLowerCase()}` : 'Show or hide the toolpath below the recorded points')}
 						aria-label="Toggle toolpath"
 						aria-pressed={toolpathVisible}
 					>
@@ -1613,17 +1654,18 @@
 				{#if overlayName}
 					<button
 						class="layerview-btn"
-						onclick={toggleOverlayMode}
-						title={`Show the ${overlayName.toLowerCase()} of the layer over the platform instead of the recorded points`}
-						aria-label={`Toggle ${overlayName.toLowerCase()}`}
+						onclick={cycleOverlayState}
+						title={overlayButtonTitle}
+						aria-label={`${overlayName}: ${overlayState}. Click to change`}
 						aria-pressed={overlayMode}
+						data-overlay-state={overlayState}
 					>
 						{#if overlayIcon}
 							<MdiIcon icon={overlayIcon} class="h-4 w-4" />
 						{:else}
 							<Layers size={16} />
 						{/if}
-						<span>{overlayName}</span>
+						<span>{overlayName}{#if overlayStateCaption}<br />{overlayStateCaption}{/if}</span>
 					</button>
 				{/if}
 			</div>
@@ -2138,14 +2180,16 @@
 		line-height: 1.15;
 		text-align: center;
 	}
-	.layerview-btn:hover {
+	.layerview-btn:hover:not(:disabled) {
 		background-color: rgba(0, 0, 0, 0.85);
 	}
 	.layerview-btn[aria-pressed='true'] {
 		background-color: var(--primary, #2563eb);
 		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
 	}
+	/* A button with nothing to act on stays in its place, grey and without a reaction. */
 	.layerview-btn:disabled {
+		filter: grayscale(1);
 		opacity: 0.4;
 		cursor: default;
 	}
