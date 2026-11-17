@@ -180,6 +180,11 @@ namespace AMC {
 	
 	class CUIModule_ContentFormMemo : public CUIModule_ContentFormEntity {
 	protected:
+		CUIExpression m_ValueExpression;
+		// Visible lines of the text box, 0 for the default height of the client.
+		uint32_t m_nRows;
+		// The text box follows text that is appended at its end, like a log.
+		bool m_bAutoScroll;
 
 	public:
 
@@ -188,6 +193,8 @@ namespace AMC {
 		CUIModule_ContentFormMemo(const std::string& sName, const std::string& sFormPath, CUIExpression Caption, CUIExpression Value, PStateMachineData pStateMachineData);
 
 		virtual ~CUIModule_ContentFormMemo();
+
+		void setDisplayOptions(uint32_t nRows, bool bAutoScroll);
 
 		virtual std::string getTypeString() override;
 
@@ -239,10 +246,13 @@ namespace AMC {
 		CUIExpression m_StepExpression;
 		CUIExpression m_UnitExpression;
 		std::string m_sOnChangeEvent;
+		// The client shows the field as a numeric stepper, whose arrows step the value by step within min and max.
+		bool m_bStepButtons;
 	public:
 		static PUIModule_ContentFormNumber makeFromXML(const pugi::xml_node& xmlNode, const std::string& sFormPath, PStateMachineData pStateMachineData);
 		CUIModule_ContentFormNumber(const std::string& sName, const std::string& sFormPath, CUIExpression Caption, CUIExpression Value, CUIExpression Min, CUIExpression Max, CUIExpression Step, CUIExpression Unit, const std::string& sOnChangeEvent, PStateMachineData pStateMachineData);
 		virtual ~CUIModule_ContentFormNumber();
+		void setStepButtons(bool bStepButtons);
 		virtual std::string getTypeString() override;
 		virtual void populateClientVariables(CParameterHandler* pClientVariableHandler) override;
 		virtual void syncClientVariables(CParameterHandler* pClientVariableHandler) override;
@@ -373,6 +383,8 @@ namespace AMC {
 		std::map<std::string, PUIModule_ContentFormEntity> m_EntityUUIDMap;
 		std::string m_sName;
 		bool m_bVisible;
+		// "column": one entity per line (default), "row": all entities in one line.
+		std::string m_sLayout;
 
 		PStateMachineData m_pStateMachineData;
 
@@ -389,6 +401,8 @@ namespace AMC {
 		std::string getName();
 
 		bool IsVisible();
+
+		void setLayout(const std::string& sLayout);
 
 		bool hasEntityWithName(const std::string& sName);
 		PUIModule_ContentFormEntity findEntityByName(const std::string& sName);

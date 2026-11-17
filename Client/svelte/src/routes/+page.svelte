@@ -265,7 +265,8 @@
 			// A non-closable dialog is only closed by the server (see
 			// AMCApplication._syncServerDrivenDialogs) or by a client action.
 			if (dialog.closable === false) return;
-			dialog.dialogIsActive = false;
+			// A server-driven dialog that this one covered comes back at once.
+			app.closeDialog(dialog.name);
 			bumpTick();
 		}
 	}

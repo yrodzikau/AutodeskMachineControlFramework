@@ -716,9 +716,13 @@ export default class AMCApplication extends Common.AMCObject {
 				? (attrs.visible === "1" || attrs.visible === true || attrs.visible === "true")
 				: true;
 			let formSubs = subs;
+			let formAttrs = attrs;
 			if (subs.length === 1 && subs[0].moduletype === "form") {
 				formSubs = subs[0].submodules || [];
+				formAttrs = subs[0].attributes || {};
 			}
+			// The layout is an attribute of the form item, one level below the content leaf.
+			legacy.layout = (typeof formAttrs.layout === "string") ? formAttrs.layout : "";
 		legacy.entities = formSubs.map(sub => {
 			let a = sub.attributes || {};
 			let entity = {
@@ -734,6 +738,10 @@ export default class AMCApplication extends Common.AMCObject {
 				validationmessage:   a.validationmessage   || "",
 				minvalue:            a.minvalue,
 				maxvalue:            a.maxvalue,
+				rows:                a.rows,
+				autoscroll:          a.autoscroll,
+				step:                a.step,
+				stepbuttons:         a.stepbuttons,
 			};
 
 			if ((entity.type === "combobox" || entity.type === "multiselect") && sub.submodules) {
@@ -1327,6 +1335,8 @@ export default class AMCApplication extends Common.AMCObject {
 	// with sync:active in the machine configuration). The server is authoritative: such a
 	// dialog is opened while the flag is true, even if a client action closed it in between,
 	// and closed as soon as the flag turns false. Dialogs without the flag are untouched.
+	// One exception: a dialog that an event of the server-driven dialog itself has opened (the
+	// confirmation of one of its buttons, see showDialog) covers it until it is closed.
 	_syncServerDrivenDialogs(dialogsJSON) {
 		let changed = false;
 
@@ -1342,6 +1352,10 @@ export default class AMCApplication extends Common.AMCObject {
 			dialog.closable = (dialogJSON.closable !== false);
 
 			if (dialogJSON.active && !dialog.dialogIsActive && (dialog.visible !== false)) {
+				let openDialog = this.AppContent.Dialogs.find (candidate => candidate.dialogIsActive);
+				if (openDialog && (openDialog.coveredDialogName === dialog.name))
+					continue;
+
 				// showDialog already refreshes the content items.
 				this.showDialog(dialog.name);
 			} else if (!dialogJSON.active && dialog.dialogIsActive) {
@@ -2425,13 +2439,43 @@ export default class AMCApplication extends Common.AMCObject {
         let dialog;
         for (dialog of this.AppContent.Dialogs) {
             dialog.dialogIsActive = false;
+            dialog.coveredDialogName = "";
         }
+    }
+
+    // Closes the open dialogs the way the user or a client action closes them: a server-driven
+    // dialog whose flag is still set comes back at once, for example the dialog that a closed
+    // confirmation had covered. Without this it would only return with the next change of the
+    // frontend state.
+    closeDialogs() {
+        this.closeAllDialogs();
+
+        if (this.API.frontendState && this.API.frontendState.dialogs)
+            this._syncServerDrivenDialogs(this.API.frontendState.dialogs);
+
+        this.updateContentItems ();
+    }
+
+    // Closes one dialog if it is open, see closeDialogs. For the close button, the Escape key and the
+    // click beside a dialog.
+    closeDialog(dialogName) {
+        let dialog = this.AppContent.DialogMap.get(dialogName);
+        if (dialog && dialog.dialogIsActive)
+            this.closeDialogs();
+    }
+
+    // The name of the open dialog if the server drives it, or an empty string.
+    openServerDrivenDialogName() {
+        let dialog = this.AppContent.Dialogs.find (candidate => candidate.dialogIsActive && candidate.serverDriven);
+        return dialog ? dialog.name : "";
     }
 
     // Only one dialog is open at a time. A server-driven dialog (see
     // _syncServerDrivenDialogs) re-opens on the next frontend poll while its flag is
-    // set, so it wins over dialogs opened by client actions.
-    showDialog(dialog) {
+    // set, so it wins over dialogs opened by client actions. coveredDialogName names the
+    // server-driven dialog whose own event opens this dialog: that one waits until this
+    // dialog is closed.
+    showDialog(dialog, coveredDialogName) {
 
         this.closeAllDialogs();
 		this.API.navigationRequestSerial = this.API.frontendRequestSerial;
@@ -2441,6 +2485,7 @@ export default class AMCApplication extends Common.AMCObject {
             if (this.AppContent.DialogMap.has(dialog)) {
                 let dialogObject = this.AppContent.DialogMap.get(dialog);
                 dialogObject.dialogIsActive = true;
+                dialogObject.coveredDialogName = (coveredDialogName && (coveredDialogName !== dialog)) ? coveredDialogName : "";
             }
         }
 		
@@ -2507,6 +2552,10 @@ export default class AMCApplication extends Common.AMCObject {
             this.PendingEventSenders.add (pendingKey);
         }
 
+        // An event that is sent while a server-driven dialog is open comes from that dialog, which is
+        // modal. A dialog that the event opens covers it (see showDialog).
+        let originDialogName = this.openServerDrivenDialogName ();
+
         this.axiosPostRequest("/event", requestBody, { timeout: EVENT_REQUEST_TIMEOUT_MS })
         .then(resultHandleEvent => {
 
@@ -2516,7 +2565,7 @@ export default class AMCApplication extends Common.AMCObject {
 				return;
 			}
 
-			this.executeClientActions (resultHandleEvent.data.actions);
+			this.executeClientActions (resultHandleEvent.data.actions, originDialogName);
 
 			if (executionCallback) {
 				executionCallback ();
@@ -2534,7 +2583,8 @@ export default class AMCApplication extends Common.AMCObject {
     }
 
     // Runs the client actions of an event response, a widget response or the session's pending action queue.
-    executeClientActions(actions) {
+    // originDialogName is the server-driven dialog that was open when the event was sent, if any.
+    executeClientActions(actions, originDialogName) {
         if (!Array.isArray (actions))
             return;
 
@@ -2542,13 +2592,15 @@ export default class AMCApplication extends Common.AMCObject {
             if (!action || (typeof action !== "object"))
                 continue;
             if (action.action === "activatemodaldialog") {
-                this.showDialog(action.dialogname);
+                // Only a dialog that is still open can be covered.
+                let coveredDialogName = (originDialogName && (this.openServerDrivenDialogName () === originDialogName)) ? originDialogName : "";
+                this.showDialog(action.dialogname, coveredDialogName);
             }
             if (action.action === "activatepage") {
                 this.changePage(action.pagename);
             }
             if (action.action === "closemodaldialog") {
-                this.closeAllDialogs();
+                this.closeDialogs();
             }
             if (action.action === "streamdownload") {
                 this.streamDownload(action.downloadticket, action.downloadfilename);

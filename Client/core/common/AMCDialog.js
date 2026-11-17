@@ -48,6 +48,10 @@ export default class AMCApplicationDialog extends AMCApplicationPage {
 		// Both are initialised here so Vue 2 tracks them.
 		this.closable = (dialogJSON.closable !== false);
 		this.serverDriven = (typeof dialogJSON.active === "boolean");
+
+		// Name of the server-driven dialog that this dialog covers while it is open (a confirmation
+		// that a button of that dialog has opened), see AMCApplication.showDialog.
+		this.coveredDialogName = "";
 	}
 
 	// A dialog is never the application's active page, so the inherited page-based

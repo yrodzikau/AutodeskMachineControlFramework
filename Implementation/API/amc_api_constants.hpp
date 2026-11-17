@@ -487,6 +487,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_KEY_UI_FORMSECTIONDESC   "description"
 #define AMC_API_KEY_UI_FORMCOLLAPSIBLE   "collapsible"
 #define AMC_API_KEY_UI_FORMDEFAULTOPEN   "defaultopen"
+#define AMC_API_KEY_UI_FORMROWS          "rows"
+#define AMC_API_KEY_UI_FORMAUTOSCROLL    "autoscroll"
+#define AMC_API_KEY_UI_FORMSTEPBUTTONS   "stepbuttons"
 #define AMC_API_KEY_UI_FORMVALID         "valid"
 #define AMC_API_KEY_UI_FORMERRORS        "errors"
 

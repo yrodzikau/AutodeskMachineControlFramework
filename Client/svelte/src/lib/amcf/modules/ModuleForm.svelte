@@ -5,6 +5,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { NumericStepper } from '$lib/components/ui/numeric-stepper/index.js';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 
@@ -15,6 +16,8 @@
 
 	let entities = $derived.by(() => { poll.v; return [...(module.entities || [])]; });
 	let visible = $derived.by(() => { poll.v; return module.visible !== false; });
+	// layout="row" puts all entities of the form into one line.
+	let layout = $derived.by(() => { poll.v; return module.layout || 'column'; });
 
 	// dataObject is a plain object outside Svelte's reactivity graph. Local edits bump
 	// editTick so sibling controls sharing the value (slider + number box) redraw at once.
@@ -68,6 +71,35 @@
 
 	function toBool (v: any): boolean {
 		return v === true || v === '1' || v === 'true';
+	}
+
+	// A step of a numeric stepper (its arrows or the arrow keys) changed the value of a number field.
+	function onStepped (entity: any, text: string) {
+		setValue(entity, text);
+		fireChangeEvent(entity);
+	}
+
+	// Visible lines of a memo, 0 for the default height.
+	function memoRows (entity: any): number {
+		const rows = parseInt(String(d(entity).rows ?? '0'), 10);
+		return (Number.isFinite(rows) && rows > 0) ? rows : 0;
+	}
+
+	// A memo with autoscroll follows text that is appended at its end, like a log: after every change of its
+	// text it shows the end, as long as the user has not scrolled up. Scrolling back to the end follows again.
+	function followEnd (node: HTMLTextAreaElement, params: { enabled: boolean; text: string }) {
+		let atEnd = true;
+		const onScroll = () => { atEnd = (node.scrollTop + node.clientHeight >= node.scrollHeight - 4); };
+		const follow = (current: { enabled: boolean; text: string }) => {
+			if (current.enabled && atEnd)
+				requestAnimationFrame(() => { node.scrollTop = node.scrollHeight; });
+		};
+		node.addEventListener('scroll', onScroll);
+		follow(params);
+		return {
+			update: follow,
+			destroy: () => node.removeEventListener('scroll', onScroll)
+		};
 	}
 
 	let sectionOpen: Record<string, boolean> = $state({});
@@ -127,7 +159,9 @@
 		<div class="grid grid-cols-[140px_1fr] items-start gap-2">
 			<Label class="text-sm text-muted-foreground pt-2">{entity.caption}</Label>
 			<textarea
-				class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				class="flex {memoRows(entity) > 0 ? '' : 'min-h-[80px]'} w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				rows={memoRows(entity) > 0 ? memoRows(entity) : undefined}
+				use:followEnd={{ enabled: toBool(d(entity).autoscroll), text: d(entity).value || '' }}
 				value={d(entity).value || ''}
 				disabled={d(entity).disabled}
 				readonly={d(entity).readonly}
@@ -165,6 +199,9 @@
 		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
 			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
 			<div class="flex items-center gap-1" style={d(entity).inputwidth ? `width:${d(entity).inputwidth}` : ''}>
+				{#if toBool(d(entity).stepbuttons)}
+					{@render stepperField(entity, 'w-full')}
+				{:else}
 				<Input
 					type="number"
 					value={d(entity).value || ''}
@@ -178,6 +215,7 @@
 					onkeydown={(e: KeyboardEvent) => onEditEnter(entity, e)}
 					oninput={(e: Event) => { setValue(entity, (e.target as HTMLInputElement).value); }}
 				/>
+				{/if}
 				{#if d(entity).unit}
 					<span class="text-xs text-muted-foreground">{d(entity).unit}</span>
 				{/if}
@@ -325,10 +363,80 @@
 	{/if}
 {/snippet}
 
+<!-- The field of a number entity with stepbuttons: a numeric stepper, the field with the arrows up and down at its
+     right end inside the same frame. The field takes text, so that a value that is no number reaches the event
+     handler as it was typed instead of as an empty field. -->
+{#snippet stepperField(entity: any, widthClass: string)}
+	<NumericStepper
+		value={d(entity).value ?? ''}
+		min={d(entity).minvalue}
+		max={d(entity).maxvalue}
+		step={d(entity).step}
+		disabled={d(entity).disabled}
+		readonly={d(entity).readonly}
+		ariaLabel={entity.caption}
+		class={widthClass}
+		oninput={(text: string) => { setValue(entity, text); }}
+		onvaluechange={(text: string) => onStepped(entity, text)}
+		onblur={() => onEditBlur(entity)}
+		onkeydown={(e: KeyboardEvent) => onEditEnter(entity, e)}
+	/>
+{/snippet}
+
+<!-- An entity of a form with layout="row": its caption and its field inline. showCaption is false for the first
+     field, whose caption stands in the caption column. -->
+{#snippet inlineField(entity: any, showCaption: boolean)}
+	{#if (entity.type === 'number') && toBool(d(entity).stepbuttons)}
+		{#if showCaption && entity.caption}
+			<Label class="text-sm text-muted-foreground whitespace-nowrap">{entity.caption}</Label>
+		{/if}
+		{@render stepperField(entity, 'w-28')}
+		{#if d(entity).unit}
+			<span class="text-xs text-muted-foreground">{d(entity).unit}</span>
+		{/if}
+	{:else if entity.type === 'edit'}
+		{#if showCaption && entity.caption}
+			<Label class="text-sm text-muted-foreground whitespace-nowrap">{entity.caption}</Label>
+		{/if}
+		{#if d(entity).prefix}
+			<span class="text-xs text-muted-foreground">{d(entity).prefix}</span>
+		{/if}
+		<Input
+			value={d(entity).value || ''}
+			disabled={d(entity).disabled}
+			readonly={d(entity).readonly}
+			class="h-8 w-24 text-sm"
+			aria-label={entity.caption}
+			onblur={() => onEditBlur(entity)}
+			onkeydown={(e: KeyboardEvent) => onEditEnter(entity, e)}
+			oninput={(e: Event) => { setValue(entity, (e.target as HTMLInputElement).value); }}
+		/>
+		{#if d(entity).suffix}
+			<span class="text-xs text-muted-foreground">{d(entity).suffix}</span>
+		{/if}
+	{:else}
+		<div class="flex-1 min-w-[200px]">{@render formField(entity)}</div>
+	{/if}
+{/snippet}
+
 {#if visible}
-	<div class="flex flex-col gap-3 w-full">
-		{#each entities as entity (entity.uuid)}
-			{@render formField(entity)}
-		{/each}
-	</div>
+	{#if layout === 'row'}
+		<!-- The caption of the first field takes the caption column of the other forms, so that the first field
+		     starts on the same line as their fields. The other fields follow in the same line. -->
+		{@const leadsWithEdit = (entities.length > 0) && ((entities[0].type === 'edit') || ((entities[0].type === 'number') && toBool(d(entities[0]).stepbuttons)))}
+		<div class="grid grid-cols-[140px_1fr] items-center gap-2 w-full">
+			<Label class="text-sm text-muted-foreground">{leadsWithEdit ? (entities[0].caption || '') : ''}</Label>
+			<div class="flex flex-wrap items-center gap-2">
+				{#each entities as entity, index (entity.uuid)}
+					{@render inlineField(entity, !(leadsWithEdit && index === 0))}
+				{/each}
+			</div>
+		</div>
+	{:else}
+		<div class="flex flex-col gap-3 w-full">
+			{#each entities as entity (entity.uuid)}
+				{@render formField(entity)}
+			{/each}
+		</div>
+	{/if}
 {/if}

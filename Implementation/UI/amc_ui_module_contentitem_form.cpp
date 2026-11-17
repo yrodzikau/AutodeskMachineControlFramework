@@ -371,19 +371,34 @@ PUIModule_ContentFormMemo CUIModule_ContentFormMemo::makeFromXML(const pugi::xml
 	CUIExpression caption(xmlNode, "caption");
 	CUIExpression value(xmlNode, "value");
 
-	return std::make_shared<CUIModule_ContentFormMemo>(nameAttrib.as_string(), sFormPath, caption, value, pStateMachineData);
+	auto pMemo = std::make_shared<CUIModule_ContentFormMemo>(nameAttrib.as_string(), sFormPath, caption, value, pStateMachineData);
+
+	// rows: visible lines of the text box (0 keeps the default height); autoscroll: the box follows text that
+	// is appended at its end, like a log, as long as the user has not scrolled up.
+	int nRows = xmlNode.attribute("rows").as_int(0);
+	if ((nRows < 0) || (nRows > 100))
+		throw ELibMCCustomException(LIBMC_ERROR_INVALIDPARAM, "memo " + std::string(nameAttrib.as_string()) + ": rows must be between 0 and 100");
+	pMemo->setDisplayOptions((uint32_t)nRows, xmlNode.attribute("autoscroll").as_bool(false));
+
+	return pMemo;
 
 }
 
 CUIModule_ContentFormMemo::CUIModule_ContentFormMemo(const std::string& sName, const std::string& sFormPath, CUIExpression Caption, CUIExpression Value, PStateMachineData pStateMachineData)
-	: CUIModule_ContentFormEntity (sName, sFormPath, Caption, pStateMachineData)
+	: CUIModule_ContentFormEntity (sName, sFormPath, Caption, pStateMachineData), m_ValueExpression (Value), m_nRows (0), m_bAutoScroll (false)
 {
-
+	m_ValueExpression.checkExpressionSyntax(m_pStateMachineData);
 }
 
 CUIModule_ContentFormMemo::~CUIModule_ContentFormMemo()
 {
 
+}
+
+void CUIModule_ContentFormMemo::setDisplayOptions(uint32_t nRows, bool bAutoScroll)
+{
+	m_nRows = nRows;
+	m_bAutoScroll = bAutoScroll;
 }
 
 std::string CUIModule_ContentFormMemo::getTypeString()
@@ -392,24 +407,43 @@ std::string CUIModule_ContentFormMemo::getTypeString()
 }
 
 
+// The memo publishes its text like the edit publishes its value: the value attribute of the configuration
+// (fixed or bound with sync:value) is the client variable "value" and the frontend attribute "value".
 void CUIModule_ContentFormMemo::populateClientVariables(CParameterHandler* pClientVariableHandler)
 {
 	auto pGroup = registerClientVariableGroup(pClientVariableHandler);
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_FORMDEFAULTVALUE, "memo value", m_ValueExpression.evaluateStringValue(m_pStateMachineData));
 }
 
 void CUIModule_ContentFormMemo::syncClientVariables(CParameterHandler* pClientVariableHandler)
 {
+	auto pGroup = getClientVariableGroup(pClientVariableHandler);
+	if (m_ValueExpression.needsSync())
+		pGroup->setParameterValueByName(AMC_API_KEY_UI_FORMDEFAULTVALUE, m_ValueExpression.evaluateStringValue(m_pStateMachineData));
 }
 
 
 void CUIModule_ContentFormMemo::writeVariablesToJSON(CJSONWriter& writer, CJSONWriterObject& object, CParameterHandler* pClientVariableHandler)
 {
 	auto pGroup = getClientVariableGroup(pClientVariableHandler);
+
+	object.addString(AMC_API_KEY_UI_FORMDEFAULTVALUE, pGroup->getParameterValueByName(AMC_API_KEY_UI_FORMDEFAULTVALUE));
+	object.addInteger(AMC_API_KEY_UI_FORMROWS, (int64_t)m_nRows);
+	object.addBool(AMC_API_KEY_UI_FORMAUTOSCROLL, m_bAutoScroll);
 }
 
 void CUIModule_ContentFormMemo::registerFrontendAttributes(PUIFrontendDefinitionModuleStore pStore)
 {
 	CUIModule_ContentFormEntity::registerFrontendAttributes(pStore);
+
+	pStore->registerValue("value", eUIFrontendDefinitionAttributeType::atString, m_ValueExpression);
+
+	CUIExpression rowsExpr;
+	rowsExpr.setFixedValue(std::to_string(m_nRows));
+	pStore->registerValue(AMC_API_KEY_UI_FORMROWS, eUIFrontendDefinitionAttributeType::atInteger, rowsExpr);
+	CUIExpression autoScrollExpr;
+	autoScrollExpr.setFixedValue(m_bAutoScroll ? "1" : "0");
+	pStore->registerValue(AMC_API_KEY_UI_FORMAUTOSCROLL, eUIFrontendDefinitionAttributeType::atBoolean, autoScrollExpr);
 }
 
 PUIModule_ContentFormCombobox CUIModule_ContentFormCombobox::makeFromXML(const pugi::xml_node& xmlNode, const std::string& sFormPath, PStateMachineData pStateMachineData)
@@ -565,13 +599,17 @@ PUIModule_ContentFormNumber CUIModule_ContentFormNumber::makeFromXML(const pugi:
 	CUIExpression unit(xmlNode, "unit");
 	std::string sOnChangeEvent = xmlNode.attribute("changeevent").as_string();
 
-	return std::make_shared<CUIModule_ContentFormNumber>(nameAttrib.as_string(), sFormPath, caption, value, min, max, step, unit, sOnChangeEvent, pStateMachineData);
+	auto pNumber = std::make_shared<CUIModule_ContentFormNumber>(nameAttrib.as_string(), sFormPath, caption, value, min, max, step, unit, sOnChangeEvent, pStateMachineData);
+	// stepbuttons: the client shows the field as a numeric stepper, whose arrows up and down step the value by
+	// step within min and max.
+	pNumber->setStepButtons(xmlNode.attribute("stepbuttons").as_bool(false));
+	return pNumber;
 }
 
 CUIModule_ContentFormNumber::CUIModule_ContentFormNumber(const std::string& sName, const std::string& sFormPath, CUIExpression Caption, CUIExpression Value, CUIExpression Min, CUIExpression Max, CUIExpression Step, CUIExpression Unit, const std::string& sOnChangeEvent, PStateMachineData pStateMachineData)
 	: CUIModule_ContentFormEntity(sName, sFormPath, Caption, pStateMachineData),
 	  m_ValueExpression(Value), m_MinValueExpression(Min), m_MaxValueExpression(Max),
-	  m_StepExpression(Step), m_UnitExpression(Unit), m_sOnChangeEvent(sOnChangeEvent)
+	  m_StepExpression(Step), m_UnitExpression(Unit), m_sOnChangeEvent(sOnChangeEvent), m_bStepButtons(false)
 {
 	m_ValueExpression.checkExpressionSyntax(m_pStateMachineData);
 	m_MinValueExpression.checkExpressionSyntax(m_pStateMachineData);
@@ -581,6 +619,11 @@ CUIModule_ContentFormNumber::CUIModule_ContentFormNumber(const std::string& sNam
 }
 
 CUIModule_ContentFormNumber::~CUIModule_ContentFormNumber() {}
+
+void CUIModule_ContentFormNumber::setStepButtons(bool bStepButtons)
+{
+	m_bStepButtons = bStepButtons;
+}
 
 std::string CUIModule_ContentFormNumber::getTypeString() { return "number"; }
 
@@ -617,6 +660,7 @@ void CUIModule_ContentFormNumber::writeVariablesToJSON(CJSONWriter& writer, CJSO
 	object.addString(AMC_API_KEY_UI_FORMMAXVALUE, pGroup->getParameterValueByName(AMC_API_KEY_UI_FORMMAXVALUE));
 	object.addString(AMC_API_KEY_UI_FORMSTEP, pGroup->getParameterValueByName(AMC_API_KEY_UI_FORMSTEP));
 	object.addString(AMC_API_KEY_UI_FORMUNIT, pGroup->getParameterValueByName(AMC_API_KEY_UI_FORMUNIT));
+	object.addBool(AMC_API_KEY_UI_FORMSTEPBUTTONS, m_bStepButtons);
 	if (!m_sOnChangeEvent.empty())
 		object.addString(AMC_API_KEY_UI_FORMCHANGEEVENT, m_sOnChangeEvent);
 }
@@ -629,6 +673,9 @@ void CUIModule_ContentFormNumber::registerFrontendAttributes(PUIFrontendDefiniti
 	pStore->registerValue("maxvalue", eUIFrontendDefinitionAttributeType::atString, m_MaxValueExpression);
 	pStore->registerValue("step", eUIFrontendDefinitionAttributeType::atString, m_StepExpression);
 	pStore->registerValue("unit", eUIFrontendDefinitionAttributeType::atString, m_UnitExpression);
+	CUIExpression stepButtonsExpr;
+	stepButtonsExpr.setFixedValue(m_bStepButtons ? "1" : "0");
+	pStore->registerValue(AMC_API_KEY_UI_FORMSTEPBUTTONS, eUIFrontendDefinitionAttributeType::atBoolean, stepButtonsExpr);
 	CUIExpression changeEventExpr;
 	changeEventExpr.setFixedValue(m_sOnChangeEvent);
 	pStore->registerValue("changeevent", eUIFrontendDefinitionAttributeType::atString, changeEventExpr);
@@ -1160,6 +1207,15 @@ PUIModule_ContentForm CUIModule_ContentForm::makeFromXML(const pugi::xml_node& x
 
 	auto pForm = std::make_shared <CUIModule_ContentForm>(pUIModuleEnvironment->stateMachineData(), sItemName, sModulePath, bVisible);
 
+	// layout: "column" (default) puts every entity on its own line with its caption in front, "row" puts all
+	// entities of the form into one line, each with its caption in front of it.
+	std::string sLayout = xmlNode.attribute("layout").as_string();
+	if (sLayout.empty())
+		sLayout = "column";
+	if ((sLayout != "column") && (sLayout != "row"))
+		throw ELibMCCustomException(LIBMC_ERROR_INVALIDPARAM, "form " + sItemName + ": unknown layout '" + sLayout + "', expected column or row");
+	pForm->setLayout(sLayout);
+
 	pUIModuleEnvironment->contentRegistry()->registerFormName(pForm->getUUID(), pForm->getName());
 
 	parseXmlFormNode(xmlNode, pForm->getItemPath(), pUIModuleEnvironment->stateMachineData(), [&pForm](PUIModule_ContentFormEntity pEntity) {
@@ -1175,7 +1231,8 @@ CUIModule_ContentForm::CUIModule_ContentForm(PStateMachineData pStateMachineData
 	: CUIModule_ContentItem(AMCCommon::CUtils::createUUID(), sName, sModulePath),
 	  m_sName(sName),
 	  m_pStateMachineData(pStateMachineData),
-	  m_bVisible(bVisible)
+	  m_bVisible(bVisible),
+	  m_sLayout("column")
 
 {
 	LibMCAssertNotNull(pStateMachineData);
@@ -1209,6 +1266,11 @@ std::string CUIModule_ContentForm::getName()
 bool CUIModule_ContentForm::IsVisible()
 {
 	return m_bVisible;
+}
+
+void CUIModule_ContentForm::setLayout(const std::string& sLayout)
+{
+	m_sLayout = sLayout;
 }
 
 void CUIModule_ContentForm::addEntity(PUIModule_ContentFormEntity pEntity)
@@ -1316,6 +1378,10 @@ void CUIModule_ContentForm::registerFrontendAttributes()
 	CUIExpression visibleExpr;
 	visibleExpr.setFixedValue(m_bVisible ? "1" : "0");
 	registerItemBoolAttribute("visible", visibleExpr);
+
+	CUIExpression layoutExpr;
+	layoutExpr.setFixedValue(m_sLayout);
+	registerItemStringAttribute("layout", layoutExpr);
 
 	for (auto& pEntity : m_Entities) {
 		auto pChildStore = m_pItemModuleStore->addChildStore(pEntity->getUUID(), pEntity->getElementPath(), pEntity->getTypeString());

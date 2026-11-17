@@ -52,6 +52,11 @@ function makeEntityDataObject (entity) {
 		mode:                 entity.mode,
 		format:               entity.format,
 		items:                entity.items,
+		// memo-specific
+		rows:                 entity.rows,
+		autoscroll:           entity.autoscroll,
+		// number-specific
+		stepbuttons:          entity.stepbuttons,
 		// actionbar-specific
 		submitevent:          entity.submitevent,
 		cancelevent:          entity.cancelevent,
@@ -80,6 +85,8 @@ export default class AMCApplicationModule_Form extends Common.AMCApplicationModu
 		this.usesV2Frontend = true;
 
 		this.entities = Array.isArray(moduleJSON.entities) ? moduleJSON.entities : [];
+		// "column" or empty: one entity per line; "row": all entities in one line.
+		this.layout = (typeof moduleJSON.layout === "string") ? moduleJSON.layout : "";
 
 		// Dirty-state tracking and server-side error map
 		this.serverErrors = {};
@@ -221,6 +228,10 @@ export default class AMCApplicationModule_Form extends Common.AMCApplicationModu
 				this.caption = v2Entry.attributes.caption;
 		}
 
+		// The layout is an attribute of the form item, which the content leaf wraps as submodules[0].
+		if (v2Entry.submodules && v2Entry.submodules.length > 0 && v2Entry.submodules[0].attributes && (typeof v2Entry.submodules[0].attributes.layout === "string"))
+			this.layout = v2Entry.submodules[0].attributes.layout;
+
 		// ContentLeaf wraps the Form item as submodules[0].
 		// The individual form entities are one level deeper: submodules[0].submodules.
 		let entitySubmodules = (v2Entry.submodules && v2Entry.submodules.length > 0 && v2Entry.submodules[0].submodules)
@@ -278,6 +289,12 @@ export default class AMCApplicationModule_Form extends Common.AMCApplicationModu
 					dataObject.unit = a.unit;
 				if (a.mode !== undefined)
 					dataObject.mode = a.mode;
+				if (a.rows !== undefined)
+					dataObject.rows = a.rows;
+				if (a.autoscroll !== undefined)
+					dataObject.autoscroll = a.autoscroll;
+				if (a.stepbuttons !== undefined)
+					dataObject.stepbuttons = a.stepbuttons;
 			if (a.format !== undefined)
 				dataObject.format = a.format;
 
