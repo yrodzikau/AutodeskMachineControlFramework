@@ -42,6 +42,11 @@ Abstract: This is a stub class definition of CSMCJob
 #define SCANLABSMC_MIN_MAXPOWERINWATTS 1.0
 #define SCANLABSMC_MAX_MAXPOWERINWATTS 1000000.0
 
+// A hatch whose start lies within this distance of the end of the previous hatch mark (in mm,
+// per axis) continues that mark without a jump. Toolpath coordinates are integer multiples of
+// the toolpath unit (typically 1 um), so a real gap is far larger than this.
+#define SCANLABSMC_HATCHCHAIN_TOLERANCE_MM 1.0E-6
+
 #include <array>
 #include <thread>
 #include <cmath>
@@ -67,7 +72,10 @@ CSMCJobInstance::CSMCJobInstance(PSMCContextHandle pContextHandle, LibMCEnv::PDr
     m_dJobDuration (0.0),
     m_bSendToHardware (bSendToHardware),
     m_bSimulationFileOutputEnabled (bSimulationFileOutputEnabled),
-    m_dMaxPowerInWatts (dMaxPowerInWatts)
+    m_dMaxPowerInWatts (dMaxPowerInWatts),
+    m_bHasHatchMarkEnd (false),
+    m_dHatchMarkEndX (0.0),
+    m_dHatchMarkEndY (0.0)
 {
     if (m_pWorkingDirectory.get() == nullptr)
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
@@ -264,6 +272,35 @@ void CSMCJobInstance::Finalize()
 
     m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_end(contextHandle));
     m_bIsFinalized = true;
+    clearHatchMarkEnd();
+}
+
+void CSMCJobInstance::jumpToHatchStart(slscHandle contextHandle, double dStartX, double dStartY)
+{
+    if (m_bHasHatchMarkEnd
+        && (std::abs(dStartX - m_dHatchMarkEndX) <= SCANLABSMC_HATCHCHAIN_TOLERANCE_MM)
+        && (std::abs(dStartY - m_dHatchMarkEndY) <= SCANLABSMC_HATCHCHAIN_TOLERANCE_MM))
+        return;
+
+    std::array<double, 3> startPosition;
+    startPosition[0] = dStartX;
+    startPosition[1] = dStartY;
+    startPosition[2] = 0.0;
+    m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, startPosition.data()));
+}
+
+void CSMCJobInstance::setHatchMarkEnd(double dEndX, double dEndY)
+{
+    m_bHasHatchMarkEnd = true;
+    m_dHatchMarkEndX = dEndX;
+    m_dHatchMarkEndY = dEndY;
+}
+
+void CSMCJobInstance::clearHatchMarkEnd()
+{
+    m_bHasHatchMarkEnd = false;
+    m_dHatchMarkEndX = 0.0;
+    m_dHatchMarkEndY = 0.0;
 }
 
 bool CSMCJobInstance::IsFinalized()
@@ -278,6 +315,9 @@ void CSMCJobInstance::drawPolylineEx(slscHandle contextHandle, const uint64_t nP
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
     if (pPointsBuffer == nullptr)
         throw ELibMCDriver_ScanLabSMCInterfaceException(LIBMCDRIVER_SCANLABSMC_ERROR_INVALIDPARAM);
+
+    // A polyline always starts with a jump, and a hatch after it as well.
+    clearHatchMarkEnd();
 
     // The laser power of a polyline is given in the same way as for hatches (drawHatchesEx): as
     // the ramp parameter of the active channel of the automatic laser control. SCANmotionControl
@@ -397,9 +437,10 @@ void CSMCJobInstance::drawHatchesEx(const LibMCDriver_ScanLabSMC_uint64 nHatches
             std::array<double, 1> paraPower;
             paraPower[0] = dPowerFactor;
 
-            m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, point1.data()));
+            jumpToHatchStart(contextHandle, point1[0], point1[1]);
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower.data()));
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_line(contextHandle, point2.data(), paraPower.data()));
+            setHatchMarkEnd(point2[0], point2[1]);
         }
     }
 
@@ -443,9 +484,10 @@ void CSMCJobInstance::drawHatchesExLinearPower(const LibMCDriver_ScanLabSMC_uint
             paraPower2[0] = PowerValuesInWatts2.at(nHatchIndex) / m_dMaxPowerInWatts;
 
 
-            m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, point1.data()));
+            jumpToHatchStart(contextHandle, point1[0], point1[1]);
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_line(contextHandle, point2.data(), paraPower2.data()));
+            setHatchMarkEnd(point2[0], point2[1]);
 
         }
     }
@@ -529,9 +571,10 @@ void CSMCJobInstance::drawHatchesExNonLinearPower(const LibMCDriver_ScanLabSMC_u
             multiTarget.m_pTargets = paraSections.data();
 
 
-            m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_jump(contextHandle, point1.data()));
+            jumpToHatchStart(contextHandle, point1[0], point1[1]);
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_para_enable(contextHandle, paraPower1.data()));
             m_pSDK->checkError(contextHandle, m_pSDK->slsc_job_multi_para_line(contextHandle, point2.data(), &multiTarget));
+            setHatchMarkEnd(point2[0], point2[1]);
 
         }
     }

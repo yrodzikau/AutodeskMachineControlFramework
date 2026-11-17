@@ -79,6 +79,26 @@ private:
 	// whole set is deleted by this prefix. Empty while unknown or if the file output is disabled.
 	std::string m_sSimulationOutputFilePrefix;
 
+	// End point of the last hatch mark, valid while the scanner is known to stand there (from the
+	// end of a hatch mark until the next polyline or the end of the job). A hatch that starts at
+	// this point continues the mark without a jump, see jumpToHatchStart.
+	bool m_bHasHatchMarkEnd;
+	double m_dHatchMarkEndX;
+	double m_dHatchMarkEndY;
+
+	// Moves the scanner to the start of a hatch. Toolpaths with power optimisation split a line into
+	// consecutive hatches that each start where the previous one ended. A jump to the current position
+	// becomes a zero-length segment that SCANmotionControl has to pass at mark speed, which ruckig
+	// cannot plan ("Failed to calculate optimal profile with ruckig", ErrorSynchronizationCalculation).
+	// Such a hatch is therefore marked on from the current position without a jump.
+	void jumpToHatchStart(slscHandle contextHandle, double dStartX, double dStartY);
+
+	// Records where a hatch mark ended (see m_bHasHatchMarkEnd).
+	void setHatchMarkEnd(double dEndX, double dEndY);
+
+	// Forgets the end point of the last hatch mark, so that the next hatch starts with a jump.
+	void clearHatchMarkEnd();
+
 	// Deletes a managed working file if it exists. A failure is logged as a warning and never thrown:
 	// the file stays managed and is removed with the working directory at the latest.
 	void deleteWorkingFileQuietly(LibMCEnv::PWorkingFile& pFile, const std::string& sPurpose);
