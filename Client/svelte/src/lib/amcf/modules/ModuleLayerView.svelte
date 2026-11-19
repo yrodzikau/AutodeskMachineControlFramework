@@ -22,6 +22,9 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Crosshair from '@lucide/svelte/icons/crosshair';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
+	import Target from '@lucide/svelte/icons/target';
 	import MdiIcon from '$lib/amcf/MdiIcon.svelte';
 	// @ts-ignore — core JS has no type declarations yet
 	import WebGLImpl from '@core/common/AMCImplementation_WebGL.js';
@@ -55,14 +58,59 @@
 		'recording-approximate': 'approx. aligned to recording',
 		estimate: 'estimated from laser speed'
 	};
-	// Display modes of the toolpath; the recorded points follow the same mode.
+	// Display modes of the toolpath; the recorded points follow the same mode. Off hides the recorded points and
+	// draws the toolpath in its profile colors.
 	const TOOLPATH_COLOR_MODES = [
 		{ mode: 'color', caption: 'Color' },
 		{ mode: 'type', caption: 'Type' },
 		{ mode: 'time', caption: 'Time' },
 		{ mode: 'power', caption: 'Power' },
 		{ mode: 'velocity', caption: 'Velocity' },
-		{ mode: 'laseron', caption: 'Laser On' }
+		{ mode: 'laseron', caption: 'Laser On' },
+		{ mode: 'off', caption: 'Off' }
+	];
+	const POINTS_OFF_MODE = 'off';
+	const LASER_ON_MODE = 'laseron';
+	// Recorded points with two positions per sample (platform.scatterplotpositions and secondaryscatterplotuuid):
+	// the target positions the scanner was commanded to and the status positions it reported. In the display mode
+	// Laser On each is drawn as a circle in the color of the laser state of its sample, filled with the same color
+	// if fill is on; the other display modes draw the points as before.
+	type SpotRole = 'target' | 'status';
+	type SpotStyle = { onColor: string; offColor: string; size: number; fill: boolean };
+	type SpotColorKey = 'onColor' | 'offColor';
+	type SpotSetMode = 'target' | 'status' | 'both';
+	const SPOT_ROLES: SpotRole[] = ['target', 'status'];
+	const SPOT_ROLE_CAPTIONS: Record<SpotRole, string> = { target: 'Target X/Y', status: 'Status X/Y' };
+	const SPOT_ROLE_DESCRIPTIONS: Record<SpotRole, string> = {
+		target: 'positions the scanner was commanded to',
+		status: 'positions the scanner reported'
+	};
+	const SPOT_SET_MODES: { mode: SpotSetMode; caption: string }[] = [
+		{ mode: 'target', caption: 'Target X/Y' },
+		{ mode: 'status', caption: 'Status X/Y' },
+		{ mode: 'both', caption: 'Target vs Status' }
+	];
+	const SPOT_SIZE_MIN = 1;
+	const SPOT_SIZE_MAX = 32;
+	// Red and blue are the colors the display mode Laser On has always used for laser on and off.
+	const SPOT_LASER_ON_COLOR = '#e53935';
+	const SPOT_LASER_OFF_COLOR = '#1e88e5';
+	const SPOT_DEFAULT_STYLES: Record<SpotRole, SpotStyle> = {
+		target: { onColor: SPOT_LASER_ON_COLOR, offColor: SPOT_LASER_OFF_COLOR, size: 10, fill: false },
+		status: { onColor: SPOT_LASER_ON_COLOR, offColor: SPOT_LASER_OFF_COLOR, size: 6, fill: true }
+	};
+	const SPOT_COLOR_KEYS: SpotColorKey[] = ['onColor', 'offColor'];
+	const SPOT_COLOR_CAPTIONS: Record<SpotColorKey, string> = { onColor: 'Laser on', offColor: 'Laser off' };
+	const SPOT_COLOR_PRESETS: { color: string; caption: string }[] = [
+		{ color: SPOT_LASER_ON_COLOR, caption: 'Red' },
+		{ color: SPOT_LASER_OFF_COLOR, caption: 'Blue' },
+		{ color: '#00d0ff', caption: 'Cyan' },
+		{ color: '#ff9100', caption: 'Orange' },
+		{ color: '#ff00ff', caption: 'Magenta' },
+		{ color: '#ffd600', caption: 'Yellow' },
+		{ color: '#00e676', caption: 'Green' },
+		{ color: '#ffffff', caption: 'White' },
+		{ color: '#000000', caption: 'Black' }
 	];
 	type LegendMode = 'time' | 'power' | 'velocity';
 	const LEGEND_MODES: Record<LegendMode, { title: string; unit: string; resetTitle: string }> = {
@@ -130,6 +178,57 @@
 	let toolpathColorCaption = $derived(
 		TOOLPATH_COLOR_MODES.find((entry) => entry.mode === toolpathColorMode)?.caption ?? 'Color'
 	);
+	let pointsEnabled = $derived(toolpathColorMode !== POINTS_OFF_MODE);
+	let pointsShown = $derived(pointsLoaded && pointsEnabled);
+
+	// Positions of the loaded scatter plot as the server reported them with it (empty: not specified, the points are
+	// drawn as before), and the scatter plot of the same samples at the other positions, which is only downloaded
+	// when the spot mode shows them.
+	let primaryRole = $state<SpotRole | ''>('');
+	let secondaryRole = $derived<SpotRole | ''>(primaryRole === 'target' ? 'status' : (primaryRole === 'status' ? 'target' : ''));
+	let secondaryUUID = $state(NULL_UUID);
+	let secondaryPointsLoaded = $state(false);
+	let loadingSecondaryPoints = $state(false);
+	let requestedSecondaryUUID = NULL_UUID;
+	let spotSetMode = $state<SpotSetMode>('status');
+	let spotStyles = $state<Record<SpotRole, SpotStyle>>({
+		target: { ...SPOT_DEFAULT_STYLES.target },
+		status: { ...SPOT_DEFAULT_STYLES.status }
+	});
+	let spotColorMenu = $state<{ role: SpotRole; key: SpotColorKey } | null>(null);
+	// Target and Status spots exist in the display mode Laser On, for points whose positions the server named.
+	let spotsActive = $derived(pointsShown && toolpathColorMode === LASER_ON_MODE && primaryRole !== '');
+	// Positions this layer has: the loaded points and the offered secondary points, loaded or not.
+	let spotRoleAvailable = $derived<Record<SpotRole, boolean>>({
+		target: pointsLoaded && (primaryRole === 'target' || (secondaryRole === 'target' && isValidUUID(secondaryUUID))),
+		status: pointsLoaded && (primaryRole === 'status' || (secondaryRole === 'status' && isValidUUID(secondaryUUID)))
+	});
+	let spotSetChoosable = $derived(spotsActive && spotRoleAvailable.target && spotRoleAvailable.status);
+	// Positions the spots are drawn at: the chosen ones, or the only ones the layer has.
+	let spotRoleShown = $derived<Record<SpotRole, boolean>>({
+		target: spotsActive && spotRoleAvailable.target && (spotSetMode !== 'status' || !spotRoleAvailable.status),
+		status: spotsActive && spotRoleAvailable.status && (spotSetMode !== 'target' || !spotRoleAvailable.target)
+	});
+	let shownSpotRoles = $derived(SPOT_ROLES.filter((role) => spotRoleShown[role]));
+	let secondaryPointsWanted = $derived(secondaryRole !== '' && spotRoleShown[secondaryRole]);
+	// The spot button keeps its place in a toolbar that does not move (see toolbarFixed) and is shown while the
+	// layer has points with known positions otherwise.
+	let spotSetButtonCaption = $derived.by(() => {
+		if (spotSetChoosable || !spotsActive) return SPOT_SET_MODES.find((entry) => entry.mode === spotSetMode)?.caption ?? '';
+		return shownSpotRoles.length === 1 ? SPOT_ROLE_CAPTIONS[shownSpotRoles[0]] : '';
+	});
+	let spotSetButtonIconMode = $derived<SpotSetMode>(
+		spotSetChoosable || !spotsActive ? spotSetMode : (shownSpotRoles.length === 1 ? shownSpotRoles[0] : spotSetMode)
+	);
+	let spotSetButtonTitle = $derived.by(() => {
+		if (spotSetChoosable)
+			return 'Choose the positions the laser spots are drawn at: Target X/Y (commanded), Status X/Y (reported by the scanner) or both. Click steps through them';
+		if (!pointsLoaded) return 'This layer has no recorded points';
+		if (!pointsEnabled) return 'The laser spots are hidden by the display mode Off';
+		if (toolpathColorMode !== LASER_ON_MODE) return 'Target X/Y and Status X/Y are chosen in the display mode Laser On';
+		if (shownSpotRoles.length === 1) return `This layer has only ${SPOT_ROLE_CAPTIONS[shownSpotRoles[0]]} positions`;
+		return 'This layer has no recorded points with known positions';
+	});
 	let endPointsVisible = $state(false);
 	let colorMapName = $state(DEFAULT_COLORMAP);
 	let colorMapInverted = $state(false);
@@ -172,10 +271,10 @@
 	let legendMode = $derived(toolpathColorMode in LEGEND_MODES ? (toolpathColorMode as LegendMode) : null);
 
 	// Overlay: a scalar field image over the platform (for example a heat map of the layer), drawn through a color
-	// map by the GPU, see WebGLScalarImageElement. The toolbar button named by platform.overlayname shows it instead
-	// of the recorded points; the legend then edits the color map and the value range of the overlay. The button
-	// has three states that a click steps through: off, pixels (every pixel of the image is a sharp square when
-	// the view is zoomed in) and smooth (the view interpolates between the pixels).
+	// map by the GPU, see WebGLScalarImageElement. The toolbar button named by platform.overlayname shows it below
+	// the toolpath and the recorded points; a legend of its own then edits the color map and the value range of the
+	// overlay. The button has three states that a click steps through: off, pixels (every pixel of the image is a
+	// sharp square when the view is zoomed in) and smooth (the view interpolates between the pixels).
 	let overlayName = $derived.by(() => { poll.v; return String(platform?.overlayname || '').trim(); });
 	let overlayIcon = $derived.by(() => { poll.v; return String(platform?.overlayicon || '').trim(); });
 	let overlayCaption = $derived.by(() => { poll.v; return String(platform?.overlaycaption || '').trim(); });
@@ -191,7 +290,7 @@
 	let overlayButtonTitle = $derived.by(() => {
 		const name = overlayName.toLowerCase();
 		const steps = overlaySmoothingSupported ? 'off, pixels, smooth' : 'off, pixels (this browser cannot smooth the image)';
-		if (overlayState === 'off') return `Show the ${name} of the layer over the platform instead of the recorded points. Click steps through ${steps}`;
+		if (overlayState === 'off') return `Show the ${name} of the layer on the platform, below the toolpath and the recorded points. Click steps through ${steps}`;
 		if (overlayState === 'pixels') return `The ${name} is shown with every pixel as a square. Click steps through ${steps}`;
 		return `The ${name} is shown smoothed between its pixels. Click steps through ${steps}`;
 	});
@@ -209,44 +308,64 @@
 	// act on is disabled and grey instead of removed, so the toolbar does not move under the pointer while the
 	// overlay button is clicked through its states.
 	let toolbarFixed = $derived(overlayName !== '');
-	let laserOffAvailable = $derived(pointsLoaded && pointColumns.includes('laseron'));
+	let laserOffPresent = $derived(pointsLoaded && pointColumns.includes('laseron'));
+	let laserOffAvailable = $derived(laserOffPresent && pointsEnabled);
 	// A hidden toolpath can always be shown again, also where there is nothing else to see.
-	let toolpathToggleAvailable = $derived(pointsLoaded || overlayShown || !toolpathVisible);
+	let toolpathToggleAvailable = $derived(pointsShown || overlayShown || !toolpathVisible);
 
-	// The legend in the bottom left corner belongs to the overlay while it is shown, otherwise to the color map
-	// display modes of the toolpath and the recorded points.
+	// Legends in the bottom left corner: one of the overlay while it is shown and one of the color map display modes
+	// of the toolpath and the recorded points, which are drawn over the overlay. Spot panels stand above them.
 	type LegendKind = 'toolpath' | 'overlay';
-	let legendKind = $derived<LegendKind | null>(
-		overlayShown ? 'overlay' : (legendMode !== null && (toolpathVisible || pointsLoaded) ? 'toolpath' : null)
-	);
-	let legendVisible = $derived(legendKind !== null);
-	let legendTitle = $derived.by(() => {
-		if (legendKind === 'overlay') return overlayCaption || overlayName;
-		return legendMode ? `${LEGEND_MODES[legendMode].title} [${LEGEND_MODES[legendMode].unit}]` : '';
-	});
-	// Lower-case description of the value for the labels of the range fields.
-	let legendValueLabel = $derived.by(() => {
-		if (legendKind === 'overlay') return (overlayCaption || overlayName).toLowerCase();
-		return legendMode ? `${LEGEND_MODES[legendMode].title.toLowerCase()} in ${LEGEND_MODES[legendMode].unit}` : '';
-	});
-	let legendColorMapName = $derived(legendKind === 'overlay' ? overlayColorMapName : colorMapName);
-	let legendColorMapInverted = $derived(legendKind === 'overlay' ? overlayColorMapInverted : colorMapInverted);
-	let legendColorMapCaption = $derived(colorMapPresets.find((preset) => preset.name === legendColorMapName)?.caption ?? '');
-	let legendGradient = $derived(colorMapCSSGradient(legendColorMapName, legendColorMapInverted));
-	let legendRange = $derived<ColorRange>(
-		legendKind === 'overlay' ? overlayRange : (legendMode ? colorRanges[legendMode] : { min: 0, max: 1 })
-	);
-	let legendRangeEdited = $derived(
-		legendKind === 'overlay' ? editedOverlayRange !== null : (legendMode ? editedRanges[legendMode] !== null : false)
-	);
-	let legendResetTitle = $derived(
-		legendKind === 'overlay' ? 'Reset the range to the value range of the image' : (legendMode ? LEGEND_MODES[legendMode].resetTitle : '')
-	);
-	let legendNote = $derived.by(() => {
-		if (legendKind === 'overlay') return overlayNote;
-		if (legendMode === 'power' && pointsLoaded && pointColumns.includes('power')) return 'Recorded points: raw power, layer minimum to maximum';
-		return '';
-	});
+	type LegendInfo = {
+		title: string;
+		// Lower-case description of the value for the labels of the range fields.
+		valueLabel: string;
+		colorMapName: string;
+		colorMapInverted: boolean;
+		colorMapCaption: string;
+		gradient: string;
+		range: ColorRange;
+		rangeEdited: boolean;
+		resetTitle: string;
+		note: string;
+	};
+	let shownLegends = $derived<LegendKind[]>([
+		...((legendMode !== null && (toolpathVisible || pointsShown)) ? ['toolpath' as const] : []),
+		...(overlayShown ? ['overlay' as const] : [])
+	]);
+	let colorMapMenuKind = $state<LegendKind | null>(null);
+	let bottomLeftVisible = $derived(shownLegends.length > 0 || shownSpotRoles.length > 0);
+
+	function describeLegend(kind: LegendKind): LegendInfo {
+		if (kind === 'overlay') {
+			const caption = overlayCaption || overlayName;
+			return {
+				title: caption,
+				valueLabel: caption.toLowerCase(),
+				colorMapName: overlayColorMapName,
+				colorMapInverted: overlayColorMapInverted,
+				colorMapCaption: colorMapPresets.find((preset) => preset.name === overlayColorMapName)?.caption ?? '',
+				gradient: colorMapCSSGradient(overlayColorMapName, overlayColorMapInverted),
+				range: overlayRange,
+				rangeEdited: editedOverlayRange !== null,
+				resetTitle: 'Reset the range to the value range of the image',
+				note: overlayNote
+			};
+		}
+		const mode = legendMode;
+		return {
+			title: mode ? `${LEGEND_MODES[mode].title} [${LEGEND_MODES[mode].unit}]` : '',
+			valueLabel: mode ? `${LEGEND_MODES[mode].title.toLowerCase()} in ${LEGEND_MODES[mode].unit}` : '',
+			colorMapName: colorMapName,
+			colorMapInverted: colorMapInverted,
+			colorMapCaption: colorMapPresets.find((preset) => preset.name === colorMapName)?.caption ?? '',
+			gradient: colorMapCSSGradient(colorMapName, colorMapInverted),
+			range: mode ? colorRanges[mode] : { min: 0, max: 1 },
+			rangeEdited: mode ? editedRanges[mode] !== null : false,
+			resetTitle: mode ? LEGEND_MODES[mode].resetTitle : '',
+			note: (mode === 'power' && pointsShown && pointColumns.includes('power')) ? 'Recorded points: raw power, layer minimum to maximum' : ''
+		};
+	}
 	// Compared as a string so the calibration is only re-applied when a value changes.
 	let pointSizeCalibrationKey = $derived.by(() => {
 		poll.v;
@@ -369,10 +488,46 @@
 		untrack(() => layerViewer.setPointSizeCalibration(base, factor, minimum, maximum));
 	});
 
+	// A mode change also changes the visibility and the spot styles of the points; the viewer rebuilds them once.
 	$effect(() => {
 		const mode = toolpathColorMode;
 		if (!layerViewer || !initialized) return;
-		untrack(() => layerViewer.setToolpathColorMode(mode));
+		untrack(() => layerViewer.batchPointsUpdate(() => {
+			const hidden = mode === POINTS_OFF_MODE;
+			layerViewer.setPointsVisible(!hidden);
+			layerViewer.setPointSetStyles(rendererPointSetStyles.primary, rendererPointSetStyles.secondary);
+			layerViewer.setToolpathColorMode(hidden ? 'color' : mode);
+		}));
+	});
+
+	// Spot styles of the drawn points in the display mode Laser On: the loaded points take the style of their
+	// positions, the secondary points (once loaded) the style of theirs. Otherwise the points are drawn as before.
+	let rendererPointSetStyles = $derived.by(() => {
+		if (primaryRole === '' || toolpathColorMode !== LASER_ON_MODE) return { primary: null, secondary: null };
+		const toRendererStyle = (role: SpotRole) => ({
+			visible: spotRoleShown[role],
+			onColor: parseInt(spotStyles[role].onColor.slice(1), 16),
+			offColor: parseInt(spotStyles[role].offColor.slice(1), 16),
+			size: spotStyles[role].size,
+			fill: spotStyles[role].fill
+		});
+		return {
+			primary: toRendererStyle(primaryRole),
+			secondary: (secondaryRole !== '' && secondaryPointsLoaded) ? toRendererStyle(secondaryRole) : null
+		};
+	});
+
+	$effect(() => {
+		const styles = rendererPointSetStyles;
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setPointSetStyles(styles.primary, styles.secondary));
+	});
+
+	// The secondary points are downloaded the first time the spot mode shows them and kept until the points change.
+	$effect(() => {
+		const wanted = secondaryPointsWanted ? secondaryUUID : NULL_UUID;
+		if (!layerViewer || !initialized || !isValidUUID(wanted)) return;
+		untrack(() => loadSecondaryScatterPlot(wanted));
 	});
 
 	$effect(() => {
@@ -440,36 +595,96 @@
 	function cycleToolpathColorMode() {
 		const index = TOOLPATH_COLOR_MODES.findIndex((entry) => entry.mode === toolpathColorMode);
 		toolpathColorMode = TOOLPATH_COLOR_MODES[(index + 1) % TOOLPATH_COLOR_MODES.length].mode;
-		colorMapMenuOpen = false;
+		colorMapMenuKind = null;
+		spotColorMenu = null;
+		hideHoverInfo();
+		clearHover();
+	}
+
+	function cycleSpotSetMode() {
+		const index = SPOT_SET_MODES.findIndex((entry) => entry.mode === spotSetMode);
+		spotSetMode = SPOT_SET_MODES[(index + 1) % SPOT_SET_MODES.length].mode;
+		spotColorMenu = null;
+		hideHoverInfo();
+		clearHover();
+	}
+
+	function spotColorCaption(color: string): string {
+		return SPOT_COLOR_PRESETS.find((preset) => preset.color === color)?.caption ?? color;
+	}
+
+	function setSpotColor(role: SpotRole, key: SpotColorKey, color: string) {
+		if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+		spotStyles[role][key] = color.toLowerCase();
+	}
+
+	function selectSpotColor(role: SpotRole, key: SpotColorKey, color: string) {
+		setSpotColor(role, key, color);
+		spotColorMenu = null;
+	}
+
+	function isSpotColorMenuOpen(role: SpotRole, key: SpotColorKey): boolean {
+		return spotColorMenu !== null && spotColorMenu.role === role && spotColorMenu.key === key;
+	}
+
+	// Applies a typed size right away if it is valid; leaving the field puts an invalid or out-of-range value
+	// back into the range.
+	function onSpotSizeInput(role: SpotRole, event: Event) {
+		const value = Number((event.target as HTMLInputElement).value);
+		if (Number.isInteger(value) && value >= SPOT_SIZE_MIN && value <= SPOT_SIZE_MAX) spotStyles[role].size = value;
+	}
+
+	function onSpotSizeChange(role: SpotRole, event: Event) {
+		const input = event.target as HTMLInputElement;
+		const value = Number(input.value);
+		const size = Number.isFinite(value) && input.value.trim() !== ''
+			? Math.min(Math.max(Math.round(value), SPOT_SIZE_MIN), SPOT_SIZE_MAX)
+			: spotStyles[role].size;
+		spotStyles[role].size = size;
+		input.value = String(size);
+	}
+
+	function toggleSpotFill(role: SpotRole) {
+		spotStyles[role].fill = !spotStyles[role].fill;
 	}
 
 	function formatRangeValue(value: number): number {
 		return Number(value.toPrecision(6));
 	}
 
-	function onLegendRangeChange(bound: 'min' | 'max', event: Event) {
+	function onLegendRangeChange(kind: LegendKind, bound: 'min' | 'max', event: Event) {
 		const value = Number((event.target as HTMLInputElement).value);
 		if (!Number.isFinite(value)) return;
-		const current = legendRange;
+		const current = describeLegend(kind).range;
 		const range = bound === 'min' ? { min: value, max: current.max } : { min: current.min, max: value };
-		if (legendKind === 'overlay') editedOverlayRange = range;
+		if (kind === 'overlay') editedOverlayRange = range;
 		else if (legendMode) setEditedRange(legendMode, range);
 	}
 
-	function resetLegendRange() {
-		if (legendKind === 'overlay') editedOverlayRange = null;
+	function resetLegendRange(kind: LegendKind) {
+		if (kind === 'overlay') editedOverlayRange = null;
 		else if (legendMode) setEditedRange(legendMode, null);
 	}
 
-	function selectColorMap(name: string) {
-		if (legendKind === 'overlay') overlayColorMapName = name;
+	function selectColorMap(kind: LegendKind, name: string) {
+		if (kind === 'overlay') overlayColorMapName = name;
 		else colorMapName = name;
-		colorMapMenuOpen = false;
+		colorMapMenuKind = null;
 	}
 
-	function toggleColorMapInverted() {
-		if (legendKind === 'overlay') overlayColorMapInverted = !overlayColorMapInverted;
+	function toggleColorMapInverted(kind: LegendKind) {
+		if (kind === 'overlay') overlayColorMapInverted = !overlayColorMapInverted;
 		else colorMapInverted = !colorMapInverted;
+	}
+
+	function toggleColorMapMenu(kind: LegendKind) {
+		colorMapMenuKind = colorMapMenuKind === kind ? null : kind;
+		spotColorMenu = null;
+	}
+
+	function toggleSpotColorMenu(role: SpotRole, key: SpotColorKey) {
+		spotColorMenu = isSpotColorMenuOpen(role, key) ? null : { role, key };
+		colorMapMenuKind = null;
 	}
 
 	function readPowerRange(data: any): ColorRange | null {
@@ -640,19 +855,18 @@
 			loadToolpath(currentPlatform.builduuid, currentPlatform.currentlayer);
 		}
 
-		// Recorded points and overlay of the layer: only the one the overlay button selects is loaded, the other
-		// follows when the button is toggled (see toggleOverlayMode), so a layer change downloads one of them.
+		// Recorded points and overlay of the layer: the overlay is only loaded while the overlay button is on (see
+		// cycleOverlayState), the recorded points always, since they are drawn over the overlay.
 		overlayUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
 		syncScatterPlot();
 		syncOverlay();
 	}
 
-	// Loads or clears the scatter plot of the layer, which is shown while the overlay button is off.
+	// Loads or clears the scatter plot of the layer.
 	function syncScatterPlot() {
 		const currentPlatform = module.platform;
 		if (!layerViewer || !currentPlatform) return;
-		const serverUUID = typeof currentPlatform.scatterplotuuid === 'string' ? currentPlatform.scatterplotuuid.toLowerCase() : NULL_UUID;
-		const wanted = overlayMode ? NULL_UUID : serverUUID;
+		const wanted = typeof currentPlatform.scatterplotuuid === 'string' ? currentPlatform.scatterplotuuid.toLowerCase() : NULL_UUID;
 		if (currentPlatform.displayed_scatterplot === wanted) return;
 		currentPlatform.displayed_scatterplot = wanted;
 		loadScatterPlot(wanted);
@@ -693,16 +907,14 @@
 	}
 
 	// Steps the overlay button: off, pixels, smooth, off. Between pixels and smooth only the drawing changes
-	// (see the effect on overlayState); the other steps exchange the recorded points and the overlay image.
+	// (see the effect on overlayState); the other steps load or remove the overlay image.
 	function cycleOverlayState() {
 		const wasShown = overlayState !== 'off';
 		if (overlayState === 'off') overlayState = 'pixels';
 		else if (overlayState === 'pixels' && overlaySmoothingSupported) overlayState = 'smooth';
 		else overlayState = 'off';
 		if (wasShown === (overlayState !== 'off')) return;
-		hideHoverInfo();
-		clearHover();
-		syncScatterPlot();
+		colorMapMenuKind = null;
 		syncOverlay();
 	}
 
@@ -755,6 +967,11 @@
 	function clearScatterPlot() {
 		pointsLoaded = false;
 		pointColumns = [];
+		primaryRole = '';
+		secondaryUUID = NULL_UUID;
+		secondaryPointsLoaded = false;
+		loadingSecondaryPoints = false;
+		requestedSecondaryUUID = NULL_UUID;
 		hoverPoint = null;
 		hideHoverInfo();
 		if (!layerViewer) return;
@@ -783,11 +1000,21 @@
 		return columns;
 	}
 
+	function readSpotRole(value: unknown): SpotRole | '' {
+		const role = String(value ?? '').trim().toLowerCase();
+		return role === 'target' || role === 'status' ? role : '';
+	}
+
 	async function loadScatterPlot(scatterPlotUUID: string) {
 		const loadIndex = ++pointLoadCounter;
 		clearScatterPlot();
 		loadingPoints = false;
 		if (!layerViewer || scatterPlotUUID === NULL_UUID || !UUID_PATTERN.test(scatterPlotUUID)) return;
+
+		// The server sets the positions and the secondary scatter plot together with the scatter plot.
+		const currentPlatform = module.platform;
+		const role = readSpotRole(currentPlatform?.scatterplotpositions);
+		const serverSecondaryUUID = typeof currentPlatform?.secondaryscatterplotuuid === 'string' ? currentPlatform.secondaryscatterplotuuid.toLowerCase() : NULL_UUID;
 
 		loadingPoints = true;
 		try {
@@ -802,14 +1029,19 @@
 
 			if (loadIndex !== pointLoadCounter || !layerViewer) return;
 
+			pointColumns = channelColumns.map(([column]) => column);
+			primaryRole = role;
+			secondaryUUID = (role !== '' && UUID_PATTERN.test(serverSecondaryUUID)) ? serverSecondaryUUID : NULL_UUID;
+			pointsLoaded = true;
+			// The spot styles go to the viewer before the points, so the points are built once, by setColorMode.
+			layerViewer.setPointSetStyles(rendererPointSetStyles.primary, rendererPointSetStyles.secondary);
+
 			layerViewer.loadPoints(new Float32Array(pointsResponse.data));
 			for (const [column, values] of channelColumns) {
 				layerViewer.loadPointsChannelData(POINT_CHANNEL, column, values);
 			}
 			layerViewer.updateTiming();
 			refreshTimeline();
-			pointColumns = channelColumns.map(([column]) => column);
-			pointsLoaded = true;
 			layerVelocityRange = layerViewer.getLayerVelocityRange();
 
 			layerViewer.showLaserOffPoints = showLaserOffPoints;
@@ -820,6 +1052,35 @@
 		} finally {
 			// Another scatter plot may have been requested in the meantime
 			if (loadIndex === pointLoadCounter) loadingPoints = false;
+		}
+	}
+
+	// Downloads the secondary points of the loaded scatter plot: the same samples at their other positions.
+	async function loadSecondaryScatterPlot(scatterPlotUUID: string) {
+		if (requestedSecondaryUUID === scatterPlotUUID || !layerViewer || !UUID_PATTERN.test(scatterPlotUUID)) return;
+		const loadIndex = pointLoadCounter;
+		const role = secondaryRole;
+		requestedSecondaryUUID = scatterPlotUUID;
+		loadingSecondaryPoints = true;
+		const isCurrent = () => loadIndex === pointLoadCounter && requestedSecondaryUUID === scatterPlotUUID && !!layerViewer;
+		try {
+			const response = await app.axiosGetArrayBufferRequest('/pointcloud/' + scatterPlotUUID);
+			if (!isCurrent()) return;
+			const positions = new Float32Array(response.data);
+			const expected = layerViewer.getPointPositions(false)?.length ?? -1;
+			if (positions.length !== expected) {
+				console.warn(`[LayerView] secondary points: ${positions.length / 2} instead of ${expected / 2} points, not shown`);
+				app.showSnackBar(`The ${role ? SPOT_ROLE_CAPTIONS[role] : 'secondary'} positions do not match the recorded points and are not shown`, 'error', 8000);
+				return;
+			}
+			layerViewer.loadSecondaryPoints(positions);
+			secondaryPointsLoaded = true;
+		} catch (err: any) {
+			console.warn('[LayerView] secondary point cloud error:', err?.response || err);
+			if (isCurrent())
+				app.showSnackBar(`Loading the ${role ? SPOT_ROLE_CAPTIONS[role] : 'secondary'} positions failed: ${app.extractErrorMessage(err)}`, 'error', 8000);
+		} finally {
+			if (loadIndex === pointLoadCounter && requestedSecondaryUUID === scatterPlotUUID) loadingSecondaryPoints = false;
 		}
 	}
 
@@ -920,19 +1181,37 @@
 			hoverInfo.visible = false;
 	}
 
+	// Position of a recorded sample at the given positions, if they are loaded.
+	function spotRolePosition(role: SpotRole, pointIndex: number): { x: number; y: number } | null {
+		if (!layerViewer) return null;
+		if (role === primaryRole) return layerViewer.getPointPosition(pointIndex, false);
+		if (role === secondaryRole) return layerViewer.getPointPosition(pointIndex, true);
+		return null;
+	}
+
+	// Velocity, acceleration and jerk are taken along the positions the point was picked at.
 	function describePoint(mouseX: number, mouseY: number): string {
-		if (!pointsLoaded) return '';
-		const pointIndex = layerViewer.resolvePointIndex(glInstance.getRaycasterCollisions('layerdata_points', mouseX, mouseY));
-		if (pointIndex < 0) return '';
+		if (!pointsShown) return '';
+		const hit: { index: number; secondary: boolean } | null = layerViewer.pickPoint(mouseX, mouseY, 2);
+		if (!hit) return '';
+		const pointIndex = hit.index;
+		const secondary = hit.secondary;
 
 		let text = `Point ID = ${pointIndex}`;
-		const position = layerViewer.getPointPosition(pointIndex);
-		if (position) text += `\nPosition: ${position.x.toFixed(4)} / ${position.y.toFixed(4)} mm`;
-		const velocity = layerViewer.getPointVelocity(pointIndex);
+		if (primaryRole !== '') {
+			for (const role of SPOT_ROLES) {
+				const position = spotRolePosition(role, pointIndex);
+				if (position) text += `\n${SPOT_ROLE_CAPTIONS[role]}: ${position.x.toFixed(4)} / ${position.y.toFixed(4)} mm`;
+			}
+		} else {
+			const position = layerViewer.getPointPosition(pointIndex);
+			if (position) text += `\nPosition: ${position.x.toFixed(4)} / ${position.y.toFixed(4)} mm`;
+		}
+		const velocity = layerViewer.getPointVelocity(pointIndex, secondary);
 		if (velocity > 0) text += `\nVelocity: ${velocity.toFixed(4)} mm/s`;
-		const acceleration = layerViewer.getPointAcceleration(pointIndex);
+		const acceleration = layerViewer.getPointAcceleration(pointIndex, secondary);
 		if (acceleration) text += `\nAcceleration: ${(acceleration.a / 1000).toFixed(4)} m/s²`;
-		const jerk = layerViewer.getPointJerk(pointIndex);
+		const jerk = layerViewer.getPointJerk(pointIndex, secondary);
 		if (jerk) text += `\nJerk: ${(jerk.j / 1000000).toFixed(4)} km/s³`;
 		const power = layerViewer.getPointPower(pointIndex);
 		if (power !== null) text += `\nPower: ${power.toFixed(4)} W`;
@@ -1060,8 +1339,14 @@
 	};
 	type PointInfo = {
 		index: number;
+		// True if the point was picked at its secondary position; x and y are the picked position.
+		secondary: boolean;
 		x: number;
 		y: number;
+		primaryx: number | null;
+		primaryy: number | null;
+		secondaryx: number | null;
+		secondaryy: number | null;
 		time: number | null;
 		scannerx: number | null;
 		scannery: number | null;
@@ -1205,8 +1490,8 @@
 			return;
 		}
 
-		const pointIndex: number = pointsLoaded ? layerViewer.pickPointAtScreenPoint(localX, localY, POINT_PICK_TOLERANCE_PX) : -1;
-		const pointInfo: PointInfo | null = pointIndex >= 0 ? layerViewer.getPointInfo(pointIndex) : null;
+		const pointHit: { index: number; secondary: boolean } | null = pointsShown ? layerViewer.pickPoint(localX, localY, POINT_PICK_TOLERANCE_PX) : null;
+		const pointInfo: PointInfo | null = pointHit ? layerViewer.getPointInfo(pointHit.index, pointHit.secondary) : null;
 		if (pointInfo) {
 			hoverPoint = pointInfo;
 			hoverSegment = null;
@@ -1503,6 +1788,171 @@
 
 <svelte:window onkeydown={onWindowKeyDown} />
 
+<!-- Color map legend of the overlay or of the power, time and velocity display modes -->
+{#snippet legendPanel(kind: LegendKind)}
+	{@const legend = describeLegend(kind)}
+	<div class="layerview-legend" data-legend={kind}>
+		<div class="layerview-legend-header">
+			<span class="layerview-legend-title">{legend.title}</span>
+			<button
+				type="button"
+				class="layerview-legend-btn layerview-legend-preset"
+				onclick={() => toggleColorMapMenu(kind)}
+				title="Choose a color map"
+				aria-label={`Color map: ${legend.colorMapCaption}. Click to choose`}
+				aria-expanded={colorMapMenuKind === kind}
+			>
+				<span>{legend.colorMapCaption}</span>
+				<ChevronDown size={12} />
+			</button>
+			<button
+				type="button"
+				class="layerview-legend-btn"
+				onclick={() => toggleColorMapInverted(kind)}
+				title="Invert the color map"
+				aria-label="Invert the color map"
+				aria-pressed={legend.colorMapInverted}
+			>
+				<ArrowLeftRight size={12} />
+			</button>
+			<button
+				type="button"
+				class="layerview-legend-btn"
+				onclick={() => resetLegendRange(kind)}
+				disabled={!legend.rangeEdited}
+				title={legend.resetTitle}
+				aria-label="Reset the range"
+			>
+				<RotateCcw size={12} />
+			</button>
+		</div>
+
+		{#if colorMapMenuKind === kind}
+			<div class="layerview-legend-menu" role="listbox" aria-label="Color maps">
+				{#each colorMapPresets as preset (preset.name)}
+					<button
+						type="button"
+						class="layerview-legend-menu-item"
+						class:selected={preset.name === legend.colorMapName}
+						role="option"
+						aria-selected={preset.name === legend.colorMapName}
+						onclick={() => selectColorMap(kind, preset.name)}
+					>
+						<span class="layerview-legend-menu-preview" style:background={colorMapCSSGradient(preset.name, legend.colorMapInverted)}></span>
+						<span>{preset.caption}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		<div class="layerview-legend-bar" style:background={legend.gradient}></div>
+		<div class="layerview-legend-range">
+			<input
+				type="number"
+				step="any"
+				value={formatRangeValue(legend.range.min)}
+				onchange={(event) => onLegendRangeChange(kind, 'min', event)}
+				aria-label={`Minimum ${legend.valueLabel}`}
+			/>
+			<span class="layerview-legend-mid">{formatRangeValue((legend.range.min + legend.range.max) / 2)}</span>
+			<input
+				type="number"
+				step="any"
+				value={formatRangeValue(legend.range.max)}
+				onchange={(event) => onLegendRangeChange(kind, 'max', event)}
+				aria-label={`Maximum ${legend.valueLabel}`}
+			/>
+		</div>
+		{#if legend.note}
+			<div class="layerview-legend-note">{legend.note}</div>
+		{/if}
+	</div>
+{/snippet}
+
+<!-- Look of the laser spots at one kind of positions: diameter in pixels, fill and the colors of laser on and off -->
+{#snippet spotPanel(role: SpotRole)}
+	{@const style = spotStyles[role]}
+	{@const caption = SPOT_ROLE_CAPTIONS[role]}
+	<div class="layerview-legend layerview-spots" data-spot-role={role} role="group" aria-label={`${caption} laser spots`}>
+		<div class="layerview-legend-header layerview-spots-row">
+			<span class="layerview-spots-preview" class:filled={style.fill} style:--spot-color={style.onColor} aria-hidden="true"></span>
+			<span class="layerview-legend-title" title={`Laser spots at the ${SPOT_ROLE_DESCRIPTIONS[role]}`}>{caption}</span>
+			<span class="layerview-spots-size" title={`Diameter of the ${caption} spots in screen pixels (${SPOT_SIZE_MIN} to ${SPOT_SIZE_MAX})`}>
+				<input
+					type="number"
+					min={SPOT_SIZE_MIN}
+					max={SPOT_SIZE_MAX}
+					step="1"
+					value={style.size}
+					oninput={(event) => onSpotSizeInput(role, event)}
+					onchange={(event) => onSpotSizeChange(role, event)}
+					aria-label={`Diameter of the ${caption} spots in pixels`}
+				/>
+				<span>px</span>
+			</span>
+			<button
+				type="button"
+				class="layerview-legend-btn"
+				onclick={() => toggleSpotFill(role)}
+				title={`Fill the ${caption} spots with the color of their circle`}
+				aria-label={`Fill the ${caption} spots`}
+				aria-pressed={style.fill}
+			>
+				Fill
+			</button>
+		</div>
+		<div class="layerview-spots-colors">
+			{#each SPOT_COLOR_KEYS as key (key)}
+				<span class="layerview-spots-color">
+					<span>{SPOT_COLOR_CAPTIONS[key]}</span>
+					<button
+						type="button"
+						class="layerview-legend-btn"
+						onclick={() => toggleSpotColorMenu(role, key)}
+						title={`Choose the color of the ${caption} spots recorded with the ${SPOT_COLOR_CAPTIONS[key].toLowerCase()}`}
+						aria-label={`${SPOT_COLOR_CAPTIONS[key]} color of the ${caption} spots: ${spotColorCaption(style[key])}. Click to choose`}
+						aria-expanded={isSpotColorMenuOpen(role, key)}
+						data-spot-color={key}
+					>
+						<span class="layerview-spots-swatch" style:background={style[key]}></span>
+						<ChevronDown size={12} />
+					</button>
+				</span>
+			{/each}
+		</div>
+
+		{#if spotColorMenu !== null && spotColorMenu.role === role}
+			{@const key = spotColorMenu.key}
+			<div class="layerview-legend-menu">
+				<div class="layerview-spots-menu-title">{SPOT_COLOR_CAPTIONS[key]}</div>
+				<div class="layerview-spots-menu" role="listbox" aria-label={`${SPOT_COLOR_CAPTIONS[key]} colors of the ${caption} spots`}>
+					{#each SPOT_COLOR_PRESETS as preset (preset.color)}
+						<button
+							type="button"
+							class="layerview-legend-menu-item"
+							class:selected={preset.color === style[key]}
+							role="option"
+							aria-selected={preset.color === style[key]}
+							onclick={() => selectSpotColor(role, key, preset.color)}
+						>
+							<span class="layerview-spots-swatch" style:background={preset.color}></span>
+							<span>{preset.caption}</span>
+						</button>
+					{/each}
+				</div>
+				<label class="layerview-legend-menu-item layerview-spots-custom">
+					<input
+						type="color"
+						value={style[key]}
+						oninput={(event) => setSpotColor(role, key, (event.target as HTMLInputElement).value)}
+					/>
+					<span>Other color…</span>
+				</label>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet layerViewBody()}
 	<div class="layerview-container">
 		<!-- WebGL render target — setupDOMElement sets position:relative on this -->
@@ -1605,7 +2055,7 @@
 				<button
 					class="layerview-btn"
 					onclick={cycleToolpathColorMode}
-					title="Change how the toolpath and the recorded points are coloured: profile color, segment type, start time, laser power, velocity or laser on/off"
+					title="Change how the toolpath and the recorded points are coloured: profile color, segment type, start time, laser power, velocity or laser on/off. Off hides the recorded points"
 					aria-label={`Display mode: ${toolpathColorCaption}. Click to change`}
 				>
 					<Paintbrush size={16} />
@@ -1621,14 +2071,14 @@
 					<Spline size={16} />
 					<span>End Points</span>
 				</button>
-				{#if toolbarFixed || laserOffAvailable}
+				{#if toolbarFixed || laserOffPresent}
 					<button
 						class="layerview-btn"
 						onclick={toggleLaserOffPoints}
 						disabled={!laserOffAvailable}
 						title={laserOffAvailable
 							? 'Also show points recorded while the laser was off'
-							: (overlayMode ? `Recorded points are not shown while the ${overlayName.toLowerCase()} is on` : 'This layer has no recorded points with the laser state')}
+							: (laserOffPresent ? 'The recorded points are hidden by the display mode Off' : 'This layer has no recorded points with the laser state')}
 						aria-label="Toggle points with laser off"
 						aria-pressed={showLaserOffPoints}
 					>
@@ -1668,10 +2118,29 @@
 						<span>{overlayName}{#if overlayStateCaption}<br />{overlayStateCaption}{/if}</span>
 					</button>
 				{/if}
+				{#if toolbarFixed || (pointsLoaded && primaryRole !== '')}
+					<button
+						class="layerview-btn"
+						onclick={cycleSpotSetMode}
+						disabled={!spotSetChoosable}
+						title={spotSetButtonTitle}
+						aria-label={`Laser spots: ${spotSetButtonCaption || 'none'}. Click to change`}
+						data-spot-set={spotSetMode}
+					>
+						{#if spotSetButtonIconMode === 'target'}
+							<Crosshair size={16} />
+						{:else if spotSetButtonIconMode === 'status'}
+							<CircleDot size={16} />
+						{:else}
+							<Target size={16} />
+						{/if}
+						<span>{spotSetButtonCaption || 'Spots'}</span>
+					</button>
+				{/if}
 			</div>
 
 			<!-- Platform label and loading indicator -->
-			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingOverlay || (overlayMode && !overlayAvailable)}
+			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingSecondaryPoints || loadingOverlay || (overlayMode && !overlayAvailable)}
 				<div class="layerview-status">
 					{#if labelCaption || labelIcon}
 						<div class="layerview-label">
@@ -1685,7 +2154,7 @@
 							<span>{overlayName} not available for this layer</span>
 						</div>
 					{/if}
-					{#if loadingLayer || loadingPoints || loadingOverlay}
+					{#if loadingLayer || loadingPoints || loadingSecondaryPoints || loadingOverlay}
 						<div class="layerview-label">
 							<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
 							<span>Loading layer data</span>
@@ -1756,87 +2225,19 @@
 			</svg>
 		{/if}
 
-		<!-- Color map legend of the overlay or of the power, time and velocity display modes -->
-		{#if legendVisible}
+		<!-- Spot panels of the shown positions, above the color map legends of the display mode and of the overlay -->
+		{#if bottomLeftVisible}
 			<div
-				class="layerview-legend"
+				class="layerview-bottom-left"
 				class:above-coordinates={coordinateSystemVisible}
 				class:above-time-slider={!coordinateSystemVisible && showTimeSlider && timelineDuration > 0}
 			>
-				<div class="layerview-legend-header">
-					<span class="layerview-legend-title">{legendTitle}</span>
-					<button
-						type="button"
-						class="layerview-legend-btn layerview-legend-preset"
-						onclick={() => (colorMapMenuOpen = !colorMapMenuOpen)}
-						title="Choose a color map"
-						aria-label={`Color map: ${legendColorMapCaption}. Click to choose`}
-						aria-expanded={colorMapMenuOpen}
-					>
-						<span>{legendColorMapCaption}</span>
-						<ChevronDown size={12} />
-					</button>
-					<button
-						type="button"
-						class="layerview-legend-btn"
-						onclick={toggleColorMapInverted}
-						title="Invert the color map"
-						aria-label="Invert the color map"
-						aria-pressed={legendColorMapInverted}
-					>
-						<ArrowLeftRight size={12} />
-					</button>
-					<button
-						type="button"
-						class="layerview-legend-btn"
-						onclick={resetLegendRange}
-						disabled={!legendRangeEdited}
-						title={legendResetTitle}
-						aria-label="Reset the range"
-					>
-						<RotateCcw size={12} />
-					</button>
-				</div>
-
-				{#if colorMapMenuOpen}
-					<div class="layerview-legend-menu" role="listbox" aria-label="Color maps">
-						{#each colorMapPresets as preset (preset.name)}
-							<button
-								type="button"
-								class="layerview-legend-menu-item"
-								class:selected={preset.name === legendColorMapName}
-								role="option"
-								aria-selected={preset.name === legendColorMapName}
-								onclick={() => selectColorMap(preset.name)}
-							>
-								<span class="layerview-legend-menu-preview" style:background={colorMapCSSGradient(preset.name, legendColorMapInverted)}></span>
-								<span>{preset.caption}</span>
-							</button>
-						{/each}
-					</div>
-				{/if}
-
-				<div class="layerview-legend-bar" style:background={legendGradient}></div>
-				<div class="layerview-legend-range">
-					<input
-						type="number"
-						step="any"
-						value={formatRangeValue(legendRange.min)}
-						onchange={(event) => onLegendRangeChange('min', event)}
-						aria-label={`Minimum ${legendValueLabel}`}
-					/>
-					<span class="layerview-legend-mid">{formatRangeValue((legendRange.min + legendRange.max) / 2)}</span>
-					<input
-						type="number"
-						step="any"
-						value={formatRangeValue(legendRange.max)}
-						onchange={(event) => onLegendRangeChange('max', event)}
-						aria-label={`Maximum ${legendValueLabel}`}
-					/>
-				</div>
-				{#if legendNote}
-					<div class="layerview-legend-note">{legendNote}</div>
-				{/if}
+				{#each shownSpotRoles as role (role)}
+					{@render spotPanel(role)}
+				{/each}
+				{#each shownLegends as kind (kind)}
+					{@render legendPanel(kind)}
+				{/each}
 			</div>
 		{/if}
 
@@ -1867,14 +2268,27 @@
 				class="layerview-segment-popup"
 				style={`left: ${hoverScreen.x + 14}px; top: ${hoverScreen.y + 14}px;`}
 			>
-				<div class="layerview-segment-popup-title">Sample #{hoverPoint.index}</div>
+				<div class="layerview-segment-popup-title">
+					Sample #{hoverPoint.index}{primaryRole !== '' ? ` · ${SPOT_ROLE_CAPTIONS[hoverPoint.secondary && secondaryRole !== '' ? secondaryRole : primaryRole]}` : ''}
+				</div>
 				<dl class="layerview-segment-popup-list">
 					{#if hoverPoint.time !== null}
 						<dt>Time</dt>
 						<dd>{hoverPoint.time.toFixed(2)} ms</dd>
 					{/if}
-					<dt>Build X/Y</dt>
-					<dd>{formatMillimeters(hoverPoint.x, hoverPoint.y)}</dd>
+					{#if primaryRole !== ''}
+						{#each SPOT_ROLES as role (role)}
+							{@const positionX = role === primaryRole ? hoverPoint.primaryx : (role === secondaryRole ? hoverPoint.secondaryx : null)}
+							{@const positionY = role === primaryRole ? hoverPoint.primaryy : (role === secondaryRole ? hoverPoint.secondaryy : null)}
+							{#if positionX !== null && positionY !== null}
+								<dt>{SPOT_ROLE_CAPTIONS[role]}</dt>
+								<dd>{formatMillimeters(positionX, positionY)}</dd>
+							{/if}
+						{/each}
+					{:else}
+						<dt>Build X/Y</dt>
+						<dd>{formatMillimeters(hoverPoint.x, hoverPoint.y)}</dd>
+					{/if}
 					{#if hoverPoint.scannerx !== null && hoverPoint.scannery !== null}
 						<dt>Scanner X/Y</dt>
 						<dd>{formatMillimeters(hoverPoint.scannerx, hoverPoint.scannery)}</dd>
@@ -2292,24 +2706,106 @@
 	.coordinate-label-y {
 		fill: #22c55e;
 	}
-	.layerview-legend {
+	/* Spot panels and legends, stacked upwards from the bottom left corner. */
+	.layerview-bottom-left {
 		position: absolute;
 		left: 8px;
 		bottom: 8px;
 		width: 260px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		z-index: 11;
+	}
+	/* Above the coordinate indicator (bottom 8px + 64px) or the time slider. */
+	.layerview-bottom-left.above-coordinates {
+		bottom: 80px;
+	}
+	.layerview-bottom-left.above-time-slider {
+		bottom: 44px;
+	}
+	.layerview-legend {
+		position: relative;
 		padding: 6px 8px;
 		border-radius: 4px;
 		background: rgba(0, 0, 0, 0.72);
 		color: white;
 		font-size: 11px;
-		z-index: 11;
 	}
-	/* Above the coordinate indicator (bottom 8px + 64px) or the time slider. */
-	.layerview-legend.above-coordinates {
-		bottom: 80px;
+	.layerview-spots-row {
+		margin-bottom: 0;
 	}
-	.layerview-legend.above-time-slider {
-		bottom: 44px;
+	.layerview-spots-preview {
+		flex: none;
+		box-sizing: border-box;
+		width: 12px;
+		height: 12px;
+		border: 2px solid var(--spot-color);
+		border-radius: 50%;
+	}
+	.layerview-spots-preview.filled {
+		background: color-mix(in srgb, var(--spot-color) 55%, transparent);
+	}
+	.layerview-spots-swatch {
+		flex: none;
+		display: inline-block;
+		width: 14px;
+		height: 10px;
+		border-radius: 2px;
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+	}
+	.layerview-spots-size {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: rgba(255, 255, 255, 0.75);
+	}
+	.layerview-spots-size input {
+		width: 44px;
+		padding: 1px 4px;
+		border: 1px solid rgba(255, 255, 255, 0.35);
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.95);
+		color: #111111;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+	.layerview-spots-colors {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-top: 4px;
+		/* Lines up with the caption after the preview circle (12px + 4px gap). */
+		padding-left: 16px;
+	}
+	.layerview-spots-color {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: rgba(255, 255, 255, 0.75);
+	}
+	.layerview-spots-menu-title {
+		padding: 0 6px 3px;
+		color: rgba(255, 255, 255, 0.75);
+		font-size: 10px;
+	}
+	.layerview-spots-menu {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 2px;
+	}
+	.layerview-spots-custom {
+		margin-top: 2px;
+	}
+	.layerview-spots-custom input {
+		flex: none;
+		width: 22px;
+		height: 16px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
 	}
 	.layerview-legend-header {
 		display: flex;

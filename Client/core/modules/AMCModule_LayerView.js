@@ -66,6 +66,10 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		this.overlayvaluemax = 1.0;
 		this.overlaycaption = "";
 		this.overlaynote = "";
+		// Positions of the scatter plot points ("target", "status" or "" if not specified) and the scatter plot of
+		// the same samples at the other positions (null UUID = none), both set by the UI plugin.
+		this.scatterplotpositions = "";
+		this.secondaryscatterplotuuid = Common.nullUUID ();
 		this.highlightpartuuid = Common.nullUUID ();
 		// Changes whenever parts of the build are disabled or re-enabled; the displayed layer is reloaded then.
 		this.partstateversion = 0;
@@ -112,6 +116,10 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.overlaycaption = Assert.StringValue (updateJSON.overlaycaption);
 		if (updateJSON.overlaynote !== undefined)
 			this.overlaynote = Assert.StringValue (updateJSON.overlaynote);
+		if (updateJSON.scatterplotpositions !== undefined)
+			this.scatterplotpositions = Assert.StringValue (updateJSON.scatterplotpositions);
+		if (updateJSON.secondaryscatterplotuuid !== undefined)
+			this.secondaryscatterplotuuid = Assert.OptionalUUIDValue (updateJSON.secondaryscatterplotuuid);
 		if (updateJSON.highlightpartuuid !== undefined)
 			this.highlightpartuuid = Assert.OptionalUUIDValue (updateJSON.highlightpartuuid);
 		if (updateJSON.partstateversion !== undefined)
@@ -182,6 +190,10 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.overlaycaption = attrs.overlaycaption;
 		if (attrs.overlaynote !== undefined)
 			this.overlaynote = attrs.overlaynote;
+		if (attrs.scatterplotpositions !== undefined)
+			this.scatterplotpositions = attrs.scatterplotpositions;
+		if (attrs.secondaryscatterplotuuid !== undefined)
+			this.secondaryscatterplotuuid = attrs.secondaryscatterplotuuid;
 		if (attrs.highlightpartuuid !== undefined)
 			this.highlightpartuuid = attrs.highlightpartuuid;
 		if (attrs.partstateversion !== undefined) {

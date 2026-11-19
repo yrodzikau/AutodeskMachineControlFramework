@@ -58,6 +58,17 @@ const LAYERVIEW_DISABLEDPARTCOLOR = 0xB4B4B4;
 export const TOOLPATH_COLOR_MODES = ["color", "type", "time", "power", "velocity", "laseron"];
 const LAYERVIEW_COLORMAPMODES = ["time", "power", "velocity"];
 const LAYERVIEW_UNIFORMPOINTCOLOR = 0x00d0ff;
+// Recorded points with a spot style (see setPointSetStyles): diameter limits in CSS pixels, and the line width of
+// spots without fill in CSS pixels as a fraction of the diameter within limits. Spots without fill are drawn above
+// filled ones, the secondary positions above the primary ones.
+const LAYERVIEW_SPOTSIZE_MIN = 1.0;
+const LAYERVIEW_SPOTSIZE_MAX = 64.0;
+const LAYERVIEW_SPOTOUTLINE_FRACTION = 1.0 / 6.0;
+const LAYERVIEW_SPOTOUTLINE_MIN = 1.0;
+const LAYERVIEW_SPOTOUTLINE_MAX = 2.0;
+const LAYERVIEW_POINTS_Z = 61.0;
+const LAYERVIEW_POINTS_SECONDARY_DZ = 0.2;
+const LAYERVIEW_POINTS_UNFILLED_DZ = 0.4;
 const LAYERVIEW_LASERONCOLOR = 0xE53935;
 const LAYERVIEW_DEFAULTHATCHCOLOR = 0xCC88CC;
 const LAYERVIEW_DEFAULTCONTOURCOLOR = 0x00AA88;
@@ -192,6 +203,13 @@ class LayerViewImpl {
 		this.pointsVisible = true;
 		this.showLaserOffPoints = false;
 		this.filteredToOriginalIndexMap = null;
+
+		// The same recorded samples at their other positions (for example the target positions if the loaded points
+		// are the status positions), see loadSecondaryPoints. Drawn with the filter, colors and time cap of the points.
+		this.secondaryPointsArray = null;
+		// Spot style of the points and of the secondary points, see setPointSetStyles: null draws the points as
+		// filled discs that grow with the zoom (setPointSizeCalibration) and hides the secondary points.
+		this.pointSetStyles = { primary: null, secondary: null };
 
 		// Overlay (scalar field over the platform, for example a heat map): its own color map and value range,
 		// applied to the overlay element whenever it is (re)loaded, see SetOverlayImage.
@@ -389,14 +407,17 @@ class LayerViewImpl {
             this.buildHighlightGeometry ();
         this.positionHighlightGeometry ();
 
-        var layerpointsgeometry = this.glInstance.findElement("layerdata_points");
-        if (layerpointsgeometry) {
-            if (typeof layerpointsgeometry.setPointPixelSize === "function")
-                layerpointsgeometry.setPointPixelSize(this.computePointPixelSize() * this.glInstance.getPixelRatio());
-            layerpointsgeometry.setPositionXY(toolpathPositionX, toolpathPositionY);
-            layerpointsgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
-            layerpointsgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
-        } 
+        for (const [identifier, style] of [["layerdata_points", this.pointSetStyles.primary], ["layerdata_secondarypoints", this.pointSetStyles.secondary]]) {
+            var layerpointsgeometry = this.glInstance.findElement(identifier);
+            if (layerpointsgeometry) {
+                if (typeof layerpointsgeometry.setPointPixelSize === "function")
+                    layerpointsgeometry.setPointPixelSize(this.computePointSetPixelSize(style) * this.glInstance.getPixelRatio());
+                // Spots without fill are lifted above the filled ones, so their circles stay visible.
+                layerpointsgeometry.setPosition(toolpathPositionX, toolpathPositionY, (style && !style.fill) ? LAYERVIEW_POINTS_UNFILLED_DZ : 0.0);
+                layerpointsgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
+                layerpointsgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
+            }
+        }
 
         var buildplategeometry = this.glInstance.findElement("buildplate");
         if (buildplategeometry) {
@@ -733,9 +754,29 @@ class LayerViewImpl {
 		this.computeChannelColumnRange (pointsChannelName, pointsColumnName);
 	}
 	
+	// Positions of the loaded points at their other positions, in the same order (null removes them). They are only
+	// drawn if they are as many as the points and setPointSetStyles makes them visible; the points are only rebuilt
+	// if that changes what is drawn.
+	loadSecondaryPoints (pointsArray)
+	{
+		this.secondaryPointsArray = pointsArray || null;
+		const style = this.pointSetStyles.secondary;
+		const drawn = !!this.glInstance && !!this.glInstance.findElement ("layerdata_secondarypoints");
+		if (drawn || (style && style.visible)) {
+			this.updateLayerPoints ();
+			this.RenderScene (true);
+		}
+	}
+
+	hasSecondaryPoints ()
+	{
+		return !!this.secondaryPointsArray && !!this.layerPointsArray && (this.secondaryPointsArray.length === this.layerPointsArray.length);
+	}
+
 	clearPoints ()
 	{
 		this.layerPointsArray = null;
+		this.secondaryPointsArray = null;
 		this.layerPointsColorArray = null;
 		this.layerPointsVelocities = null;
 		this.layerPointsMaxVelocity = LAYERVIEW_MINVELOCITYRANGE;
@@ -875,47 +916,241 @@ class LayerViewImpl {
 		this.RenderScene (true);
 	}
 
-	updateLayerPoints () {
-		if (!this.glInstance) 
+	// Diameter in CSS pixels of the points drawn with the given spot style; without a style the diameter follows
+	// the zoom, see computePointPixelSize.
+	computePointSetPixelSize (style)
+	{
+		if (!style)
+			return this.computePointPixelSize ();
+		const size = Number (style.size);
+		return Number.isFinite (size) ? Math.min (Math.max (size, LAYERVIEW_SPOTSIZE_MIN), LAYERVIEW_SPOTSIZE_MAX) : LAYERVIEW_SPOTSIZE_MIN;
+	}
+
+	static computeSpotOutlinePixels (size)
+	{
+		return Math.min (Math.max (size * LAYERVIEW_SPOTOUTLINE_FRACTION, LAYERVIEW_SPOTOUTLINE_MIN), LAYERVIEW_SPOTOUTLINE_MAX);
+	}
+
+	// Uniforms of a points element for a spot style (null: filled discs in the point colors), see
+	// WebGLScreenPointsElement.setSpotStyle: state 0 is laser off, state 1 laser on.
+	makeSpotStyle (style)
+	{
+		if (!style)
+			return null;
+		const pixelRatio = this.glInstance ? this.glInstance.getPixelRatio () : 1.0;
+		return {
+			ringWidth: style.fill ? 0.0 : LayerViewImpl.computeSpotOutlinePixels (this.computePointSetPixelSize (style)) * pixelRatio,
+			stateColors: [style.offColor, style.onColor]
+		};
+	}
+
+	static normalizePointSetStyle (style)
+	{
+		if (!style || (typeof style !== "object"))
+			return null;
+		const size = Number (style.size);
+		return {
+			visible: style.visible !== false,
+			onColor: (Number (style.onColor) || 0) & 0xffffff,
+			offColor: (Number (style.offColor) || 0) & 0xffffff,
+			size: Number.isFinite (size) ? size : LAYERVIEW_POINTSIZE_MIN,
+			fill: style.fill === true
+		};
+	}
+
+	// Spot styles of the points (primary) and of the secondary points: { visible, onColor and offColor: 0xRRGGBB of
+	// the points recorded with the laser on and off, size: diameter in CSS pixels, fill }. Every spot is a circle in
+	// the color of its laser state, filled with the same color if fill is set. A null primary style draws the points
+	// as before (filled discs in the colors of the display mode, size from the zoom), a null secondary style hides
+	// the secondary points. Changes of color, size or fill only update the drawn elements.
+	setPointSetStyles (primaryStyle, secondaryStyle)
+	{
+		const styles = {
+			primary: LayerViewImpl.normalizePointSetStyle (primaryStyle),
+			secondary: LayerViewImpl.normalizePointSetStyle (secondaryStyle)
+		};
+		const previous = this.pointSetStyles;
+		if (JSON.stringify (styles) === JSON.stringify (previous))
 			return;
+		this.pointSetStyles = styles;
+
+		// Visibility and the presence of a style need new elements.
+		const layout = (style) => style ? style.visible : null;
+		const rebuild = (JSON.stringify (layout (styles.primary)) !== JSON.stringify (layout (previous.primary))) ||
+			(JSON.stringify (layout (styles.secondary)) !== JSON.stringify (layout (previous.secondary)));
+		if (rebuild) {
+			this.updateLayerPoints ();
+		} else if (this.glInstance) {
+			for (const [identifier, style] of [["layerdata_points", styles.primary], ["layerdata_secondarypoints", styles.secondary]]) {
+				const element = this.glInstance.findElement (identifier);
+				if (element && style && (typeof element.setSpotStyle === "function"))
+					element.setSpotStyle (this.makeSpotStyle (style));
+			}
+			this.updateTransform ();
+		}
+		this.RenderScene (true);
+	}
+
+	// False hides all recorded points (the display mode Off).
+	setPointsVisible (visible)
+	{
+		const newVisible = visible !== false;
+		if (newVisible === this.pointsVisible)
+			return;
+		this.pointsVisible = newVisible;
+		this.updateLayerPoints ();
+		this.RenderScene (true);
+	}
+
+	// Calls update (), which may change several settings of the points, and rebuilds the points once at the end
+	// instead of after every change.
+	batchPointsUpdate (update)
+	{
+		if (this.pointsUpdateDeferred) {
+			update ();
+			return;
+		}
+		this.pointsUpdateDeferred = true;
+		this.pointsUpdatePending = false;
+		try {
+			update ();
+		} finally {
+			this.pointsUpdateDeferred = false;
+		}
+		if (this.pointsUpdatePending) {
+			this.pointsUpdatePending = false;
+			this.updateLayerPoints ();
+		}
+		this.RenderScene (true);
+	}
+
+	updateLayerPoints () {
+		if (!this.glInstance)
+			return;
+		if (this.pointsUpdateDeferred) {
+			this.pointsUpdatePending = true;
+			return;
+		}
 
 		this.glInstance.removeElement("layerdata_points");
-						
-		if (this.layerPointsArray && this.pointsVisible) {
-			let pointsToRender = this.layerPointsArray;
-			let colorsToRender = this.layerPointsColorArray;
-			this.filteredToOriginalIndexMap = null;
+		this.glInstance.removeElement("layerdata_secondarypoints");
+		this.filteredToOriginalIndexMap = null;
 
-			if (!this.showLaserOffPoints && this.laser && this.laser.laseron) {
-				let pointCount = this.layerPointsArray.length / 2;
-				let filteredCoords = [];
-				let filteredColors = colorsToRender ? [] : null;
-				let indexMap = [];
+		if (!this.layerPointsArray || !this.pointsVisible)
+			return;
 
-				for (let i = 0; i < pointCount; i++) {
-					if (this.laser.laseron[i] !== 0) {
-						filteredCoords.push(this.layerPointsArray[i * 2], this.layerPointsArray[i * 2 + 1]);
-						if (filteredColors && colorsToRender[i] !== undefined) {
-							filteredColors.push(colorsToRender[i]);
-						}
-						indexMap.push(i);
-					}
-				}
-				pointsToRender = new Float32Array(filteredCoords);
-				colorsToRender = filteredColors;
-				this.filteredToOriginalIndexMap = indexMap;
+		const primaryStyle = this.pointSetStyles.primary;
+		const secondaryStyle = this.pointSetStyles.secondary;
+		const drawPrimary = !primaryStyle || primaryStyle.visible;
+		const drawSecondary = !!secondaryStyle && secondaryStyle.visible && this.hasSecondaryPoints ();
+		if (!drawPrimary && !drawSecondary)
+			return;
+
+		const pointCount = Math.floor (this.layerPointsArray.length / 2);
+		let colorsToRender = this.layerPointsColorArray;
+		let indexMap = null;
+		const laserOnStates = (this.laser && this.laser.laseron && (this.laser.laseron.length >= pointCount)) ? this.laser.laseron : null;
+
+		if (!this.showLaserOffPoints && this.laser && this.laser.laseron) {
+			const laserOn = this.laser.laseron;
+			let shownCount = 0;
+			for (let i = 0; i < pointCount; i++) {
+				if (laserOn[i] !== 0)
+					shownCount++;
 			}
-
-			const pixelSize = this.computePointPixelSize () * this.glInstance.getPixelRatio ();
-			this.glInstance.add2DScreenPointsGeometry("layerdata_points", pointsToRender, 61, pixelSize, LAYERVIEW_UNIFORMPOINTCOLOR, colorsToRender);
-			this.applyTimeCap ();
-			this.updateTransform ();
-			this.RenderScene (true);
+			indexMap = new Uint32Array (shownCount);
+			let entry = 0;
+			for (let i = 0; i < pointCount; i++) {
+				if (laserOn[i] !== 0)
+					indexMap[entry++] = i;
+			}
+			if (colorsToRender) {
+				const filteredColors = new Array (shownCount);
+				for (let entry = 0; entry < shownCount; entry++)
+					filteredColors[entry] = colorsToRender[indexMap[entry]];
+				colorsToRender = filteredColors;
+			}
+			this.filteredToOriginalIndexMap = indexMap;
 		}
+
+		// Positions of the shown points, in the order of indexMap.
+		const selectPoints = (positions) => {
+			if (!indexMap)
+				return positions;
+			const selected = new Float32Array (indexMap.length * 2);
+			for (let entry = 0; entry < indexMap.length; entry++) {
+				const index = indexMap[entry];
+				selected[entry * 2] = positions[index * 2];
+				selected[entry * 2 + 1] = positions[index * 2 + 1];
+			}
+			return selected;
+		};
+
+		// Laser state of the shown points for the spot styles; without it every spot takes the laser on color.
+		let shownStates = null;
+		if (laserOnStates && ((primaryStyle && drawPrimary) || drawSecondary)) {
+			if (indexMap) {
+				shownStates = new Uint8Array (indexMap.length);
+				for (let entry = 0; entry < indexMap.length; entry++)
+					shownStates[entry] = (laserOnStates[indexMap[entry]] !== 0) ? 1 : 0;
+			} else {
+				shownStates = laserOnStates;
+			}
+		}
+
+		const pixelRatio = this.glInstance.getPixelRatio ();
+		// The fill lifts the element in updateTransform, see LAYERVIEW_POINTS_UNFILLED_DZ.
+		const addPoints = (identifier, positions, style, secondary) => {
+			const zValue = LAYERVIEW_POINTS_Z + (secondary ? LAYERVIEW_POINTS_SECONDARY_DZ : 0.0);
+			const pixelSize = this.computePointSetPixelSize (style) * pixelRatio;
+			if (style)
+				this.glInstance.add2DScreenPointsGeometry (identifier, selectPoints (positions), zValue, pixelSize, style.onColor,
+					null, this.makeSpotStyle (style), shownStates);
+			else
+				this.glInstance.add2DScreenPointsGeometry (identifier, selectPoints (positions), zValue, pixelSize, LAYERVIEW_UNIFORMPOINTCOLOR,
+					colorsToRender);
+		};
+
+		if (drawPrimary)
+			addPoints ("layerdata_points", this.layerPointsArray, primaryStyle, false);
+		if (drawSecondary)
+			addPoints ("layerdata_secondarypoints", this.secondaryPointsArray, secondaryStyle, true);
+
+		this.applyTimeCap ();
+		this.updateTransform ();
+		this.RenderScene (true);
+	}
+
+	// The drawn point closest to the viewport position within pixelTolerance, among the points and the secondary
+	// points: { index into the full point array, secondary: true if it is one of the secondary points }, or null.
+	// Hidden and time-capped points are not picked.
+	/**
+	 * @param {number} screenX
+	 * @param {number} screenY
+	 * @param {number} [pixelTolerance]
+	 */
+	pickPoint (screenX, screenY, pixelTolerance = 4)
+	{
+		if (!this.glInstance || !this.layerPointsArray || !this.pointsVisible)
+			return null;
+
+		let best = null;
+		for (const [identifier, secondary] of [["layerdata_secondarypoints", true], ["layerdata_points", false]]) {
+			const pointsElement = this.glInstance.findElement (identifier);
+			if (!pointsElement || (typeof pointsElement.findNearestPointWithDistance !== "function"))
+				continue;
+			const hit = pointsElement.findNearestPointWithDistance (screenX, screenY, pixelTolerance);
+			if (hit && (!best || (hit.distanceSq < best.distanceSq)))
+				best = { renderedIndex: hit.index, distanceSq: hit.distanceSq, secondary: secondary };
+		}
+		if (!best)
+			return null;
+
+		return { index: this.resolvePointIndex (best.renderedIndex), secondary: best.secondary };
 	}
 
 	// Index of the drawn point closest to the viewport position within pixelTolerance, as an
-	// index into the full point array, or -1. Hidden and time-capped points are not picked.
+	// index into the full point array, or -1. See pickPoint.
 	/**
 	 * @param {number} screenX
 	 * @param {number} screenY
@@ -923,18 +1158,8 @@ class LayerViewImpl {
 	 */
 	pickPointAtScreenPoint (screenX, screenY, pixelTolerance = 4)
 	{
-		if (!this.glInstance || !this.layerPointsArray || !this.pointsVisible)
-			return -1;
-
-		const pointsElement = this.glInstance.findElement ("layerdata_points");
-		if (!pointsElement || (typeof pointsElement.findNearestPoint !== "function"))
-			return -1;
-
-		const renderedIndex = pointsElement.findNearestPoint (screenX, screenY, pixelTolerance);
-		if (renderedIndex < 0)
-			return -1;
-
-		return this.resolvePointIndex (renderedIndex);
+		const hit = this.pickPoint (screenX, screenY, pixelTolerance);
+		return hit ? hit.index : -1;
 	}
 
 	getPointChannelValue (columnName, pointIndex)
@@ -944,26 +1169,35 @@ class LayerViewImpl {
 		return null;
 	}
 
-	// Measurement values of one recorded point for the hover inspector.
-	getPointInfo (pointIndex)
+	// Measurement values of one recorded point for the hover inspector. x and y are the position of the point as
+	// picked (secondary: at its secondary position), primaryx/y and secondaryx/y both positions of the sample (null
+	// if the secondary points are not loaded), velocity is taken along the picked positions.
+	getPointInfo (pointIndex, secondary = false)
 	{
-		const position = this.getPointPosition (pointIndex);
+		const position = this.getPointPosition (pointIndex, secondary);
 		if (!position)
 			return null;
+		const primaryPosition = this.getPointPosition (pointIndex, false);
+		const secondaryPosition = this.getPointPosition (pointIndex, true);
 
 		const scannerXColumn = (this.laser && this.laser.targetx) ? "targetx" : "actualx";
 		const scannerYColumn = (this.laser && this.laser.targety) ? "targety" : "actualy";
 
 		return {
 			index: pointIndex,
+			secondary: secondary === true,
 			x: position.x,
 			y: position.y,
+			primaryx: primaryPosition ? primaryPosition.x : null,
+			primaryy: primaryPosition ? primaryPosition.y : null,
+			secondaryx: secondaryPosition ? secondaryPosition.x : null,
+			secondaryy: secondaryPosition ? secondaryPosition.y : null,
 			time: this.getPointChannelValue ("time", pointIndex),
 			scannerx: this.getPointChannelValue (scannerXColumn, pointIndex),
 			scannery: this.getPointChannelValue (scannerYColumn, pointIndex),
 			laseron: this.getPointChannelValue ("laseron", pointIndex),
 			power: this.getPointChannelValue ("power", pointIndex),
-			velocity: this.getPointVelocity (pointIndex)
+			velocity: this.getPointVelocity (pointIndex, secondary === true)
 		};
 	}
 
@@ -1277,9 +1511,11 @@ class LayerViewImpl {
 			? LayerViewImpl.countSortedBelow (this.filteredToOriginalIndexMap, visibleOriginalPoints, false)
 			: visibleOriginalPoints;
 
-		const pointsElement = this.glInstance.findElement ("layerdata_points");
-		if (pointsElement && (typeof pointsElement.setDrawCount === "function"))
-			pointsElement.setDrawCount (this.visiblePointCount);
+		for (const identifier of ["layerdata_points", "layerdata_secondarypoints"]) {
+			const pointsElement = this.glInstance.findElement (identifier);
+			if (pointsElement && (typeof pointsElement.setDrawCount === "function"))
+				pointsElement.setDrawCount (this.visiblePointCount);
+		}
 
 		this.renderNeedsUpdate = true;
 	}
@@ -1293,87 +1529,97 @@ class LayerViewImpl {
 		return filteredIndex;
 	}
 
-	getPointPosition (pointIndex)
+	// Positions of the points, or of the secondary points if secondary is true (null if not loaded).
+	getPointPositions (secondary = false)
 	{
-		if (this.layerPointsArray) {
+		return secondary ? (this.hasSecondaryPoints () ? this.secondaryPointsArray : null) : this.layerPointsArray;
+	}
+
+	getPointPosition (pointIndex, secondary = false)
+	{
+		const positions = this.getPointPositions (secondary);
+		if (positions) {
 			if (pointIndex >= 0) {
 				let arrayIndex = pointIndex * 2;
-				if (arrayIndex + 1 < this.layerPointsArray.length) {
-					let xPosition = this.layerPointsArray[arrayIndex];
-					let yPosition = this.layerPointsArray[arrayIndex + 1];
+				if (arrayIndex + 1 < positions.length) {
+					let xPosition = positions[arrayIndex];
+					let yPosition = positions[arrayIndex + 1];
 					return { x: xPosition, y: yPosition }
 				}
 			}
 
 		}
-		
+
 		return null;
-					
+
 	}
 
 	// Velocity in mm/s from the neighbouring samples. Uses the recorded "time" channel (ms)
 	// when present, otherwise a fixed sample period of 10 microseconds.
-	getPointVelocity (pointIndex)
+	getPointVelocity (pointIndex, secondary = false)
 	{
 		let dT = 1 / 100000;
-		
-		if (this.layerPointsArray) {
+		const positions = this.getPointPositions (secondary);
+
+		if (positions) {
 			if (pointIndex > 0) {
 				let arrayIndex = pointIndex * 2;
-				if (arrayIndex + 3 < this.layerPointsArray.length) {
+				if (arrayIndex + 3 < positions.length) {
 					const times = this.laser ? this.laser.time : null;
 					if (times && (pointIndex + 1 < times.length)) {
 						const sampleSpan = (times[pointIndex + 1] - times[pointIndex - 1]) * 0.001;
 						if (sampleSpan > 0)
 							dT = sampleSpan * 0.5;
 					}
-					let vX = (this.layerPointsArray[arrayIndex + 2] - this.layerPointsArray[arrayIndex - 2]) / (2 * dT);
-					let vY = (this.layerPointsArray[arrayIndex + 3] - this.layerPointsArray[arrayIndex - 1]) / (2 * dT);
+					let vX = (positions[arrayIndex + 2] - positions[arrayIndex - 2]) / (2 * dT);
+					let vY = (positions[arrayIndex + 3] - positions[arrayIndex - 1]) / (2 * dT);
 					let velocity = Math.sqrt (vX * vX + vY * vY);
 					return velocity;
 				}
 			}
 
 		}
-		
+
 		return 0.0;
-					
+
 	}
 
-	getPointAcceleration (pointIndex)
+	getPointAcceleration (pointIndex, secondary = false)
 	{
-		let dT = 1 / 100000; 
-		
-		if (this.layerPointsArray) {
+		let dT = 1 / 100000;
+		const positions = this.getPointPositions (secondary);
+
+		if (positions) {
 			if (pointIndex > 0) {
 				let arrayIndex = pointIndex * 2;
-				if (arrayIndex + 3 < this.layerPointsArray.length) {
-					let aX = (this.layerPointsArray[arrayIndex + 2] - 2 * this.layerPointsArray[arrayIndex] + this.layerPointsArray[arrayIndex - 2]) / (dT * dT);
-					let aY = (this.layerPointsArray[arrayIndex + 3] - 2 * this.layerPointsArray[arrayIndex + 1] + this.layerPointsArray[arrayIndex - 1]) / (dT * dT);
+				if (arrayIndex + 3 < positions.length) {
+					let aX = (positions[arrayIndex + 2] - 2 * positions[arrayIndex] + positions[arrayIndex - 2]) / (dT * dT);
+					let aY = (positions[arrayIndex + 3] - 2 * positions[arrayIndex + 1] + positions[arrayIndex - 1]) / (dT * dT);
 					let accel = Math.sqrt (aX * aX + aY * aY);
 					return { ax: aX,  ay: aY, a: accel }
 				}
 			}
 
-		} 
-		
+		}
+
 		return null;
-					
+
 	}
 
 
-	getPointJerk (pointIndex)
+	getPointJerk (pointIndex, secondary = false)
 	{
 		let dT = 1 / 100000;
-		
-		if (this.layerPointsArray) {
+		const positions = this.getPointPositions (secondary);
+
+		if (positions) {
 			if (pointIndex > 1) {
 				let arrayIndex = pointIndex * 2;
-				if (arrayIndex + 5 < this.layerPointsArray.length) {
-					let aXPrev = (this.layerPointsArray[arrayIndex] - 2 * this.layerPointsArray[arrayIndex - 2] + this.layerPointsArray[arrayIndex - 4]) / (dT * dT);
-					let aYPrev = (this.layerPointsArray[arrayIndex + 1] - 2 * this.layerPointsArray[arrayIndex - 1] + this.layerPointsArray[arrayIndex - 3]) / (dT * dT);
-					let aXNext = (this.layerPointsArray[arrayIndex + 2] - 2 * this.layerPointsArray[arrayIndex] + this.layerPointsArray[arrayIndex - 2]) / (dT * dT);
-					let aYNext = (this.layerPointsArray[arrayIndex + 3] - 2 * this.layerPointsArray[arrayIndex + 1] + this.layerPointsArray[arrayIndex - 1]) / (dT * dT);
+				if (arrayIndex + 5 < positions.length) {
+					let aXPrev = (positions[arrayIndex] - 2 * positions[arrayIndex - 2] + positions[arrayIndex - 4]) / (dT * dT);
+					let aYPrev = (positions[arrayIndex + 1] - 2 * positions[arrayIndex - 1] + positions[arrayIndex - 3]) / (dT * dT);
+					let aXNext = (positions[arrayIndex + 2] - 2 * positions[arrayIndex] + positions[arrayIndex - 2]) / (dT * dT);
+					let aYNext = (positions[arrayIndex + 3] - 2 * positions[arrayIndex + 1] + positions[arrayIndex - 1]) / (dT * dT);
 					let jX = (aXNext - aXPrev) / (2 * dT);
 					let jY = (aYNext - aYPrev) / (2 * dT);
 					let jerk = Math.sqrt (jX * jX + jY * jY);
@@ -1382,9 +1628,9 @@ class LayerViewImpl {
 			}
 
 		}
-		
+
 		return null;
-					
+
 	}
 
 	getPointPower (pointIndex)

@@ -517,25 +517,42 @@ class WebGLLocalizedPointsElement extends WebGLElement {
 }
 
 
+// Color of a point: uColorSource 0 takes uFillColor for all points, 1 the vertex color pointColor, 2 one of two state
+// colors by the vertex attribute pointState (0: uStateColor0, 1: uStateColor1).
 const SCREENPOINTS_VERTEXSHADER = `
 	uniform float uPointSize;
+	uniform float uColorSource;
+	uniform vec3 uFillColor;
+	uniform vec3 uStateColor0;
+	uniform vec3 uStateColor1;
 	attribute vec3 pointColor;
+	attribute float pointState;
 	varying vec3 vColor;
 	void main() {
-		vColor = pointColor;
+		if (uColorSource > 1.5)
+			vColor = (pointState > 0.5) ? uStateColor1 : uStateColor0;
+		else if (uColorSource > 0.5)
+			vColor = pointColor;
+		else
+			vColor = uFillColor;
 		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 		gl_PointSize = uPointSize;
 	}
 `;
 
-// Round points with a one pixel wide smooth edge.
+// Round points with a one pixel wide smooth edge: filled discs, or circles (rings uRingWidth pixels wide) if
+// uRingWidth is greater than 0.
 const SCREENPOINTS_FRAGMENTSHADER = `
 	uniform float uPointSize;
+	uniform float uRingWidth;
 	varying vec3 vColor;
 	void main() {
-		float radius = length(gl_PointCoord * 2.0 - 1.0);
-		float edgeWidth = 2.0 / max(uPointSize, 1.0);
-		float alpha = 1.0 - smoothstep(1.0 - edgeWidth, 1.0, radius);
+		float size = max(uPointSize, 1.0);
+		float radius = 0.5 * size;
+		float distance = length(gl_PointCoord - 0.5) * size;
+		float alpha = 1.0 - smoothstep(radius - 1.0, radius, distance);
+		if (uRingWidth > 0.0)
+			alpha *= smoothstep(radius - uRingWidth - 1.0, radius - uRingWidth, distance);
 		if (alpha <= 0.0)
 			discard;
 		gl_FragColor = vec4(vColor, alpha);
@@ -544,11 +561,22 @@ const SCREENPOINTS_FRAGMENTSHADER = `
 
 const SCREENPOINTS_GRIDRESOLUTION = 256;
 
-// Points with a constant on-screen size in pixels, independent of the element scale.
-// Colours are 0xRRGGBB values written to the framebuffer unchanged.
+// Some GPU drivers silently drop the points of a single draw call beyond a few million (seen with ANGLE on Direct3D 11
+// at about 2.4 million), so the points are drawn in groups of at most this many, one draw call per group.
+const SCREENPOINTS_DRAWGROUPSIZE = 524288;
+
+function colorToVector3 (color) {
+	return new THREE.Vector3 (((color >> 16) & 255) / 255.0, ((color >> 8) & 255) / 255.0, (color & 255) / 255.0);
+}
+
+// Points with a constant on-screen size in pixels, independent of the element scale, drawn as filled discs.
+// Colours are 0xRRGGBB values written to the framebuffer unchanged: the vertex colors if given, pointsColor otherwise.
+// pointStates (optional, one value per point, 0 or 1) with spotStyle.stateColors colors every point by its state
+// instead. spotStyle (optional, see setSpotStyle): { ringWidth: pixels, 0 draws filled discs and more draws circles
+// of that line width; stateColors: [color of state 0, color of state 1] }.
 class WebGLScreenPointsElement extends WebGLElement {
 
-	constructor(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors) {
+	constructor(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates) {
 		super();
 
 		this.pointsData = pointsData;
@@ -556,33 +584,55 @@ class WebGLScreenPointsElement extends WebGLElement {
 		this.drawCount = this.pointCount;
 		this.pointPixelSize = pointPixelSize;
 
+		const hasStates = !!pointStates && (pointStates.length >= this.pointCount);
+		const hasVertexColors = !hasStates && !!vertexcolors;
 		const positions = new Float32Array (this.pointCount * 3);
-		const colors = new Float32Array (this.pointCount * 3);
+		const colors = hasVertexColors ? new Uint8Array (this.pointCount * 3) : null;
+		const states = hasStates ? new Uint8Array (this.pointCount) : null;
 		for (let i = 0; i < this.pointCount; i++) {
 			positions[i * 3] = pointsData[i * 2];
 			positions[i * 3 + 1] = pointsData[i * 2 + 1];
 			positions[i * 3 + 2] = zValue;
 
-			const color = (vertexcolors && (vertexcolors[i] !== undefined)) ? vertexcolors[i] : pointsColor;
-			colors[i * 3] = ((color >> 16) & 255) / 255.0;
-			colors[i * 3 + 1] = ((color >> 8) & 255) / 255.0;
-			colors[i * 3 + 2] = (color & 255) / 255.0;
+			if (colors) {
+				const color = (vertexcolors[i] !== undefined) ? vertexcolors[i] : pointsColor;
+				colors[i * 3] = (color >> 16) & 255;
+				colors[i * 3 + 1] = (color >> 8) & 255;
+				colors[i * 3 + 2] = color & 255;
+			}
+			if (states)
+				states[i] = (pointStates[i] !== 0) ? 1 : 0;
 		}
 
 		this.geometry = new THREE.BufferGeometry();
 		this.geometry.setAttribute ('position', new THREE.BufferAttribute (positions, 3));
-		this.geometry.setAttribute ('pointColor', new THREE.BufferAttribute (colors, 3));
+		if (colors)
+			this.geometry.setAttribute ('pointColor', new THREE.BufferAttribute (colors, 3, true));
+		if (states)
+			this.geometry.setAttribute ('pointState', new THREE.BufferAttribute (states, 1));
 		this.geometry.computeBoundingSphere ();
+		for (let start = 0; start < this.pointCount; start += SCREENPOINTS_DRAWGROUPSIZE)
+			this.geometry.addGroup (start, Math.min (SCREENPOINTS_DRAWGROUPSIZE, this.pointCount - start), 0);
 
 		this.material = new THREE.ShaderMaterial ({
-			uniforms: { uPointSize: { value: pointPixelSize } },
+			uniforms: {
+				uPointSize: { value: pointPixelSize },
+				uColorSource: { value: hasStates ? 2.0 : (hasVertexColors ? 1.0 : 0.0) },
+				uFillColor: { value: colorToVector3 (pointsColor) },
+				uStateColor0: { value: colorToVector3 (pointsColor) },
+				uStateColor1: { value: colorToVector3 (pointsColor) },
+				uRingWidth: { value: 0.0 }
+			},
 			vertexShader: SCREENPOINTS_VERTEXSHADER,
 			fragmentShader: SCREENPOINTS_FRAGMENTSHADER,
 			transparent: true,
 			depthWrite: false
 		});
+		if (spotStyle)
+			this.setSpotStyle (spotStyle);
 
-		this.glelement = new THREE.Points (this.geometry, this.material);
+		// A material array makes three.js issue one draw call per geometry group.
+		this.glelement = new THREE.Points (this.geometry, [this.material]);
 		this.glelement.frustumCulled = false;
 
 		this.buildSpatialGrid ();
@@ -591,6 +641,19 @@ class WebGLScreenPointsElement extends WebGLElement {
 	setPointPixelSize (pointPixelSize) {
 		this.pointPixelSize = pointPixelSize;
 		this.material.uniforms.uPointSize.value = pointPixelSize;
+	}
+
+	// Ring width in pixels (0: filled discs) and the two state colors, see the constructor. Only changes uniforms.
+	setSpotStyle (spotStyle) {
+		if (!spotStyle)
+			return;
+		const uniforms = this.material.uniforms;
+		if (spotStyle.ringWidth !== undefined)
+			uniforms.uRingWidth.value = Math.max (Number (spotStyle.ringWidth) || 0.0, 0.0);
+		if (Array.isArray (spotStyle.stateColors) && (spotStyle.stateColors.length === 2)) {
+			uniforms.uStateColor0.value = colorToVector3 (spotStyle.stateColors[0]);
+			uniforms.uStateColor1.value = colorToVector3 (spotStyle.stateColors[1]);
+		}
 	}
 
 	// Only the first drawCount points are rendered and pickable.
@@ -643,8 +706,14 @@ class WebGLScreenPointsElement extends WebGLElement {
 	// Returns the index of the drawn point closest to the world (screen) position within
 	// pixelTolerance plus the point radius, or -1.
 	findNearestPoint (worldX, worldY, pixelTolerance) {
+		const hit = this.findNearestPointWithDistance (worldX, worldY, pixelTolerance);
+		return hit ? hit.index : -1;
+	}
+
+	// As findNearestPoint, but returns { index, distanceSq } with the squared distance in element units, or null.
+	findNearestPointWithDistance (worldX, worldY, pixelTolerance) {
 		if ((this.drawCount <= 0) || !(this.scale.x !== 0) || !(this.scale.y !== 0))
-			return -1;
+			return null;
 
 		const dx = worldX - this.position.x;
 		const dy = worldY - this.position.y;
@@ -680,7 +749,7 @@ class WebGLScreenPointsElement extends WebGLElement {
 			}
 		}
 
-		return bestIndex;
+		return (bestIndex >= 0) ? { index: bestIndex, distanceSq: bestDistanceSq } : null;
 	}
 
 	intersectRay (mouseX, mouseY, raycaster) {
@@ -1635,13 +1704,13 @@ class WebGLImpl {
         return pointsElement;
     }
 
-    add2DScreenPointsGeometry(identifier, pointsData, zValue, pointPixelSize, pointsColor, vertexcolors) {
+    add2DScreenPointsGeometry(identifier, pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates) {
         if (!identifier)
             return;
 
 		this.removeElement (identifier);
 
-        let pointsElement = new WebGLScreenPointsElement(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors);
+        let pointsElement = new WebGLScreenPointsElement(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates);
 
         this.addElement(identifier, pointsElement);
 

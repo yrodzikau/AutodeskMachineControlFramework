@@ -170,6 +170,12 @@ void CUIModule_LayerViewPlatformItem::populateClientVariables(CParameterHandler*
 	pGroup->addNewDoubleParameter(AMC_API_KEY_UI_OVERLAYVALUEMAX, "Overlay value of code 65535", 1.0, 1.0);
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_OVERLAYCAPTION, "Overlay legend caption", "");
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_OVERLAYNOTE, "Overlay legend note", "");
+	// Recorded points can carry two positions per sample, for example the target (set) position and the status
+	// (actual) position of the scanner. scatterplotpositions names the positions of the scatter plot ("target",
+	// "status" or empty if not specified); the secondary scatter plot holds the same samples in the same order at
+	// the other positions and has no data channels. Both are set by the UI plugin together with the scatter plot.
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_SCATTERPLOTPOSITIONS, "Positions of the scatterplot points", "");
+	pGroup->addNewUUIDParameter(AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID, "Scatterplot UUID of the other positions", AMCCommon::CUtils::createEmptyUUID());
 	pGroup->addNewIntParameter(AMC_API_KEY_UI_LABELVISIBLE, "Label is visible", m_LabelVisible.evaluateIntegerValue (pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELCAPTION, "Label caption", m_LabelCaption.evaluateStringValue(pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELICON, "Label icon", m_LabelIcon.evaluateStringValue(pStateMachineData));
@@ -433,6 +439,13 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	registerStringAttribute(AMC_API_KEY_UI_OVERLAYNOTE, overlayTextExpression);
 	registerStringAttribute(AMC_API_KEY_UI_OVERLAYNAME, overlayName);
 	registerStringAttribute(AMC_API_KEY_UI_OVERLAYICON, overlayIcon);
+	// Positions of the scatter plot and the scatter plot of the other positions: client variables like the overlay.
+	CUIExpression scatterplotPositionsExpression;
+	scatterplotPositionsExpression.setFixedValue("");
+	registerStringAttribute(AMC_API_KEY_UI_SCATTERPLOTPOSITIONS, scatterplotPositionsExpression);
+	CUIExpression secondaryScatterplotUUIDExpression;
+	secondaryScatterplotUUIDExpression.setFixedValue(AMCCommon::CUtils::createEmptyUUID());
+	registerUUIDAttribute(AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID, secondaryScatterplotUUIDExpression);
 
 	// Build and layer selection are per-session client variables of the platform item.
 	registerProviderAttribute(AMC_API_KEY_UI_BUILDUUID, eUIFrontendDefinitionAttributeType::atUUID, eUIFrontendDefinitionAttributeScope::asSession,

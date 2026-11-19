@@ -663,6 +663,8 @@ export default class AMCApplication extends Common.AMCObject {
 					overlayvaluemax:    isNaN(parseFloat(attrs.overlayvaluemax)) ? 1 : parseFloat(attrs.overlayvaluemax),
 					overlaycaption:     attrs.overlaycaption     || "",
 					overlaynote:        attrs.overlaynote        || "",
+					scatterplotpositions: attrs.scatterplotpositions || "",
+					secondaryscatterplotuuid: attrs.secondaryscatterplotuuid || "00000000-0000-0000-0000-000000000000",
 					sizex:              parseFloat(attrs.sizex)  || 0,
 					sizey:              parseFloat(attrs.sizey)  || 0,
 					originx:            parseFloat(attrs.originx) || 0,
