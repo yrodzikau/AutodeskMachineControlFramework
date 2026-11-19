@@ -93,6 +93,11 @@ namespace AMC {
 		// (via GetUIProperty(sender, "tags")) instead of matching the sender path.
 		std::string m_sTags;
 
+		// Name of a layer view on the page of the button (attribute "layerview"). The client sends the view state of
+		// that layer view (for example the color map and the range of its overlay legend) with the event of the
+		// button as the event parameter "layerview", readable via UIEnvironment::GetExternalEventParameters.
+		std::string m_sEventLayerView;
+
 		PStateMachineData m_pStateMachineData;
 
 		std::string m_sEventFormValueSetting;
@@ -123,6 +128,8 @@ namespace AMC {
 		void setIconResource(const std::string& sIconResource);
 		void setTags(const std::string& sTags);
 		std::string getTags();
+		void setEventLayerView(const std::string& sLayerViewName);
+		std::string getEventLayerView();
 
 		void addFormFieldValue(PUIModule_ContentFormEntity pEntity);
 

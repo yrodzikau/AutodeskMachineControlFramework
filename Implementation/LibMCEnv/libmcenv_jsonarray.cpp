@@ -164,7 +164,7 @@ bool CJSONArray::GetBoolValue(const LibMCEnv_uint64 nIndex)
 		throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDJSONMEMBERINDEX, "invalid JSON member index: #" + std::to_string(nIndex));
 
 	auto& member = (*m_pInstance)[(rapidjson::SizeType)nIndex];
-	if (!member.IsBool())
+	if (member.IsBool())
 		return member.GetBool();
 
 	if (member.IsInt64() || member.IsInt()) {

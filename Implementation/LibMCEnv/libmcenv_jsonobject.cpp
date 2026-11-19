@@ -238,7 +238,7 @@ bool CJSONObject::GetBoolValue(const std::string & sName)
 {
 	if (m_pInstance->HasMember(sName.c_str())) {
 		auto& member = (*m_pInstance)[sName.c_str()];
-		if (!member.IsBool())
+		if (member.IsBool())
 			return member.GetBool();
 
 		if (member.IsInt64() || member.IsInt()) {

@@ -2266,8 +2266,6 @@ void CImageData::writeToRawMemoryEx_RGBA32bit(uint32_t nStartX, uint32_t nStartY
 				*pPixelPtr = nGreen; pPixelPtr++;
 				*pPixelPtr = nBlue; pPixelPtr++;
 				*pPixelPtr = 255;  pPixelPtr++;
-
-				pPixelPtr++;
 			}
 
 			pLinePtr += nYLineOffset;
@@ -2290,14 +2288,12 @@ void CImageData::writeToRawMemoryEx_RGBA32bit(uint32_t nStartX, uint32_t nStartY
 				uint32_t nRed = m_PixelData->at(nPixelAddress); nPixelAddress++;
 				uint32_t nGreen = m_PixelData->at(nPixelAddress); nPixelAddress++;
 				uint32_t nBlue = m_PixelData->at(nPixelAddress); nPixelAddress++;
-				nPixelAddress++; // alpha
+				uint32_t nAlpha = m_PixelData->at(nPixelAddress); nPixelAddress++;
 
 				*pPixelPtr = nRed; pPixelPtr++;
 				*pPixelPtr = nGreen; pPixelPtr++;
 				*pPixelPtr = nBlue; pPixelPtr++;
-				*pPixelPtr = 255;  pPixelPtr++;
-
-				pPixelPtr++;
+				*pPixelPtr = nAlpha;  pPixelPtr++;
 			}
 
 			pLinePtr += nYLineOffset;

@@ -206,6 +206,8 @@ export default class AMCApplication extends Common.AMCObject {
 		this.PendingEventSenders = new Set ();
 		// Session client actions this tab has claimed or tried to claim.
 		this.ClaimedClientActions = new Set ();
+		// View state providers of the mounted layer views, by module name (see registerLayerViewStateProvider).
+		this.LayerViewStateProviders = new Map ();
 
 		this.FrontendUpdates = {
 			// Identifies this tab within the session's event stream, which serves each tab its active pages and dialogs.
@@ -2733,6 +2735,43 @@ export default class AMCApplication extends Common.AMCObject {
     storeWebGLInstance(uuid, instance) {
         this.AppState.WebGLInstances[uuid] = instance;
     }
+
+	// A mounted layer view registers a function that returns its view state (a plain object). A button with the
+	// attribute layerview sends the state of the layer view of that name with its event, see layerViewState.
+	// Returns the function that unregisters the provider.
+	registerLayerViewStateProvider (name, provider) {
+		if (!name || (typeof provider !== "function"))
+			return () => {};
+
+		let providers = this.LayerViewStateProviders.get (name);
+		if (!providers) {
+			providers = new Set ();
+			this.LayerViewStateProviders.set (name, providers);
+		}
+		providers.add (provider);
+
+		return () => {
+			providers.delete (provider);
+			if (providers.size === 0 && this.LayerViewStateProviders.get (name) === providers)
+				this.LayerViewStateProviders.delete (name);
+		};
+	}
+
+	// View state of the mounted layer view with this name; null if none or more than one is mounted (only the
+	// active page and the open dialog are mounted, so a name is unique unless both have a layer view of that name).
+	layerViewState (name) {
+		let providers = this.LayerViewStateProviders.get (name);
+		if (!providers || (providers.size === 0)) {
+			console.warn ("[layerview] no layer view named " + name + " is shown, the event carries no view state");
+			return null;
+		}
+		if (providers.size > 1) {
+			console.warn ("[layerview] " + providers.size + " layer views named " + name + " are shown, the event carries no view state");
+			return null;
+		}
+		let provider = providers.values ().next ().value;
+		return provider ();
+	}
 	
 	findPage (pageName) {
 		

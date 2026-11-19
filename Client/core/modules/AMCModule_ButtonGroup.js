@@ -105,6 +105,8 @@ export default class AMCApplicationModule_ButtonGroup extends Common.AMCApplicat
 					width:           a.width || "auto",
 					iconresource:    a.iconresource || "",
 					eventformvalues: formValues,
+					// Name of the layer view whose view state the event carries (button attribute layerview).
+					eventlayerview:  a.eventlayerview || "",
 				};
 			});
 		}

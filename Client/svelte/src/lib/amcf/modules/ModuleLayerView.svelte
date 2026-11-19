@@ -31,7 +31,7 @@
 	// @ts-ignore
 	import LayerViewImpl from '@core/common/AMCImplementation_LayerView.js';
 	// @ts-ignore
-	import { COLORMAP_PRESETS, DEFAULT_COLORMAP, colorMapCSSGradient } from '@core/common/AMCImplementation_ColorMaps.js';
+	import { COLORMAP_PRESETS, DEFAULT_COLORMAP, colorMapCSSGradient, colorMapLookupTable } from '@core/common/AMCImplementation_ColorMaps.js';
 
 	const ZOOM_MARGIN = 10;
 	// Smaller selections are treated as accidental clicks and do not zoom.
@@ -572,6 +572,28 @@
 	});
 
 	// Values of the codes 0 and 65535 of the overlay image; a missing or empty range reads as 0..1.
+	// View state sent with the event of a button that names this layer view (button attribute layerview, see
+	// AMCApplication.registerLayerViewStateProvider). overlaycolortable is the table the overlay is colored with on
+	// the GPU (colorMapLookupTable of the overlay legend): 256 entries for the values 0..1 of the range, each as six
+	// hex digits RRGGBB. With it and the range the server can color an overlay image exactly like the viewer does.
+	function layerViewState() {
+		const table = colorMapLookupTable(overlayColorMapName, overlayColorMapInverted);
+		const hex: string[] = [];
+		for (let index = 0; index < table.length; index += 4) {
+			for (let channel = 0; channel < 3; channel++)
+				hex.push(table[index + channel].toString(16).padStart(2, '0'));
+		}
+		return {
+			overlaystate: overlayState,
+			overlaycolormap: overlayColorMapName,
+			overlaycolormapinverted: overlayColorMapInverted,
+			overlaycolortable: hex.join(''),
+			overlayrangeedited: editedOverlayRange !== null,
+			overlayrangemin: overlayRange.min,
+			overlayrangemax: overlayRange.max
+		};
+	}
+
 	function readOverlayValueRange(currentPlatform: any): ColorRange {
 		const minimum = Number(currentPlatform?.overlayvaluemin);
 		const maximum = Number(currentPlatform?.overlayvaluemax);
@@ -1760,8 +1782,12 @@
 		return () => observer.disconnect();
 	});
 
+	let unregisterLayerViewState: (() => void) | null = null;
+
 	onMount(() => {
 		module.onDataHasChanged = onDataChanged;
+		if (app && typeof app.registerLayerViewStateProvider === 'function' && module.name)
+			unregisterLayerViewState = app.registerLayerViewStateProvider(module.name, layerViewState);
 
 		if (platform) {
 			platform.displayed_layer = 0;
@@ -1773,6 +1799,10 @@
 
 	onDestroy(() => {
 		module.onDataHasChanged = null;
+		if (unregisterLayerViewState) {
+			unregisterLayerViewState();
+			unregisterLayerViewState = null;
+		}
 		stopPlayback();
 		hideHoverInfo();
 		clearHover();

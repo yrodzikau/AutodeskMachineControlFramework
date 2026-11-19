@@ -133,6 +133,19 @@ std::string CUIModule_ContentButton::getTags()
 	return m_sTags;
 }
 
+void CUIModule_ContentButton::setEventLayerView(const std::string& sLayerViewName)
+{
+	if (!sLayerViewName.empty() && !AMCCommon::CUtils::stringIsValidAlphanumericNameString(sLayerViewName))
+		throw ELibMCCustomException(LIBMC_ERROR_INVALIDMODULENAME, m_sElementPath + ": layerview=\"" + sLayerViewName + "\"");
+
+	m_sEventLayerView = sLayerViewName;
+}
+
+std::string CUIModule_ContentButton::getEventLayerView()
+{
+	return m_sEventLayerView;
+}
+
 
 
 void CUIModule_ContentButton::addFormFieldValue(PUIModule_ContentFormEntity pEntity)
@@ -193,6 +206,7 @@ void CUIModule_ContentButton::writeVariablesToJSON(CJSONWriter& writer, CJSONWri
 	object.addString("variant", m_sVariant);
 	object.addString("width", m_sWidth);
 	object.addString("iconresource", m_sIconResource);
+	object.addString(AMC_API_KEY_UI_BUTTONEVENTLAYERVIEW, m_sEventLayerView);
 
 }
 
@@ -247,6 +261,8 @@ void CUIModule_ContentButton::registerFrontendAttributes(PUIFrontendDefinitionMo
 	pStore->registerValue("iconresource", eUIFrontendDefinitionAttributeType::atString, iconResourceExpr);
 	CUIExpression tagsExpr; tagsExpr.setFixedValue(m_sTags);
 	pStore->registerValue("tags", eUIFrontendDefinitionAttributeType::atString, tagsExpr);
+	CUIExpression eventLayerViewExpr; eventLayerViewExpr.setFixedValue(m_sEventLayerView);
+	pStore->registerValue(AMC_API_KEY_UI_BUTTONEVENTLAYERVIEW, eUIFrontendDefinitionAttributeType::atString, eventLayerViewExpr);
 }
 
 
@@ -363,6 +379,10 @@ PUIModule_ContentButtonGroup CUIModule_ContentButtonGroup::makeFromXML(const pug
 		auto tagsAttrib = childNode.attribute("tags");
 		if (!tagsAttrib.empty())
 			pButton->setTags(tagsAttrib.as_string());
+
+		auto layerViewAttrib = childNode.attribute("layerview");
+		if (!layerViewAttrib.empty())
+			pButton->setEventLayerView(layerViewAttrib.as_string());
 	}
 
 	return pButtonGroup;

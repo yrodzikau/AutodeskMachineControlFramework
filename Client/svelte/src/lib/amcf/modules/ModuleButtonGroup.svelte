@@ -24,7 +24,11 @@
 			const formvalues = (btn.eventformvalues && app.assembleFormValues)
 				? app.assembleFormValues(btn.eventformvalues)
 				: {};
-			app.triggerUIEvent(btn.event, btn.uuid, formvalues);
+			// A button with the attribute layerview sends the view state of that layer view as the event parameter
+			// "layerview" (for example the color map and the range of its overlay legend).
+			const layerViewState = (btn.eventlayerview && app.layerViewState) ? app.layerViewState(btn.eventlayerview) : null;
+			const parameters = layerViewState ? { layerview: layerViewState } : undefined;
+			app.triggerUIEvent(btn.event, btn.uuid, formvalues, undefined, parameters);
 		}
 		if (btn.targetpage)
 			app.changePage(btn.targetpage);
