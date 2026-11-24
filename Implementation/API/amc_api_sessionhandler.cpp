@@ -226,6 +226,11 @@ void CAPISessionHandler::setSessionTimeout(uint64_t nAuthSeconds, uint64_t nUnau
 	m_nUnauthSessionTimeoutSeconds = nUnauthSeconds;
 }
 
+void CAPISessionHandler::setSessionEndCallback(std::function<void(const std::string&)> callback)
+{
+	m_SessionEndCallback = callback;
+}
+
 void CAPISessionHandler::deactivateSession(const std::string& sSessionUUID)
 {
 	PAPISession pSession;
@@ -242,6 +247,9 @@ void CAPISessionHandler::deactivateSession(const std::string& sSessionUUID)
 		auto pFrontendState = pSession->getFrontendState();
 		if (pFrontendState.get() != nullptr)
 			pFrontendState->endEventStream();
+
+		if (m_SessionEndCallback)
+			m_SessionEndCallback(sSessionUUID);
 	}
 
 	if (m_pDataModel) {
@@ -339,6 +347,11 @@ void CAPISessionHandler::cleanupExpiredSessions()
 		auto pFrontendState = pSession->getFrontendState();
 		if (pFrontendState.get() != nullptr)
 			pFrontendState->endEventStream();
+	}
+
+	if (m_SessionEndCallback) {
+		for (const auto& sUUID : expiredUUIDs)
+			m_SessionEndCallback(sUUID);
 	}
 
 	if (m_pDataModel && !expiredUUIDs.empty()) {

@@ -53,6 +53,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_firstrunhandler.hpp"
 #include "amc_statesignalhandler.hpp"
 #include "amc_operationsequencehandler.hpp"
+#include "amc_toolpathhandler.hpp"
 
 #include "amc_api_factory.hpp"
 #include "amc_api_sessionhandler.hpp"
@@ -106,6 +107,12 @@ CMCContext::CMCContext(LibMCData::PDataModel pDataModel)
 
     // State machines address client sessions through the system state, for example to hand a download over.
     m_pSystemState->setSessionHandler(m_pAPI->getSessionHandler());
+
+    // A session that ends no longer shows the scatterplots of its layer views; they are released with it.
+    auto pToolpathHandlerOfSessions = m_pSystemState->getToolpathHandlerInstance();
+    m_pAPI->getSessionHandler()->setSessionEndCallback([pToolpathHandlerOfSessions](const std::string& sSessionUUID) {
+        pToolpathHandlerOfSessions->releaseScatterplotSlots(sSessionUUID);
+    });
 
     // ZIP streams of exports that a crash or a forced stop interrupted can not be resumed; their files only
     // hold disk space and are removed before the state machines start.

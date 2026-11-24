@@ -61,7 +61,17 @@ namespace AMC {
 
 		std::set<std::string> m_AttachmentRelationsToRead;
 
+		// Scatterplots that plugins calculated, by UUID (all UUIDs normalized). A plugin stores them, the API handlers
+		// look them up from the HTTP threads and a changed slot releases them, hence the mutex.
+		std::mutex m_ScatterplotMutex;
 		std::map<std::string, PScatterplot> m_Scatterplots;
+		// Slots show one scatterplot at a time, see setScatterplotSlot: the scatterplot of every slot by owner and
+		// slot name, and the number of slots that show a scatterplot.
+		std::map<std::string, std::map<std::string, std::string>> m_ScatterplotSlots;
+		std::map<std::string, uint32_t> m_ScatterplotSlotCounts;
+
+		// Takes the scatterplot out of one slot; releases it if that was its last slot. Needs m_ScatterplotMutex.
+		void leaveScatterplotSlotNoLock(const std::string& sScatterplotUUID);
 
 		// Disabled build items per toolpath storage stream (all UUIDs normalized). Kept
 		// independent of the entity lifetime so that unloading a toolpath does not re-enable parts.
@@ -91,6 +101,19 @@ namespace AMC {
 
 		void storeScatterplot (PScatterplot pScatterplot);
 		PScatterplot restoreScatterplot(const std::string & sUUID, bool bMustExist);
+
+		// A slot is a place that shows one scatterplot at a time, for example the scatterplot of a layer view in a
+		// client session: sOwner is the session, sSlot the property of the layer view. Putting another scatterplot
+		// into a slot releases the one it showed before, unless another slot still shows it: every layer a user looks
+		// at brings new scatterplots, which would otherwise stay in memory until the server ends. sScatterplotUUID
+		// may be empty, the null UUID or no stored scatterplot; the slot is empty then. Scatterplots that never were
+		// in a slot are kept as before.
+		void setScatterplotSlot(const std::string& sOwner, const std::string& sSlot, const std::string& sScatterplotUUID);
+
+		// Empties all slots of an owner, for example of a session that ended.
+		void releaseScatterplotSlots(const std::string& sOwner);
+
+		size_t getScatterplotCount();
 
 		void disablePart(const std::string& sStreamUUID, const std::string& sPartUUID);
 		void enableAllParts(const std::string& sStreamUUID);

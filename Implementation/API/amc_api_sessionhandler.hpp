@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <mutex>
 #include <map>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,8 @@ namespace AMC {
 
 		uint64_t m_nSessionTimeoutSeconds;
 		uint64_t m_nUnauthSessionTimeoutSeconds;
+
+		std::function<void(const std::string&)> m_SessionEndCallback;
 			
 	protected:
 			
@@ -95,6 +98,11 @@ namespace AMC {
 		bool sessionIsAuthenticated(const std::string& sSessionUUID);
 
 		void setSessionTimeout(uint64_t nAuthSeconds, uint64_t nUnauthSeconds);
+
+		// The callback receives the UUID of every session that ends: by logout, by timeout or with its user. It
+		// releases what the server keeps for the session outside of it and must not throw. Set once at startup,
+		// before requests are served.
+		void setSessionEndCallback(std::function<void(const std::string&)> callback);
 
 		void deactivateSession(const std::string& sSessionUUID);
 

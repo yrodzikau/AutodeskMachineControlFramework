@@ -97,6 +97,9 @@ private:
 	AMC::PParameterGroup getUIPropertyGroupForRead(const std::string& sElementPath, const std::string& sPropertyName);
 	AMC::PParameterGroup getUIPropertyGroupForWrite(const std::string& sElementPath, const std::string& sPropertyName);
 
+	// Tells the toolpath handler which scatterplot a layer view of this session shows after a property change.
+	void updateScatterplotSlot(const std::string& sElementPath, const std::string& sPropertyName, const std::string& sValue);
+
 protected:
 
 public:

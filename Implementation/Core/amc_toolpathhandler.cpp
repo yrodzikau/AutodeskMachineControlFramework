@@ -137,12 +137,18 @@ namespace AMC {
 		if (pScatterplot.get() == nullptr)
 			throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
 
-		m_Scatterplots.insert(std::make_pair (pScatterplot->getUUID(), pScatterplot));
+		std::string sNormalizedUUID = AMCCommon::CUtils::normalizeUUIDString(pScatterplot->getUUID());
+
+		std::lock_guard<std::mutex> lockGuard(m_ScatterplotMutex);
+		m_Scatterplots.insert(std::make_pair (sNormalizedUUID, pScatterplot));
 	}
 
 	PScatterplot CToolpathHandler::restoreScatterplot(const std::string& sUUID, bool bMustExist)
 	{
-		auto iIter = m_Scatterplots.find(AMCCommon::CUtils::normalizeUUIDString(sUUID));
+		std::string sNormalizedUUID = AMCCommon::CUtils::normalizeUUIDString(sUUID);
+
+		std::lock_guard<std::mutex> lockGuard(m_ScatterplotMutex);
+		auto iIter = m_Scatterplots.find(sNormalizedUUID);
 		if (iIter == m_Scatterplots.end()) {
 			if (bMustExist)
 				throw ELibMCCustomException(LIBMC_ERROR_SCATTERPLOTNOTFOUND, sUUID);
@@ -151,6 +157,78 @@ namespace AMC {
 		}
 
 		return iIter->second;
+	}
+
+	void CToolpathHandler::leaveScatterplotSlotNoLock(const std::string& sScatterplotUUID)
+	{
+		auto iCount = m_ScatterplotSlotCounts.find(sScatterplotUUID);
+		if (iCount == m_ScatterplotSlotCounts.end())
+			return;
+
+		if (iCount->second > 1) {
+			iCount->second--;
+			return;
+		}
+
+		// A request that is being answered holds the scatterplot itself and is not affected.
+		m_ScatterplotSlotCounts.erase(iCount);
+		m_Scatterplots.erase(sScatterplotUUID);
+	}
+
+	void CToolpathHandler::setScatterplotSlot(const std::string& sOwner, const std::string& sSlot, const std::string& sScatterplotUUID)
+	{
+		// The value of a slot is not validated: everything that is no stored scatterplot empties the slot.
+		std::string sNewUUID;
+		if (AMCCommon::CUtils::stringIsNonEmptyUUIDString(sScatterplotUUID))
+			sNewUUID = AMCCommon::CUtils::normalizeUUIDString(sScatterplotUUID);
+
+		std::lock_guard<std::mutex> lockGuard(m_ScatterplotMutex);
+		if (!sNewUUID.empty() && (m_Scatterplots.find(sNewUUID) == m_Scatterplots.end()))
+			sNewUUID = "";
+
+		std::string sOldUUID;
+		auto iOwner = m_ScatterplotSlots.find(sOwner);
+		if (iOwner != m_ScatterplotSlots.end()) {
+			auto iSlot = iOwner->second.find(sSlot);
+			if (iSlot != iOwner->second.end())
+				sOldUUID = iSlot->second;
+		}
+
+		if (sOldUUID == sNewUUID)
+			return;
+
+		// The new scatterplot enters its slot first, so that it is not released if it is the old one of another slot.
+		if (!sNewUUID.empty()) {
+			m_ScatterplotSlotCounts[sNewUUID]++;
+			m_ScatterplotSlots[sOwner][sSlot] = sNewUUID;
+		}
+		else {
+			iOwner->second.erase(sSlot);
+			if (iOwner->second.empty())
+				m_ScatterplotSlots.erase(iOwner);
+		}
+
+		if (!sOldUUID.empty())
+			leaveScatterplotSlotNoLock(sOldUUID);
+	}
+
+	void CToolpathHandler::releaseScatterplotSlots(const std::string& sOwner)
+	{
+		std::lock_guard<std::mutex> lockGuard(m_ScatterplotMutex);
+		auto iOwner = m_ScatterplotSlots.find(sOwner);
+		if (iOwner == m_ScatterplotSlots.end())
+			return;
+
+		for (auto& slot : iOwner->second)
+			leaveScatterplotSlotNoLock(slot.second);
+
+		m_ScatterplotSlots.erase(iOwner);
+	}
+
+	size_t CToolpathHandler::getScatterplotCount()
+	{
+		std::lock_guard<std::mutex> lockGuard(m_ScatterplotMutex);
+		return m_Scatterplots.size();
 	}
 
 	void CToolpathHandler::disablePart(const std::string& sStreamUUID, const std::string& sPartUUID)

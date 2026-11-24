@@ -79,6 +79,9 @@ Abstract: This is a stub class definition of CUIEnvironment
 #include "amc_ui_frontendstate.hpp"
 #include "libmcdata_dynamic.hpp"
 
+#define __AMCIMPL_API_CONSTANTS
+#include "amc_api_constants.hpp"
+
 // Include custom headers here.
 #include "common_utils.hpp"
 
@@ -431,10 +434,21 @@ bool CUIEnvironment::GetUIPropertyAsBool(const std::string& sElementPath, const 
     return pGroup->getBoolParameterValueByName(sPropertyName);
 }
 
+// The scatterplots of a layer view are properties of its platform item, kept per client session. A session that
+// shows another scatterplot there no longer needs the one it showed before, see CToolpathHandler::setScatterplotSlot.
+void CUIEnvironment::updateScatterplotSlot(const std::string& sElementPath, const std::string& sPropertyName, const std::string& sValue)
+{
+    if ((sPropertyName != AMC_API_KEY_UI_SCATTERPLOTUUID) && (sPropertyName != AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID))
+        return;
+
+    m_pUISystemState->getToolpathHandler()->setScatterplotSlot(m_pAPIAuth->getSessionUUID(), sElementPath + "." + sPropertyName, sValue);
+}
+
 void CUIEnvironment::SetUIProperty(const std::string& sElementPath, const std::string& sPropertyName, const std::string& sValue)
 {
     auto pGroup = getUIPropertyGroupForWrite(sElementPath, sPropertyName);
     pGroup->setParameterValueByName(sPropertyName, sValue);
+    updateScatterplotSlot(sElementPath, sPropertyName, sValue);
 }
 
 void CUIEnvironment::SetUIPropertyAsUUID(const std::string& sElementPath, const std::string& sPropertyName, const std::string& sValue)
@@ -444,6 +458,7 @@ void CUIEnvironment::SetUIPropertyAsUUID(const std::string& sElementPath, const 
         pGroup->setParameterValueByName(sPropertyName, AMCCommon::CUtils::normalizeUUIDString (sValue));
     else
         pGroup->setParameterValueByName(sPropertyName, AMCCommon::CUtils::createEmptyUUID());
+    updateScatterplotSlot(sElementPath, sPropertyName, sValue);
 }
 
 void CUIEnvironment::SetUIPropertyAsDouble(const std::string& sElementPath, const std::string& sPropertyName, const LibMCEnv_double dValue) 
