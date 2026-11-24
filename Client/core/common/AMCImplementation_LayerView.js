@@ -176,6 +176,8 @@ class LayerViewImpl {
 		
 		this.layerPointsMode = "unicolor";
 		this.layerPointsArray = null;
+		// Names of the loaded data channels of the points, see loadPointsChannelData.
+		this.pointChannelNames = new Set ();
 		this.layerPointsColorArray = null;
 		this.layerPointsVelocities = [];
 		this.layerPointsMaxVelocity = LAYERVIEW_MINVELOCITYRANGE;
@@ -778,17 +780,34 @@ class LayerViewImpl {
 		this.computeVelocities ();		
 	}
 
+	// A data channel of the points is a property of the viewer with the name of the channel (this.laser, ...), so a
+	// channel can not take the name of another member of the viewer. The names come from the server.
+	isPointChannelName (pointsChannelName)
+	{
+		if (this.pointChannelNames.has (pointsChannelName))
+			return true;
+		return (typeof pointsChannelName === "string") && (pointsChannelName !== "") && !(pointsChannelName in this);
+	}
+
+	// Returns false if the channel can not be loaded because of its name.
 	loadPointsChannelData(pointsChannelName, pointsColumnName, pointsChannelDataArray) {
 		
+		if (!this.isPointChannelName (pointsChannelName)) {
+			console.warn ("[LayerView] the data channel " + pointsChannelName + " has the name of a member of the viewer and is not loaded");
+			return false;
+		}
+
 		// Ensure the channel-level object exists
-  		if (!Object.prototype.hasOwnProperty.call(this, pointsChannelName)) {
+  		if (!this.pointChannelNames.has (pointsChannelName)) {
     		this[pointsChannelName] = {};
+    		this.pointChannelNames.add (pointsChannelName);
   		}
 
   		// Assign the data array to the corresponding column
   		this[pointsChannelName][pointsColumnName] = pointsChannelDataArray;
 
 		this.computeChannelColumnRange (pointsChannelName, pointsColumnName);
+		return true;
 	}
 	
 	// Positions of the loaded points at their other positions, in the same order (null removes them). They are only
@@ -828,7 +847,7 @@ class LayerViewImpl {
 	clearPointsChannelData (pointsChannelName)
 	{
 		// Ensure the channel-level object exists
-  		if (Object.prototype.hasOwnProperty.call(this, pointsChannelName)) {
+  		if (this.pointChannelNames.has (pointsChannelName)) {
     		this[pointsChannelName] = {};
   		}
 	
@@ -1131,7 +1150,7 @@ class LayerViewImpl {
 	{
 		if (!style || (style.colorSource !== "values") || !this.layerPointsArray)
 			return null;
-		const channel = Object.prototype.hasOwnProperty.call (this, style.valueChannel) ? this[style.valueChannel] : null;
+		const channel = this.pointChannelNames.has (style.valueChannel) ? this[style.valueChannel] : null;
 		const values = (channel && Object.prototype.hasOwnProperty.call (channel, style.valueColumn)) ? channel[style.valueColumn] : null;
 		const pointCount = Math.floor (this.layerPointsArray.length / 2);
 		return (values && (values.length >= pointCount)) ? values : null;
@@ -1142,7 +1161,7 @@ class LayerViewImpl {
 	// of them was on.
 	getPointChannelRange (pointsChannelName, pointsColumnName, laserOnOnly)
 	{
-		const channel = Object.prototype.hasOwnProperty.call (this, pointsChannelName) ? this[pointsChannelName] : null;
+		const channel = this.pointChannelNames.has (pointsChannelName) ? this[pointsChannelName] : null;
 		const values = (channel && Object.prototype.hasOwnProperty.call (channel, pointsColumnName)) ? channel[pointsColumnName] : null;
 		if (!values || (values.length === 0))
 			return null;
@@ -1401,7 +1420,7 @@ class LayerViewImpl {
 	// Value of a point in a column of a data channel ("laser" by default), or null if it is not loaded.
 	getPointChannelValue (columnName, pointIndex, pointsChannelName = "laser")
 	{
-		const channel = Object.prototype.hasOwnProperty.call (this, pointsChannelName) ? this[pointsChannelName] : null;
+		const channel = this.pointChannelNames.has (pointsChannelName) ? this[pointsChannelName] : null;
 		if (channel && channel[columnName] && (pointIndex >= 0) && (pointIndex < channel[columnName].length))
 			return channel[columnName][pointIndex];
 		return null;

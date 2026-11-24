@@ -3,10 +3,12 @@
  * was commanded to and the status positions it reported) are drawn as laser spots in the display modes Laser On and
  * Power, and the Mode button chooses what the spots show, separately for both display modes:
  * - Laser On: the spots at Target X/Y, at Status X/Y or at both;
- * - Power: Watts (the laser power of the samples, at Target X/Y), Temperature (their OIE values, at Status X/Y) or
- *   both.
- * What a layer offers decides which of these exist: without one of the two the button has nothing to choose and
- * shows the only mode there is. This module works that out from what is loaded; it draws nothing.
+ * - Power: the value sets that the server declares for the points (see layerViewDeclarations.ts), one for the spots
+ *   at the target positions, one for those at the status positions, or both. A viewer of laser recordings declares
+ *   for example the laser power at Target X/Y and a sensor value at Status X/Y.
+ * What a layer offers decides which of these can be shown. The button opens a menu with all modes of the display
+ * mode; a mode the layer cannot show is listed with the reason. This module works that out from what is loaded; it
+ * draws nothing.
  */
 export type SpotRole = 'target' | 'status';
 export type SpotSetMode = 'target' | 'status' | 'both';
@@ -15,14 +17,19 @@ export type SpotDisplayMode = 'laseron' | 'power';
 export const SPOT_ROLES: SpotRole[] = ['target', 'status'];
 export const SPOT_ROLE_CAPTIONS: Record<SpotRole, string> = { target: 'Target X/Y', status: 'Status X/Y' };
 export const SPOT_SET_MODES: SpotSetMode[] = ['target', 'status', 'both'];
-// In the display mode Power the target positions show the laser power (Watts) and the status positions the OIE
-// temperature (Temperature).
-export const SPOT_SET_MODE_CAPTIONS: Record<SpotDisplayMode, Record<SpotSetMode, string>> = {
-	laseron: { target: 'Target X/Y', status: 'Status X/Y', both: 'Target vs Status' },
-	power: { target: 'Watts', status: 'Temperature', both: 'Watts + Temperature' }
-};
+const LASERON_MODE_CAPTIONS: Record<SpotSetMode, string> = { target: 'Target X/Y', status: 'Status X/Y', both: 'Target vs Status' };
 // Display modes of the toolpath and the recorded points that draw the points as spots.
 const SPOT_DISPLAY_MODES: Record<string, SpotDisplayMode> = { laseron: 'laseron', power: 'power' };
+
+// What the Mode button needs to know of a value set that the server declared for the display mode Power.
+export interface SpotValueSet {
+	// Name of the mode, for example "Watts".
+	caption: string;
+	// The layer has the values.
+	available: boolean;
+	// Why it has not; may be empty.
+	unavailableHint: string;
+}
 
 export interface SpotModeInput {
 	// Display mode of the toolpath and the recorded points: 'color', 'time', 'power', 'laseron', 'off' ...
@@ -36,10 +43,20 @@ export interface SpotModeInput {
 	primaryRole: SpotRole | '';
 	// The layer offers the same samples at their other positions.
 	secondaryAvailable: boolean;
-	// The points carry the laser power of their samples.
-	hasPower: boolean;
-	// The points have OIE values (sensor 1).
-	hasOIE: boolean;
+	// Value sets of the display mode Power by the positions of their spots; null where the server declared none.
+	valueSets: Record<SpotRole, SpotValueSet | null>;
+}
+
+// A mode in the menu of the Mode button.
+export interface SpotModeEntry {
+	mode: SpotSetMode;
+	caption: string;
+	// The layer can show the mode.
+	available: boolean;
+	// Why it cannot; '' if it can.
+	hint: string;
+	// The spots are drawn in this mode.
+	shown: boolean;
 }
 
 export interface SpotModeState {
@@ -49,16 +66,17 @@ export interface SpotModeState {
 	mode: SpotSetMode;
 	// Positions the layer has.
 	positionsAvailable: Record<SpotRole, boolean>;
-	// Spots the display mode can draw: in Power, Watts needs the target positions and the laser power, Temperature
-	// the status positions and the OIE values.
+	// Spots the display mode can draw: in Power the spots at a kind of positions need a value set with values.
 	available: Record<SpotRole, boolean>;
 	// The points are drawn as spots.
 	active: boolean;
-	// The Mode button has something to choose: both kinds of spots can be drawn.
+	// Both kinds of spots can be drawn, so every mode can be chosen.
 	choosable: boolean;
 	// Spots that are drawn: the chosen ones, or the only ones the layer has.
 	shown: Record<SpotRole, boolean>;
 	shownRoles: SpotRole[];
+	// Modes of the display mode for the menu of the button; empty where the button has no menu.
+	entries: SpotModeEntry[];
 	// Captions of all modes of the display mode (the button is as wide as the longest); empty without spots.
 	captions: string[];
 	// Caption of the mode that is shown; '' without spots.
@@ -76,11 +94,21 @@ export function resolveSpotModes (input: SpotModeInput): SpotModeState {
 
 	const hasPositions = (role: SpotRole) => input.pointsLoaded && (input.primaryRole === role || (secondaryRole === role && input.secondaryAvailable));
 	const positionsAvailable = { target: hasPositions ('target'), status: hasPositions ('status') };
-	const available = displayMode === 'power'
-		? { target: positionsAvailable.target && input.hasPower, status: positionsAvailable.status && input.hasOIE }
-		: positionsAvailable;
 
-	const active = input.pointsLoaded && input.pointsEnabled && displayMode !== null && input.primaryRole !== '' && (available.target || available.status);
+	// Spots at a kind of positions exist as a mode if the display mode has something to show there, and can be drawn
+	// if the layer has the positions and, in Power, the values.
+	const declared = (role: SpotRole) => displayMode === 'laseron' || (displayMode === 'power' && input.valueSets[role] !== null);
+	const unavailableHint = (role: SpotRole): string => {
+		if (!positionsAvailable[role]) return `This layer has no ${SPOT_ROLE_CAPTIONS[role]} positions`;
+		const valueSet = displayMode === 'power' ? input.valueSets[role] : null;
+		if (valueSet && !valueSet.available) return valueSet.unavailableHint || `This layer has no values for ${valueSet.caption}`;
+		return '';
+	};
+	const hints = { target: unavailableHint ('target'), status: unavailableHint ('status') };
+	const available = { target: declared ('target') && hints.target === '', status: declared ('status') && hints.status === '' };
+
+	const spotsPossible = input.pointsLoaded && input.pointsEnabled && displayMode !== null && input.primaryRole !== '';
+	const active = spotsPossible && (available.target || available.status);
 	const choosable = active && available.target && available.status;
 	const shown = {
 		target: active && available.target && (mode !== 'status' || !available.status),
@@ -88,6 +116,22 @@ export function resolveSpotModes (input: SpotModeInput): SpotModeState {
 	};
 	const shownRoles = SPOT_ROLES.filter ((role) => shown[role]);
 	const shownMode: SpotSetMode = choosable ? mode : (shownRoles.length === 1 ? shownRoles[0] : mode);
+
+	const modeCaptions = captionsOf (displayMode, input.valueSets);
+	const entries: SpotModeEntry[] = [];
+	if (spotsPossible) {
+		for (const entry of SPOT_SET_MODES) {
+			const roles: SpotRole[] = entry === 'both' ? SPOT_ROLES : [entry];
+			if (!roles.every (declared)) continue;
+			entries.push ({
+				mode: entry,
+				caption: modeCaptions[entry],
+				available: roles.every ((role) => available[role]),
+				hint: roles.map ((role) => hints[role]).find ((hint) => hint !== '') ?? '',
+				shown: active && entry === shownMode
+			});
+		}
+	}
 
 	return {
 		displayMode,
@@ -98,37 +142,34 @@ export function resolveSpotModes (input: SpotModeInput): SpotModeState {
 		choosable,
 		shown,
 		shownRoles,
-		captions: (displayMode && active) ? SPOT_SET_MODES.map ((entry) => SPOT_SET_MODE_CAPTIONS[displayMode][entry]) : [],
-		caption: (displayMode && active && (choosable || shownRoles.length === 1)) ? SPOT_SET_MODE_CAPTIONS[displayMode][shownMode] : '',
+		entries,
+		captions: active ? entries.map ((entry) => entry.caption) : [],
+		caption: (active && (choosable || shownRoles.length === 1)) ? modeCaptions[shownMode] : '',
 		icon: (displayMode && active) ? `${displayMode}-${shownMode}` : '',
-		title: describeSpotModes (input, displayMode, positionsAvailable, available, choosable, shownRoles)
+		title: describeSpotModes (input, displayMode, entries)
 	};
 }
 
-function describeSpotModes (input: SpotModeInput, displayMode: SpotDisplayMode | null, positionsAvailable: Record<SpotRole, boolean>,
-	available: Record<SpotRole, boolean>, choosable: boolean, shownRoles: SpotRole[]): string {
-	if (choosable && displayMode === 'power')
-		return 'Choose what the laser spots show: Watts (the laser power of the samples at Target X/Y), Temperature (the OIE temperature, sensor 1, of the samples at Status X/Y) or both. Click steps through them';
-	if (choosable)
-		return 'Choose the positions the laser spots are drawn at: Target X/Y (commanded), Status X/Y (reported by the scanner) or both. Click steps through them';
+// Captions of the modes of a display mode: fixed for Laser On, the captions of the declared value sets for Power.
+function captionsOf (displayMode: SpotDisplayMode | null, valueSets: Record<SpotRole, SpotValueSet | null>): Record<SpotSetMode, string> {
+	if (displayMode !== 'power') return LASERON_MODE_CAPTIONS;
+	const target = valueSets.target?.caption ?? '';
+	const status = valueSets.status?.caption ?? '';
+	return { target, status, both: (target && status) ? `${target} + ${status}` : '' };
+}
+
+function describeSpotModes (input: SpotModeInput, displayMode: SpotDisplayMode | null, entries: SpotModeEntry[]): string {
 	if (!input.pointsLoaded) return 'This layer has no recorded points';
 	if (!input.pointsEnabled) return 'The laser spots are hidden by the display mode Off';
 	if (!displayMode) return 'The mode of the laser spots is chosen in the display modes Laser On and Power';
 	if (input.primaryRole === '') return 'This layer has no recorded points with known positions';
-	if (displayMode === 'power') {
-		if (available.target && !available.status)
-			return positionsAvailable.status
-				? 'Watts only: this layer has no OIE data (sensor 1), so Temperature and Watts + Temperature are not available'
-				: 'Watts only: this layer has no Status X/Y positions, so Temperature and Watts + Temperature are not available';
-		if (available.status && !available.target)
-			return 'Temperature only: this layer has no Target X/Y positions with a laser power, so Watts and Watts + Temperature are not available';
-		return 'This layer has neither the laser power at Target X/Y nor OIE data at Status X/Y; the points are colored by the recorded power';
-	}
-	if (shownRoles.length === 1) return `This layer has only ${SPOT_ROLE_CAPTIONS[shownRoles[0]]} positions`;
-	return 'This layer has no recorded points with known positions';
-}
+	if (displayMode === 'laseron')
+		return 'Choose the positions the laser spots are drawn at: Target X/Y (commanded), Status X/Y (reported by the scanner) or both';
+	if (entries.length === 0)
+		return 'This layer has no values to show as laser spots in the display mode Power; the points are colored by the recorded power';
 
-// The mode a click on the Mode button steps to.
-export function nextSpotSetMode (mode: SpotSetMode): SpotSetMode {
-	return SPOT_SET_MODES[(SPOT_SET_MODES.indexOf (mode) + 1) % SPOT_SET_MODES.length];
+	const parts = SPOT_ROLES
+		.filter ((role) => input.valueSets[role] !== null)
+		.map ((role) => `${input.valueSets[role]?.caption} at ${SPOT_ROLE_CAPTIONS[role]}`);
+	return 'Choose what the laser spots show: ' + (parts.length === 2 ? `${parts[0]}, ${parts[1]} or both` : parts[0]);
 }

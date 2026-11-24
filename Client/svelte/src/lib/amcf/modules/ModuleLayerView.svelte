@@ -25,13 +25,15 @@
 	import Crosshair from '@lucide/svelte/icons/crosshair';
 	import CircleDot from '@lucide/svelte/icons/circle-dot';
 	import Target from '@lucide/svelte/icons/target';
-	import Zap from '@lucide/svelte/icons/zap';
-	import Thermometer from '@lucide/svelte/icons/thermometer';
-	import Flame from '@lucide/svelte/icons/flame';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import Check from '@lucide/svelte/icons/check';
+	import Link2 from '@lucide/svelte/icons/link-2';
 	import MdiIcon from '$lib/amcf/MdiIcon.svelte';
-	import { SPOT_ROLES, SPOT_ROLE_CAPTIONS, nextSpotSetMode, resolveSpotModes } from '$lib/amcf/layerViewSpotModes';
-	import type { SpotDisplayMode, SpotRole, SpotSetMode } from '$lib/amcf/layerViewSpotModes';
+	import { NumericStepper } from '$lib/components/ui/numeric-stepper/index.js';
+	import { SPOT_ROLES, SPOT_ROLE_CAPTIONS, resolveSpotModes } from '$lib/amcf/layerViewSpotModes';
+	import type { SpotDisplayMode, SpotModeEntry, SpotRole, SpotSetMode } from '$lib/amcf/layerViewSpotModes';
+	import { StepperEventQueue, parseSteppers, parseValueSets, stepperValueOf } from '$lib/amcf/layerViewDeclarations';
+	import type { PointValueSets, ViewStepper } from '$lib/amcf/layerViewDeclarations';
 	// @ts-ignore — core JS has no type declarations yet
 	import WebGLImpl from '@core/common/AMCImplementation_WebGL.js';
 	// @ts-ignore
@@ -83,25 +85,18 @@
 	// layer offers):
 	// - Laser On: the spots at Target X/Y, at Status X/Y or at both, each a circle in the color of the laser state of
 	//   its sample, filled with the same color if fill is on;
-	// - Power: Watts, the spots at Target X/Y in the color of the laser power of their sample in a color map, as
-	//   circles with or without fill; Temperature, the spots at Status X/Y in the color of the OIE temperature
-	//   (sensor 1) of their sample, as spots of light; or both.
+	// - Power: the value sets that the server declares for the points (platform.scatterplotvaluesets, see
+	//   layerViewDeclarations.ts), one for the spots at Target X/Y, one for those at Status X/Y, or both. The spots
+	//   take the color of a value of their sample in a color map, as circles with or without fill or as spots of
+	//   light.
 	type SpotStyle = { onColor: string; offColor: string; size: number; fill: boolean };
 	type SpotColorKey = 'onColor' | 'offColor';
 	const SPOT_ROLE_DESCRIPTIONS: Record<SpotRole, string> = {
 		target: 'positions the scanner was commanded to',
 		status: 'positions the scanner reported'
 	};
-	// Data channel with the OIE values of the recorded points and its column with sensor 1, which the Temperature
-	// spots show. The server lists the channel with the scatter plot; it is downloaded when the spots first show it.
-	const OIE_CHANNEL = 'oie';
-	const OIE_TEMPERATURE_COLUMN = 'sensor1';
-	type PowerSpotKind = 'watts' | 'temperature';
-	const POWER_SPOT_KIND_OF_ROLE: Record<SpotRole, PowerSpotKind> = { target: 'watts', status: 'temperature' };
 	const SPOT_SIZE_MIN = 1;
 	const SPOT_SIZE_MAX = 32;
-	// Spots of light may be much larger; the viewer draws them smaller where that would load the graphics card too much.
-	const TEMPERATURE_SPOT_SIZE_MAX = 512;
 	// Red and blue are the colors the display mode Laser On has always used for laser on and off.
 	const SPOT_LASER_ON_COLOR = '#e53935';
 	const SPOT_LASER_OFF_COLOR = '#1e88e5';
@@ -109,14 +104,13 @@
 		target: { onColor: SPOT_LASER_ON_COLOR, offColor: SPOT_LASER_OFF_COLOR, size: 10, fill: false },
 		status: { onColor: SPOT_LASER_ON_COLOR, offColor: SPOT_LASER_OFF_COLOR, size: 6, fill: true }
 	};
-	// Watts: filled circles; Temperature: spots of light, larger, so that they glow around the Watts spots when both
-	// are shown.
-	const POWER_SPOT_DEFAULT_STYLES: Record<PowerSpotKind, { size: number; fill: boolean }> = {
-		watts: { size: 6, fill: true },
-		temperature: { size: 16, fill: true }
-	};
-	// The spot preview in a panel takes the color of this value of its color map.
-	const POWER_SPOT_PREVIEW_VALUE = 0.85;
+	// The spot preview in the legend of a value set takes the color of this value of its color map.
+	const VALUE_SPOT_PREVIEW_VALUE = 0.85;
+	// Steppers that the server declares for the view (platform.steppers, see layerViewDeclarations.ts): a changed
+	// value is sent when it has not changed for the delay, and a value the server accepted is shown until its new
+	// declaration arrives, at most for the confirmation time (both in ms).
+	const STEPPER_SEND_DELAY_MS = 600;
+	const STEPPER_CONFIRM_TIMEOUT_MS = 5000;
 	const SPOT_COLOR_KEYS: SpotColorKey[] = ['onColor', 'offColor'];
 	const SPOT_COLOR_CAPTIONS: Record<SpotColorKey, string> = { onColor: 'Laser on', offColor: 'Laser off' };
 	const SPOT_COLOR_PRESETS: { color: string; caption: string }[] = [
@@ -208,12 +202,16 @@
 	let secondaryPointsLoaded = $state(false);
 	let loadingSecondaryPoints = $state(false);
 	let requestedSecondaryUUID = NULL_UUID;
-	// OIE values of the recorded points: the server lists the channel with the scatter plot, the values are downloaded
-	// the first time the Temperature spots show them and kept until the points change.
-	let oieChannelPresent = $state(false);
-	let oiePointsLoaded = $state(false);
-	let loadingOIEPoints = $state(false);
-	let oiePointsRequested = false;
+	// Value sets of the loaded points as the server declared them with the scatter plot, by the positions of their
+	// spots. Their values are a column of a data channel of the scatter plot: the channel laser comes with the
+	// points, any other channel is downloaded the first time its spots are shown and kept until the points change.
+	let valueSets = $state.raw<PointValueSets>({ target: null, status: null });
+	let appliedValueSetsDeclaration = '';
+	let valueChannelsLoaded = $state<Record<SpotRole, boolean>>({ target: false, status: false });
+	let loadingValueChannels = $state<Record<SpotRole, boolean>>({ target: false, status: false });
+	let valueChannelsRequested: Record<SpotRole, boolean> = { target: false, status: false };
+	// Data channels of the value sets that were downloaded for the loaded points.
+	let downloadedValueChannels = new Set<string>();
 	// UUID of the scatter plot of the loaded points.
 	let pointsScatterPlotUUID = NULL_UUID;
 	// The mode of the Mode button, chosen separately in the display modes Laser On and Power.
@@ -223,9 +221,20 @@
 		status: { ...SPOT_DEFAULT_STYLES.status }
 	});
 	let spotColorMenu = $state<{ role: SpotRole; key: SpotColorKey } | null>(null);
+	let spotModeMenuOpen = $state(false);
+	// A value set whose values come with the points (channel laser) has them if the points carry its column; the
+	// values of any other channel are there if the declaration says so.
+	let valueSetsWithValues = $derived.by((): PointValueSets => {
+		const withValues = (role: SpotRole) => {
+			const valueSet = valueSets[role];
+			if (!valueSet || valueSet.channel !== POINT_CHANNEL || pointColumns.includes(valueSet.column)) return valueSet;
+			return { ...valueSet, available: false, unavailableHint: valueSet.unavailableHint || `The recorded points have no ${valueSet.valueCaption.toLowerCase()}` };
+		};
+		return { target: withValues('target'), status: withValues('status') };
+	});
 	// What the Mode button offers and shows on this layer in the current display mode. The positions the layer has
-	// (the loaded points and the offered secondary points, loaded or not) and, for Power, the laser power and the OIE
-	// values of the samples decide which spots exist.
+	// (the loaded points and the offered secondary points, loaded or not) and, for Power, the declared value sets
+	// decide which spots exist.
 	let spotModes = $derived(resolveSpotModes({
 		displayMode: toolpathColorMode,
 		chosenModes: spotSetModes,
@@ -233,46 +242,46 @@
 		pointsEnabled,
 		primaryRole,
 		secondaryAvailable: secondaryRole !== '' && isValidUUID(secondaryUUID),
-		hasPower: pointColumns.includes('power'),
-		hasOIE: oieChannelPresent
+		valueSets: valueSetsWithValues
 	}));
 	let spotDisplayMode = $derived(spotModes.displayMode);
 	let spotSetMode = $derived(spotModes.mode);
 	let spotRoleAvailable = $derived(spotModes.available);
 	let spotsActive = $derived(spotModes.active);
-	let spotSetChoosable = $derived(spotModes.choosable);
 	// Positions the spots are drawn at: the chosen ones, or the only ones the layer has.
 	let spotRoleShown = $derived(spotModes.shown);
 	let shownSpotRoles = $derived(spotModes.shownRoles);
 	let secondaryPointsWanted = $derived(secondaryRole !== '' && spotRoleShown[secondaryRole]);
-	let oiePointsWanted = $derived(spotDisplayMode === 'power' && spotRoleShown.status);
 	// Panels of the shown spots in the bottom left corner: look and colors of Target X/Y and Status X/Y in Laser On,
-	// the color map legends with the look of Watts and Temperature in Power.
+	// the color map legends with the look of the value spots in Power.
 	let shownLaserOnSpotRoles = $derived(spotDisplayMode === 'laseron' ? shownSpotRoles : []);
-	let shownPowerSpotKinds = $derived<PowerSpotKind[]>(spotDisplayMode === 'power' ? shownSpotRoles.map((role) => POWER_SPOT_KIND_OF_ROLE[role]) : []);
+	let shownValueSpotRoles = $derived<SpotRole[]>(spotDisplayMode === 'power' ? shownSpotRoles.filter((role) => valueSets[role] !== null) : []);
 	// The Mode button keeps its place in a toolbar that does not move (see toolbarFixed) and is shown while the
 	// layer has points with known positions otherwise. Its caption is Mode with the mode below it; the button is as
-	// wide as the longest mode of the display mode, so that it keeps its width while it is clicked through them.
+	// wide as the longest mode of the display mode, so that it keeps its width whatever mode is chosen. A click
+	// opens the menu of the modes; a mode the layer cannot show is listed there with the reason.
 	let spotModeCaptions = $derived(spotModes.captions);
 	let spotModeCaption = $derived(spotModes.caption);
 	let spotModeIcon = $derived(spotModes.icon);
 	let spotSetButtonTitle = $derived(spotModes.title);
-	// Look of the Watts and Temperature spots, and their color maps. A Watts range that is not edited is the default
-	// range of the laser power legend of the toolpath, so that the spots and the toolpath share their colors.
-	// Temperature takes the scale of the overlay legend (the Heat Map: color map, inversion and range) until its
-	// own color map or range is chosen; without a heat map of the layer its range is that of the OIE values.
-	let powerSpotStyles = $state<Record<PowerSpotKind, { size: number; fill: boolean }>>({
-		watts: { ...POWER_SPOT_DEFAULT_STYLES.watts },
-		temperature: { ...POWER_SPOT_DEFAULT_STYLES.temperature }
-	});
-	let wattsColorMapName = $state(DEFAULT_COLORMAP);
-	let wattsColorMapInverted = $state(false);
-	let editedWattsRange = $state.raw<ColorRange | null>(null);
-	let temperatureColorMap = $state.raw<{ name: string; inverted: boolean } | null>(null);
-	let editedTemperatureRange = $state.raw<ColorRange | null>(null);
+	let spotModeEntries = $derived(spotModes.entries);
+	// mdi icon of the value set that Power shows alone, if the server declared one.
+	let spotModeValueSetIcon = $derived(spotModeIcon === 'power-target' ? (valueSets.target?.icon ?? '') : (spotModeIcon === 'power-status' ? (valueSets.status?.icon ?? '') : ''));
+	// Look and color scale of the value spots, by the positions of their value set, as chosen in their legends; null
+	// follows the declaration of the value set (size and fill) or its default scale. A value set with the scale
+	// "power" takes the default range of the laser power legend of the toolpath, so that the spots and the toolpath
+	// share their colors. A value set with the scale "overlay" follows the legend of the overlay (color map,
+	// inversion and range) while its switch is on; switching that off gives it a scale of its own, which starts as
+	// the one of the overlay. Any other value set takes the range of its values on the layer.
+	type ValueSpotLook = { size: number; fill: boolean };
+	type ValueColorMap = { name: string; inverted: boolean };
+	type ValueScale = { colorMapName: string; colorMapInverted: boolean; range: ColorRange; followsOverlay: boolean };
+	let valueSpotLooks = $state<Record<SpotRole, ValueSpotLook | null>>({ target: null, status: null });
+	let valueColorMaps = $state.raw<Record<SpotRole, ValueColorMap | null>>({ target: null, status: null });
+	let editedValueRanges = $state.raw<Record<SpotRole, ColorRange | null>>({ target: null, status: null });
+	let valueScalesFollowOverlay = $state<Record<SpotRole, boolean>>({ target: true, status: true });
 	// Value ranges of the recorded samples with the laser on, used where there is no other default.
-	let recordedPowerRange = $state.raw<ColorRange | null>(null);
-	let recordedTemperatureRange = $state.raw<ColorRange | null>(null);
+	let recordedValueRanges = $state.raw<Record<SpotRole, ColorRange | null>>({ target: null, status: null });
 	let endPointsVisible = $state(false);
 	let colorMapName = $state(DEFAULT_COLORMAP);
 	let colorMapInverted = $state(false);
@@ -348,13 +357,32 @@
 	let overlayColorMapName = $state(DEFAULT_COLORMAP);
 	let overlayColorMapInverted = $state(false);
 
-	// Color maps of the Watts and Temperature spots, see powerSpotStyles.
-	let wattsDefaultRange = $derived<ColorRange>(configuredPowerRange ?? rangeFromZeroIfSingle(buildPowerRange ?? layerPowerRange ?? recordedPowerRange));
-	let wattsRange = $derived(editedWattsRange ?? wattsDefaultRange);
-	let temperatureColorMapName = $derived(temperatureColorMap ? temperatureColorMap.name : overlayColorMapName);
-	let temperatureColorMapInverted = $derived(temperatureColorMap ? temperatureColorMap.inverted : overlayColorMapInverted);
-	let temperatureDefaultRange = $derived<ColorRange>(overlayAvailable ? overlayRange : rangeFromZeroIfSingle(recordedTemperatureRange));
-	let temperatureRange = $derived(editedTemperatureRange ?? temperatureDefaultRange);
+	// Color scales of the value spots, see valueSpotLooks. Without an overlay image on the layer a value set that
+	// follows the overlay keeps its color map and takes the range of its own values.
+	let valueScales = $derived.by((): Record<SpotRole, ValueScale> => {
+		const scaleOf = (role: SpotRole): ValueScale => {
+			const valueSet = valueSets[role];
+			const recordedRange = rangeFromZeroIfSingle(recordedValueRanges[role]);
+			if (valueSet?.scale === 'overlay' && overlayName !== '' && valueScalesFollowOverlay[role]) {
+				return {
+					colorMapName: overlayColorMapName,
+					colorMapInverted: overlayColorMapInverted,
+					range: overlayAvailable ? overlayRange : recordedRange,
+					followsOverlay: true
+				};
+			}
+			const defaultRange = valueSet?.scale === 'power'
+				? (configuredPowerRange ?? rangeFromZeroIfSingle(buildPowerRange ?? layerPowerRange ?? recordedValueRanges[role]))
+				: recordedRange;
+			return {
+				colorMapName: valueColorMaps[role]?.name ?? DEFAULT_COLORMAP,
+				colorMapInverted: valueColorMaps[role]?.inverted ?? false,
+				range: editedValueRanges[role] ?? defaultRange,
+				followsOverlay: false
+			};
+		};
+		return { target: scaleOf('target'), status: scaleOf('status') };
+	});
 
 	// A layer view with an overlay button keeps the buttons of its toolbar in place: a button that has nothing to
 	// act on is disabled and grey instead of removed, so the toolbar does not move under the pointer while the
@@ -366,11 +394,11 @@
 	let toolpathToggleAvailable = $derived(pointsShown || overlayShown || !toolpathVisible);
 
 	// Legends in the bottom left corner: one of the overlay while it is shown and one of the color map display modes
-	// of the toolpath and the recorded points, which are drawn over the overlay. The legends of the Watts and
-	// Temperature spots of the display mode Power, which also set the look of the spots, and the spot panels of
-	// Laser On stand above them. The recorded points only follow the legend of the display mode where they are not
-	// drawn as spots.
-	type LegendKind = 'toolpath' | 'overlay' | PowerSpotKind;
+	// of the toolpath and the recorded points, which are drawn over the overlay. The legends of the value spots of
+	// the display mode Power, named by the positions of their value set, which also set the look of the spots, and
+	// the spot panels of Laser On stand above them. The recorded points only follow the legend of the display mode
+	// where they are not drawn as spots.
+	type LegendKind = 'toolpath' | 'overlay' | SpotRole;
 	type LegendInfo = {
 		title: string;
 		// Lower-case description of the value for the labels of the range fields.
@@ -383,18 +411,31 @@
 		rangeEdited: boolean;
 		resetTitle: string;
 		note: string;
+		// The scale is the one of the overlay legend and cannot be edited here.
+		scaleLocked: boolean;
 	};
 	let pointsFollowLegend = $derived(pointsShown && !spotsActive);
 	let shownLegends = $derived<LegendKind[]>([
-		...shownPowerSpotKinds,
+		...shownValueSpotRoles,
 		...((legendMode !== null && (toolpathVisible || pointsFollowLegend)) ? ['toolpath' as const] : []),
 		...(overlayShown ? ['overlay' as const] : [])
 	]);
 	let colorMapMenuKind = $state<LegendKind | null>(null);
 	let bottomLeftVisible = $derived(shownLegends.length > 0 || shownLaserOnSpotRoles.length > 0);
 
-	function isPowerSpotKind(kind: LegendKind): kind is PowerSpotKind {
-		return kind === 'watts' || kind === 'temperature';
+	function isValueLegend(kind: LegendKind): kind is SpotRole {
+		return kind === 'target' || kind === 'status';
+	}
+
+	// Diameter and fill of the value spots at these positions: as chosen in their legend, else as declared.
+	function valueSpotLook(role: SpotRole): ValueSpotLook {
+		const valueSet = valueSets[role];
+		const chosen = valueSpotLooks[role];
+		const maximum = valueSet?.maximumSize ?? SPOT_SIZE_MAX;
+		return {
+			size: Math.min(chosen?.size ?? valueSet?.size ?? SPOT_DEFAULT_STYLES[role].size, maximum),
+			fill: chosen?.fill ?? valueSet?.fill ?? true
+		};
 	}
 
 	function colorMapCaptionOf(name: string): string {
@@ -402,37 +443,28 @@
 	}
 
 	function describeLegend(kind: LegendKind): LegendInfo {
-		if (kind === 'watts') {
+		if (isValueLegend(kind)) {
+			const valueSet = valueSets[kind];
+			const scale = valueScales[kind];
+			const valueLabel = valueSet ? valueSet.valueCaption + (valueSet.unit ? ` in ${valueSet.unit}` : '') : '';
+			let resetTitle = 'Reset the range to the values of the layer';
+			if (scale.followsOverlay) resetTitle = `The scale is the one of the ${overlayName}`;
+			else if (valueSet?.scale === 'power') resetTitle = configuredPowerRange ? 'Reset the range to the configured laser power range' : 'Reset the range to the laser power range of the build';
+			let note = `${valueLabel} of every sample`;
+			if (scale.followsOverlay) note += overlayAvailable ? `, scale of the ${overlayName}` : `, color map of the ${overlayName}, range of the layer`;
+			if (isReducedValueSpotSize(kind)) note += ` · drawn at ${Math.round(valueSpotDrawnSizes[kind] ?? 0)} px at this zoom (graphics load)`;
 			return {
-				title: `Watts · ${SPOT_ROLE_CAPTIONS.target}`,
-				valueLabel: 'laser power in W',
-				colorMapName: wattsColorMapName,
-				colorMapInverted: wattsColorMapInverted,
-				colorMapCaption: colorMapCaptionOf(wattsColorMapName),
-				gradient: colorMapCSSGradient(wattsColorMapName, wattsColorMapInverted),
-				range: wattsRange,
-				rangeEdited: editedWattsRange !== null,
-				resetTitle: configuredPowerRange ? 'Reset the range to the configured laser power range' : 'Reset the range to the laser power range of the build',
-				note: 'Laser power of every sample in W'
-			};
-		}
-		if (kind === 'temperature') {
-			const heatMapName = overlayName || 'Heat Map';
-			const followsHeatMap = (temperatureColorMap === null) && (editedTemperatureRange === null);
-			return {
-				title: `Temperature · ${SPOT_ROLE_CAPTIONS.status}`,
-				valueLabel: 'OIE sensor 1 value',
-				colorMapName: temperatureColorMapName,
-				colorMapInverted: temperatureColorMapInverted,
-				colorMapCaption: colorMapCaptionOf(temperatureColorMapName),
-				gradient: colorMapCSSGradient(temperatureColorMapName, temperatureColorMapInverted),
-				range: temperatureRange,
-				rangeEdited: !followsHeatMap,
-				resetTitle: overlayAvailable
-					? `Reset the color map and the range to the scale of the ${heatMapName}`
-					: `Reset the color map to the one of the ${heatMapName} and the range to the OIE values of the layer`,
-				note: 'OIE sensor 1 of every sample' + (followsHeatMap ? (overlayAvailable ? `, scale of the ${heatMapName}` : ', range of the layer') : '')
-					+ (isReducedTemperatureSize() ? ` · drawn at ${Math.round(temperatureDrawnSize ?? 0)} px at this zoom (graphics load)` : '')
+				title: `${valueSet?.caption ?? ''} · ${SPOT_ROLE_CAPTIONS[kind]}`,
+				valueLabel,
+				colorMapName: scale.colorMapName,
+				colorMapInverted: scale.colorMapInverted,
+				colorMapCaption: colorMapCaptionOf(scale.colorMapName),
+				gradient: colorMapCSSGradient(scale.colorMapName, scale.colorMapInverted),
+				range: scale.range,
+				rangeEdited: !scale.followsOverlay && editedValueRanges[kind] !== null,
+				resetTitle,
+				note,
+				scaleLocked: scale.followsOverlay
 			};
 		}
 		if (kind === 'overlay') {
@@ -447,7 +479,8 @@
 				range: overlayRange,
 				rangeEdited: editedOverlayRange !== null,
 				resetTitle: 'Reset the range to the value range of the image',
-				note: overlayNote
+				note: overlayNote,
+				scaleLocked: false
 			};
 		}
 		const mode = legendMode;
@@ -461,18 +494,20 @@
 			range: mode ? colorRanges[mode] : { min: 0, max: 1 },
 			rangeEdited: mode ? editedRanges[mode] !== null : false,
 			resetTitle: mode ? LEGEND_MODES[mode].resetTitle : '',
-			note: (mode === 'power' && pointsFollowLegend && pointColumns.includes('power')) ? 'Recorded points: raw power, layer minimum to maximum' : ''
+			note: (mode === 'power' && pointsFollowLegend && pointColumns.includes('power')) ? 'Recorded points: raw power, layer minimum to maximum' : '',
+			scaleLocked: false
 		};
 	}
 
-	// True if the Temperature spots are drawn smaller than chosen, see temperatureDrawnSize.
-	function isReducedTemperatureSize(): boolean {
-		return temperatureDrawnSize !== null && temperatureDrawnSize < powerSpotStyles.temperature.size - 0.5;
+	// True if the spots of light at these positions are drawn smaller than chosen, see valueSpotDrawnSizes.
+	function isReducedValueSpotSize(role: SpotRole): boolean {
+		const drawnSize = valueSpotDrawnSizes[role];
+		return drawnSize !== null && drawnSize < valueSpotLook(role).size - 0.5;
 	}
 
-	// Color of a spot preview in the legend of the Watts or Temperature spots, see POWER_SPOT_PREVIEW_VALUE.
-	function powerSpotPreviewColor(legend: LegendInfo): string {
-		const color = new ColorMapSampler(legend.colorMapName, legend.colorMapInverted).colorAt(POWER_SPOT_PREVIEW_VALUE);
+	// Color of the spot preview in the legend of a value set, see VALUE_SPOT_PREVIEW_VALUE.
+	function valueSpotPreviewColor(legend: LegendInfo): string {
+		const color = new ColorMapSampler(legend.colorMapName, legend.colorMapInverted).colorAt(VALUE_SPOT_PREVIEW_VALUE);
 		return '#' + color.toString(16).padStart(6, '0');
 	}
 	// Compared as a string so the calibration is only re-applied when a value changes.
@@ -611,46 +646,37 @@
 
 	// Spot styles of the drawn points in the display modes Laser On and Power: the loaded points take the style of
 	// their positions, the secondary points (once loaded) the style of theirs. Otherwise the points are drawn as
-	// before. Temperature spots are made visible once their OIE values are loaded, which builds them anew.
+	// before. Value spots are made visible once their values are loaded, which builds them anew.
 	let rendererPointSetStyles = $derived.by(() => {
 		if (primaryRole === '' || !spotDisplayMode) return { primary: null, secondary: null };
 		if (spotDisplayMode === 'power' && !spotRoleAvailable.target && !spotRoleAvailable.status) return { primary: null, secondary: null };
 		const toRendererStyle = (role: SpotRole) => {
-			if (spotDisplayMode === 'laseron') {
-				return {
-					visible: spotRoleShown[role],
-					onColor: parseInt(spotStyles[role].onColor.slice(1), 16),
-					offColor: parseInt(spotStyles[role].offColor.slice(1), 16),
-					size: spotStyles[role].size,
-					fill: spotStyles[role].fill
-				};
-			}
-			if (role === 'target') {
-				return {
-					visible: spotRoleShown.target,
-					colorSource: 'values',
-					valueChannel: POINT_CHANNEL,
-					valueColumn: 'power',
-					colorMap: wattsColorMapName,
-					colorMapInverted: wattsColorMapInverted,
-					valueMin: wattsRange.min,
-					valueMax: wattsRange.max,
-					size: powerSpotStyles.watts.size,
-					fill: powerSpotStyles.watts.fill
-				};
-			}
+			const laserStateStyle = {
+				visible: spotRoleShown[role],
+				onColor: parseInt(spotStyles[role].onColor.slice(1), 16),
+				offColor: parseInt(spotStyles[role].offColor.slice(1), 16),
+				size: spotStyles[role].size,
+				fill: spotStyles[role].fill
+			};
+			if (spotDisplayMode === 'laseron') return laserStateStyle;
+
+			// Positions without a value set show nothing in Power.
+			const valueSet = valueSets[role];
+			if (!valueSet) return { ...laserStateStyle, visible: false };
+			const scale = valueScales[role];
+			const look = valueSpotLook(role);
 			return {
-				visible: spotRoleShown.status && oiePointsLoaded,
-				look: 'glow',
+				visible: spotRoleShown[role] && valueChannelsLoaded[role],
+				look: valueSet.look,
 				colorSource: 'values',
-				valueChannel: OIE_CHANNEL,
-				valueColumn: OIE_TEMPERATURE_COLUMN,
-				colorMap: temperatureColorMapName,
-				colorMapInverted: temperatureColorMapInverted,
-				valueMin: temperatureRange.min,
-				valueMax: temperatureRange.max,
-				size: powerSpotStyles.temperature.size,
-				fill: true
+				valueChannel: valueSet.channel,
+				valueColumn: valueSet.column,
+				colorMap: scale.colorMapName,
+				colorMapInverted: scale.colorMapInverted,
+				valueMin: scale.range.min,
+				valueMax: scale.range.max,
+				size: look.size,
+				fill: valueSet.look === 'glow' ? true : look.fill
 			};
 		};
 		return {
@@ -672,11 +698,13 @@
 		untrack(() => loadSecondaryScatterPlot(wanted));
 	});
 
-	// So are the OIE values of the points, for the Temperature spots.
+	// So are the values of a shown value set that do not come with the points.
 	$effect(() => {
-		const wanted = oiePointsWanted && oieChannelPresent;
-		if (!layerViewer || !initialized || !wanted) return;
-		untrack(() => loadOIEPointValues());
+		const roles = shownValueSpotRoles.filter((role) => !valueChannelsLoaded[role]);
+		if (!layerViewer || !initialized || roles.length === 0) return;
+		untrack(() => {
+			for (const role of roles) loadValueSetChannel(role);
+		});
 	});
 
 	$effect(() => {
@@ -768,19 +796,51 @@
 		toolpathColorMode = TOOLPATH_COLOR_MODES[(index + 1) % TOOLPATH_COLOR_MODES.length].mode;
 		colorMapMenuKind = null;
 		spotColorMenu = null;
+		spotModeMenuOpen = false;
 		hideHoverInfo();
 		clearHover();
 	}
 
-	// Steps the Mode button through the modes of the current display mode; it is only enabled where all of them can
-	// be shown.
-	function cycleSpotSetMode() {
-		if (!spotDisplayMode) return;
-		spotSetModes[spotDisplayMode] = nextSpotSetMode(spotSetModes[spotDisplayMode]);
+	// The Mode button opens the menu of the modes of the current display mode.
+	function toggleSpotModeMenu() {
+		spotModeMenuOpen = !spotModeMenuOpen && spotModeEntries.length > 0;
 		colorMapMenuKind = null;
 		spotColorMenu = null;
+	}
+
+	function chooseSpotSetMode(entry: SpotModeEntry) {
+		if (!spotDisplayMode || !entry.available) return;
+		spotSetModes[spotDisplayMode] = entry.mode;
+		spotModeMenuOpen = false;
 		hideHoverInfo();
 		clearHover();
+	}
+
+	// Arrow keys move through the modes that can be chosen, Escape closes the menu and returns to the button.
+	function onSpotModeMenuKeyDown(event: KeyboardEvent) {
+		const menu = event.currentTarget as HTMLElement;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			spotModeMenuOpen = false;
+			(menu.parentElement?.querySelector('.layerview-btn-mode') as HTMLElement | null)?.focus();
+			return;
+		}
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]:not([aria-disabled="true"])'));
+		if (items.length === 0) return;
+		event.preventDefault();
+		const current = items.indexOf(document.activeElement as HTMLElement);
+		let next = event.key === 'ArrowDown' ? current + 1 : current - 1;
+		if (event.key === 'Home' || next >= items.length) next = 0;
+		if (event.key === 'End' || next < 0) next = items.length - 1;
+		items[next].focus();
+	}
+
+	// Puts the focus on the shown mode when the menu opens, or on the first mode that can be chosen.
+	function focusSpotModeMenu(menu: HTMLElement) {
+		const shown = menu.querySelector<HTMLElement>('[aria-checked="true"]:not([aria-disabled="true"])');
+		(shown ?? menu.querySelector<HTMLElement>('[role="menuitemradio"]:not([aria-disabled="true"])'))?.focus();
 	}
 
 	function spotColorCaption(color: string): string {
@@ -818,8 +878,8 @@
 		return size;
 	}
 
-	function powerSpotSizeMax(kind: PowerSpotKind): number {
-		return kind === 'temperature' ? TEMPERATURE_SPOT_SIZE_MAX : SPOT_SIZE_MAX;
+	function valueSpotSizeMax(role: SpotRole): number {
+		return valueSets[role]?.maximumSize ?? SPOT_SIZE_MAX;
 	}
 
 	function onSpotSizeInput(role: SpotRole, event: Event) {
@@ -835,17 +895,31 @@
 		spotStyles[role].fill = !spotStyles[role].fill;
 	}
 
-	function onPowerSpotSizeInput(kind: PowerSpotKind, event: Event) {
-		const size = readTypedSpotSize(event, powerSpotSizeMax(kind));
-		if (size !== null) powerSpotStyles[kind].size = size;
+	function onValueSpotSizeInput(role: SpotRole, event: Event) {
+		const size = readTypedSpotSize(event, valueSpotSizeMax(role));
+		if (size !== null) valueSpotLooks[role] = { ...valueSpotLook(role), size };
 	}
 
-	function onPowerSpotSizeChange(kind: PowerSpotKind, event: Event) {
-		powerSpotStyles[kind].size = settleSpotSize(event, powerSpotStyles[kind].size, powerSpotSizeMax(kind));
+	function onValueSpotSizeChange(role: SpotRole, event: Event) {
+		const look = valueSpotLook(role);
+		valueSpotLooks[role] = { ...look, size: settleSpotSize(event, look.size, valueSpotSizeMax(role)) };
 	}
 
-	function togglePowerSpotFill(kind: PowerSpotKind) {
-		powerSpotStyles[kind].fill = !powerSpotStyles[kind].fill;
+	function toggleValueSpotFill(role: SpotRole) {
+		const look = valueSpotLook(role);
+		valueSpotLooks[role] = { ...look, fill: !look.fill };
+	}
+
+	// The switch of a value set with the scale "overlay": on, the value spots take the scale of the overlay legend;
+	// off, they get a scale of their own, which starts as the one they had.
+	function toggleValueScaleFollowsOverlay(role: SpotRole) {
+		if (valueScalesFollowOverlay[role]) {
+			const scale = valueScales[role];
+			valueColorMaps = { ...valueColorMaps, [role]: { name: scale.colorMapName, inverted: scale.colorMapInverted } };
+			editedValueRanges = { ...editedValueRanges, [role]: { ...scale.range } };
+		}
+		valueScalesFollowOverlay[role] = !valueScalesFollowOverlay[role];
+		colorMapMenuKind = null;
 	}
 
 	function formatRangeValue(value: number): number {
@@ -858,45 +932,46 @@
 		const current = describeLegend(kind).range;
 		const range = bound === 'min' ? { min: value, max: current.max } : { min: current.min, max: value };
 		if (kind === 'overlay') editedOverlayRange = range;
-		else if (kind === 'watts') editedWattsRange = range;
-		else if (kind === 'temperature') editedTemperatureRange = range;
+		else if (isValueLegend(kind)) {
+			if (!valueScales[kind].followsOverlay) editedValueRanges = { ...editedValueRanges, [kind]: range };
+		}
 		else if (legendMode) setEditedRange(legendMode, range);
 	}
 
-	// The Temperature legend goes back to the scale of the overlay legend, color map included.
 	function resetLegendRange(kind: LegendKind) {
 		if (kind === 'overlay') editedOverlayRange = null;
-		else if (kind === 'watts') editedWattsRange = null;
-		else if (kind === 'temperature') {
-			editedTemperatureRange = null;
-			temperatureColorMap = null;
-		}
+		else if (isValueLegend(kind)) editedValueRanges = { ...editedValueRanges, [kind]: null };
 		else if (legendMode) setEditedRange(legendMode, null);
 	}
 
 	function selectColorMap(kind: LegendKind, name: string) {
 		if (kind === 'overlay') overlayColorMapName = name;
-		else if (kind === 'watts') wattsColorMapName = name;
-		else if (kind === 'temperature') temperatureColorMap = { name, inverted: temperatureColorMapInverted };
+		else if (isValueLegend(kind)) {
+			if (!valueScales[kind].followsOverlay) valueColorMaps = { ...valueColorMaps, [kind]: { name, inverted: valueScales[kind].colorMapInverted } };
+		}
 		else colorMapName = name;
 		colorMapMenuKind = null;
 	}
 
 	function toggleColorMapInverted(kind: LegendKind) {
 		if (kind === 'overlay') overlayColorMapInverted = !overlayColorMapInverted;
-		else if (kind === 'watts') wattsColorMapInverted = !wattsColorMapInverted;
-		else if (kind === 'temperature') temperatureColorMap = { name: temperatureColorMapName, inverted: !temperatureColorMapInverted };
+		else if (isValueLegend(kind)) {
+			const scale = valueScales[kind];
+			if (!scale.followsOverlay) valueColorMaps = { ...valueColorMaps, [kind]: { name: scale.colorMapName, inverted: !scale.colorMapInverted } };
+		}
 		else colorMapInverted = !colorMapInverted;
 	}
 
 	function toggleColorMapMenu(kind: LegendKind) {
 		colorMapMenuKind = colorMapMenuKind === kind ? null : kind;
 		spotColorMenu = null;
+		spotModeMenuOpen = false;
 	}
 
 	function toggleSpotColorMenu(role: SpotRole, key: SpotColorKey) {
 		spotColorMenu = isSpotColorMenuOpen(role, key) ? null : { role, key };
 		colorMapMenuKind = null;
+		spotModeMenuOpen = false;
 	}
 
 	function readPowerRange(data: any): ColorRange | null {
@@ -1060,8 +1135,7 @@
 				editedPowerRange = null;
 				editedVelocityRange = null;
 				editedOverlayRange = null;
-				editedWattsRange = null;
-				editedTemperatureRange = null;
+				editedValueRanges = { target: null, status: null };
 			}
 			currentPlatform.displayed_layer = currentPlatform.currentlayer;
 			currentPlatform.displayed_build = currentPlatform.builduuid;
@@ -1081,9 +1155,42 @@
 		const currentPlatform = module.platform;
 		if (!layerViewer || !currentPlatform) return;
 		const wanted = typeof currentPlatform.scatterplotuuid === 'string' ? currentPlatform.scatterplotuuid.toLowerCase() : NULL_UUID;
-		if (currentPlatform.displayed_scatterplot === wanted) return;
+		if (currentPlatform.displayed_scatterplot === wanted) {
+			// The same points with another declaration of their value sets.
+			if (pointsLoaded && primaryRole !== '') applyValueSets(String(currentPlatform.scatterplotvaluesets ?? ''));
+			return;
+		}
 		currentPlatform.displayed_scatterplot = wanted;
 		loadScatterPlot(wanted);
+	}
+
+	// Takes over the value sets that the server declares for the loaded points. The values of a value set that
+	// changed its channel or column are loaded again when its spots are shown.
+	function applyValueSets(declaration: string) {
+		if (declaration === appliedValueSetsDeclaration) return;
+		appliedValueSetsDeclaration = declaration;
+		const declared = parseValueSets(declaration);
+		for (const role of SPOT_ROLES) {
+			const previous = valueSets[role];
+			const next = declared[role];
+			if (previous && next && previous.channel === next.channel && previous.column === next.column) continue;
+			const withPoints = !!next && next.channel === POINT_CHANNEL && pointColumns.includes(next.column);
+			valueChannelsLoaded[role] = withPoints;
+			loadingValueChannels[role] = false;
+			valueChannelsRequested[role] = false;
+			recordedValueRanges = {
+				...recordedValueRanges,
+				[role]: (withPoints && next && layerViewer) ? layerViewer.getPointChannelRange(POINT_CHANNEL, next.column, true) : null
+			};
+		}
+		valueSets = declared;
+	}
+
+	// True while the layer view still shows this scatter plot. The server releases a scatter plot that the view no
+	// longer shows, so a request for it may fail by then.
+	function isCurrentScatterPlot(scatterPlotUUID: string): boolean {
+		const current = module.platform?.scatterplotuuid;
+		return typeof current === 'string' && current.toLowerCase() === scatterPlotUUID;
 	}
 
 	// Loads or removes the overlay image of the layer, which is shown while the overlay button is on.
@@ -1187,17 +1294,19 @@
 		loadingSecondaryPoints = false;
 		requestedSecondaryUUID = NULL_UUID;
 		pointsScatterPlotUUID = NULL_UUID;
-		oieChannelPresent = false;
-		oiePointsLoaded = false;
-		loadingOIEPoints = false;
-		oiePointsRequested = false;
-		recordedPowerRange = null;
-		recordedTemperatureRange = null;
+		valueSets = { target: null, status: null };
+		appliedValueSetsDeclaration = '';
+		valueChannelsLoaded = { target: false, status: false };
+		loadingValueChannels = { target: false, status: false };
+		valueChannelsRequested = { target: false, status: false };
+		recordedValueRanges = { target: null, status: null };
+		const downloadedChannels = [...downloadedValueChannels];
+		downloadedValueChannels.clear();
 		hoverPoint = null;
 		hideHoverInfo();
 		if (!layerViewer) return;
 		layerViewer.clearPointsChannelData(POINT_CHANNEL);
-		layerViewer.clearPointsChannelData(OIE_CHANNEL);
+		for (const channel of downloadedChannels) layerViewer.clearPointsChannelData(channel);
 		layerViewer.clearPoints();
 		layerVelocityRange = layerViewer.getLayerVelocityRange();
 		refreshTimeline();
@@ -1229,23 +1338,6 @@
 		return columns;
 	}
 
-	// Names of the data channels of a scatter plot and of their columns (/pointchanneldata/{uuid}); empty if the
-	// server cannot list them.
-	async function loadPointChannelList(scatterPlotUUID: string): Promise<Record<string, string[]>> {
-		try {
-			const parsed = parseChannelResponse(await app.axiosGetArrayBufferRequest('/pointchanneldata/' + scatterPlotUUID));
-			const channels = parsed?.channels;
-			if (!channels || typeof channels !== 'object') return {};
-			const list: Record<string, string[]> = {};
-			for (const [channel, columns] of Object.entries(channels))
-				list[channel] = Array.isArray(columns) ? columns.map((column) => String(column)) : [];
-			return list;
-		} catch (err: any) {
-			console.warn('[LayerView] point channel list error:', err?.response || err);
-			return {};
-		}
-	}
-
 	function readSpotRole(value: unknown): SpotRole | '' {
 		const role = String(value ?? '').trim().toLowerCase();
 		return role === 'target' || role === 'status' ? role : '';
@@ -1257,10 +1349,18 @@
 		loadingPoints = false;
 		if (!layerViewer || scatterPlotUUID === NULL_UUID || !UUID_PATTERN.test(scatterPlotUUID)) return;
 
-		// The server sets the positions and the secondary scatter plot together with the scatter plot.
+		// The server sets the positions, the secondary scatter plot and the value sets together with the scatter plot.
+		// Value sets belong to points with named positions.
 		const currentPlatform = module.platform;
 		const role = readSpotRole(currentPlatform?.scatterplotpositions);
 		const serverSecondaryUUID = typeof currentPlatform?.secondaryscatterplotuuid === 'string' ? currentPlatform.secondaryscatterplotuuid.toLowerCase() : NULL_UUID;
+		const declaration = role !== '' ? String(currentPlatform?.scatterplotvaluesets ?? '') : '';
+		const declaredValueSets = parseValueSets(declaration);
+		// Columns of the channel laser that the viewer or a value set reads.
+		const wantedColumns = [...POINT_CHANNEL_COLUMNS];
+		for (const valueSet of Object.values(declaredValueSets)) {
+			if (valueSet && valueSet.channel === POINT_CHANNEL && !wantedColumns.includes(valueSet.column)) wantedColumns.push(valueSet.column);
+		}
 
 		loadingPoints = true;
 		try {
@@ -1268,12 +1368,10 @@
 			let channelColumns: [string, Float32Array][] = [];
 			try {
 				const channelResponse = await app.axiosGetArrayBufferRequest('/pointchanneldata/' + scatterPlotUUID + '/' + POINT_CHANNEL);
-				channelColumns = parsePointChannelData(channelResponse);
+				channelColumns = parsePointChannelData(channelResponse, wantedColumns);
 			} catch (err: any) {
 				console.warn('[LayerView] point channel data error:', err?.response || err);
 			}
-			// The OIE values are only downloaded for the Temperature spots; the list tells whether there are any.
-			const channelList = role !== '' ? await loadPointChannelList(scatterPlotUUID) : {};
 
 			if (loadIndex !== pointLoadCounter || !layerViewer) return;
 
@@ -1281,7 +1379,13 @@
 			primaryRole = role;
 			secondaryUUID = (role !== '' && UUID_PATTERN.test(serverSecondaryUUID)) ? serverSecondaryUUID : NULL_UUID;
 			pointsScatterPlotUUID = scatterPlotUUID;
-			oieChannelPresent = (channelList[OIE_CHANNEL] ?? []).includes(OIE_TEMPERATURE_COLUMN);
+			valueSets = declaredValueSets;
+			appliedValueSetsDeclaration = declaration;
+			const valuesWithPoints = (valueRole: SpotRole) => {
+				const valueSet = declaredValueSets[valueRole];
+				return !!valueSet && valueSet.channel === POINT_CHANNEL && pointColumns.includes(valueSet.column);
+			};
+			valueChannelsLoaded = { target: valuesWithPoints('target'), status: valuesWithPoints('status') };
 			pointsLoaded = true;
 			// The spot styles go to the viewer before the points, so the points are built once, by setColorMode.
 			layerViewer.setPointSetStyles(rendererPointSetStyles.primary, rendererPointSetStyles.secondary);
@@ -1290,7 +1394,11 @@
 			for (const [column, values] of channelColumns) {
 				layerViewer.loadPointsChannelData(POINT_CHANNEL, column, values);
 			}
-			recordedPowerRange = layerViewer.getPointChannelRange(POINT_CHANNEL, 'power', true);
+			const rangeWithPoints = (valueRole: SpotRole): ColorRange | null => {
+				const valueSet = declaredValueSets[valueRole];
+				return (valueSet && valuesWithPoints(valueRole)) ? layerViewer.getPointChannelRange(POINT_CHANNEL, valueSet.column, true) : null;
+			};
+			recordedValueRanges = { target: rangeWithPoints('target'), status: rangeWithPoints('status') };
 			layerViewer.updateTiming();
 			refreshTimeline();
 			layerVelocityRange = layerViewer.getLayerVelocityRange();
@@ -1335,32 +1443,40 @@
 		}
 	}
 
-	// Downloads the OIE values of the loaded points (channel oie, sensor 1) for the Temperature spots.
-	async function loadOIEPointValues() {
-		if (oiePointsRequested || !layerViewer || !UUID_PATTERN.test(pointsScatterPlotUUID)) return;
+	// Downloads the values of the value set at these positions for the loaded points: a column of a data channel of
+	// their scatter plot.
+	async function loadValueSetChannel(role: SpotRole) {
+		const valueSet = valueSets[role];
+		if (!valueSet || !valueSet.available || valueChannelsRequested[role] || !layerViewer || !UUID_PATTERN.test(pointsScatterPlotUUID)) return;
 		const loadIndex = pointLoadCounter;
 		const scatterPlotUUID = pointsScatterPlotUUID;
-		oiePointsRequested = true;
-		loadingOIEPoints = true;
+		const isCurrent = () => loadIndex === pointLoadCounter && !!layerViewer && valueSets[role] === valueSet;
+		valueChannelsRequested[role] = true;
+		loadingValueChannels[role] = true;
 		try {
-			const response = await app.axiosGetArrayBufferRequest('/pointchanneldata/' + scatterPlotUUID + '/' + OIE_CHANNEL);
-			if (loadIndex !== pointLoadCounter || !layerViewer) return;
-			const values = parsePointChannelData(response, [OIE_TEMPERATURE_COLUMN])[0]?.[1] ?? null;
+			const response = await app.axiosGetArrayBufferRequest('/pointchanneldata/' + scatterPlotUUID + '/' + valueSet.channel);
+			if (!isCurrent()) return;
+			const values = parsePointChannelData(response, [valueSet.column])[0]?.[1] ?? null;
 			const expected = (layerViewer.getPointPositions(false)?.length ?? 0) / 2;
 			if (!values || values.length !== expected) {
-				console.warn(`[LayerView] OIE values: ${values ? values.length : 0} instead of ${expected} points, not shown`);
-				app.showSnackBar('The OIE values do not match the recorded points; the Temperature spots are not shown', 'error', 8000);
+				console.warn(`[LayerView] ${valueSet.caption}: ${values ? values.length : 0} values for ${expected} points, not shown`);
+				app.showSnackBar(`The values of ${valueSet.caption} do not match the recorded points and are not shown`, 'error', 8000);
 				return;
 			}
-			layerViewer.loadPointsChannelData(OIE_CHANNEL, OIE_TEMPERATURE_COLUMN, values);
-			recordedTemperatureRange = layerViewer.getPointChannelRange(OIE_CHANNEL, OIE_TEMPERATURE_COLUMN, true);
-			oiePointsLoaded = true;
+			if (!layerViewer.loadPointsChannelData(valueSet.channel, valueSet.column, values)) {
+				app.showSnackBar(`The data channel ${valueSet.channel} of ${valueSet.caption} cannot be loaded because of its name`, 'error', 8000);
+				return;
+			}
+			downloadedValueChannels.add(valueSet.channel);
+			recordedValueRanges = { ...recordedValueRanges, [role]: layerViewer.getPointChannelRange(valueSet.channel, valueSet.column, true) };
+			valueChannelsLoaded[role] = true;
 		} catch (err: any) {
-			console.warn('[LayerView] OIE point values error:', err?.response || err);
-			if (loadIndex === pointLoadCounter)
-				app.showSnackBar(`Loading the OIE values of the recorded points failed: ${app.extractErrorMessage(err)}`, 'error', 8000);
+			console.warn(`[LayerView] values of ${valueSet.caption}:`, err?.response || err);
+			// No message if the view shows other points by now: the server has released the scatter plot of these.
+			if (isCurrent() && isCurrentScatterPlot(scatterPlotUUID))
+				app.showSnackBar(`Loading the values of ${valueSet.caption} failed: ${app.extractErrorMessage(err)}`, 'error', 8000);
 		} finally {
-			if (loadIndex === pointLoadCounter) loadingOIEPoints = false;
+			if (isCurrent()) loadingValueChannels[role] = false;
 		}
 	}
 
@@ -1495,10 +1611,30 @@
 		if (jerk) text += `\nJerk: ${(jerk.j / 1000000).toFixed(4)} km/s³`;
 		const power = layerViewer.getPointPower(pointIndex);
 		if (power !== null) text += `\nPower: ${power.toFixed(4)} W`;
-		const temperature = layerViewer.getPointChannelValue(OIE_TEMPERATURE_COLUMN, pointIndex, OIE_CHANNEL);
-		if (temperature !== null) text += `\nOIE sensor 1: ${formatRangeValue(temperature)}`;
+		for (const value of pointSetValues(pointIndex)) text += `\n${value.caption}: ${value.text}`;
 		return text;
 	}
+
+	// Values of a sample in the loaded value sets, for the tooltip and the inspector. The laser power of the channel
+	// laser has a line of its own there and is left out.
+	function pointSetValues(pointIndex: number): { caption: string; text: string }[] {
+		const values: { caption: string; text: string }[] = [];
+		if (!layerViewer) return values;
+		for (const role of SPOT_ROLES) {
+			const valueSet = valueSets[role];
+			if (!valueSet || !valueChannelsLoaded[role]) continue;
+			if (valueSet.channel === POINT_CHANNEL && valueSet.column === 'power') continue;
+			if (values.some((entry) => entry.caption === valueSet.valueCaption)) continue;
+			const value = layerViewer.getPointChannelValue(valueSet.column, pointIndex, valueSet.channel);
+			if (value === null) continue;
+			values.push({ caption: valueSet.valueCaption, text: formatRangeValue(value).toLocaleString() + (valueSet.unit ? ` ${valueSet.unit}` : '') });
+		}
+		return values;
+	}
+
+	// Caption and unit of the laser power of a sample in the inspector: those of the value set that shows it, if the
+	// server declared one.
+	let pointPowerValueSet = $derived(SPOT_ROLES.map((role) => valueSets[role]).find((valueSet) => valueSet && valueSet.channel === POINT_CHANNEL && valueSet.column === 'power') ?? null);
 
 	function describeSegment(mouseX: number, mouseY: number): string {
 		if (!toolpathVisible) return '';
@@ -1634,8 +1770,8 @@
 		scannery: number | null;
 		laseron: number | null;
 		power: number | null;
-		// OIE sensor 1, once the OIE values of the points are loaded.
-		temperature: number | null;
+		// Values of the sample in the loaded value sets, see pointSetValues.
+		values: { caption: string; text: string }[];
 		velocity: number;
 	};
 	let propertiesMode = $state(false);
@@ -1664,12 +1800,17 @@
 	let namesMode = $state(false);
 	let viewVersion = $state(0);
 	let transformChangeCount = 0;
-	// Diameter the Temperature spots are drawn with at the current zoom: smaller than chosen where the number of points
-	// in view or the graphics card does not allow more (LayerViewImpl.fitPointSet); null while they are not drawn.
-	let temperatureDrawnSize = $derived.by((): number | null => {
+	// Diameter the spots of light of a value set are drawn with at the current zoom: smaller than chosen where the
+	// number of points in view or the graphics card does not allow more (LayerViewImpl.fitPointSet); null while they
+	// are not drawn or no spots of light.
+	let valueSpotDrawnSizes = $derived.by((): Record<SpotRole, number | null> => {
 		viewVersion;
-		if (!layerViewer || !oiePointsLoaded || !spotRoleShown.status || spotDisplayMode !== 'power' || primaryRole === '') return null;
-		return layerViewer.getPointSetPixelSize(primaryRole !== 'status');
+		const drawnSize = (role: SpotRole): number | null => {
+			if (!layerViewer || primaryRole === '' || spotDisplayMode !== 'power' || !spotRoleShown[role]) return null;
+			if (valueSets[role]?.look !== 'glow' || !valueChannelsLoaded[role]) return null;
+			return layerViewer.getPointSetPixelSize(role !== primaryRole);
+		};
+		return { target: drawnSize('target'), status: drawnSize('status') };
 	});
 	// Viewport position of the hovered point, for the marker ring; follows pan and zoom.
 	let hoverPointScreen = $derived.by((): { x: number; y: number } | null => {
@@ -1784,7 +1925,7 @@
 		const pointHit: { index: number; secondary: boolean } | null = pointsShown ? layerViewer.pickPoint(localX, localY, POINT_PICK_TOLERANCE_PX) : null;
 		const pointInfo: PointInfo | null = pointHit ? layerViewer.getPointInfo(pointHit.index, pointHit.secondary) : null;
 		if (pointHit && pointInfo) {
-			pointInfo.temperature = layerViewer.getPointChannelValue(OIE_TEMPERATURE_COLUMN, pointHit.index, OIE_CHANNEL);
+			pointInfo.values = pointSetValues(pointHit.index);
 			hoverPoint = pointInfo;
 			hoverSegment = null;
 			layerViewer.setHighlightLine(-1);
@@ -1915,6 +2056,12 @@
 			zoomSelectMode = false;
 			zoomSelection = null;
 		}
+		if (event.key === 'Escape') spotModeMenuOpen = false;
+	}
+
+	// A press outside of the Mode button and its menu closes the menu.
+	function onWindowPointerDown(event: PointerEvent) {
+		if (spotModeMenuOpen && !(event.target as HTMLElement | null)?.closest?.('.layerview-mode-wrap')) spotModeMenuOpen = false;
 	}
 
 	function onPointerDown(event: PointerEvent) {
@@ -2052,6 +2199,109 @@
 		return () => observer.disconnect();
 	});
 
+	// Steppers that the server declares for the view, shown in the top right corner. The field of a stepper shows
+	// what the user typed or stepped to until the server has answered: it declares the steppers again with the value
+	// it accepted, which usually comes with new points.
+	let steppersDeclaration = $derived.by(() => { poll.v; return String(platform?.steppers ?? ''); });
+	let steppers = $derived(parseSteppers(steppersDeclaration));
+	let stepperTexts = $state<Record<string, string>>({});
+	let stepperBusy = $state<Record<string, boolean>>({});
+	let stepperConfirmTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	// The value of a stepper that was handed to the queue last.
+	let stepperCommitted = new Map<string, number>();
+
+	const stepperQueue = new StepperEventQueue(sendStepperValue, onStepperValueSettled, STEPPER_SEND_DELAY_MS);
+
+	function forgetStepperText(name: string) {
+		const timer = stepperConfirmTimers.get(name);
+		if (timer !== undefined) clearTimeout(timer);
+		stepperConfirmTimers.delete(name);
+		delete stepperTexts[name];
+	}
+
+	// The event of a stepper carries its name and its value as event parameters; the sender is the platform item.
+	function sendStepperValue(name: string, value: number, done: (succeeded: boolean) => void) {
+		const stepper = steppers.find((candidate) => candidate.name === name);
+		const currentPlatform = module.platform;
+		if (!stepper || !app || !currentPlatform) {
+			done(false);
+			return;
+		}
+		// The application still counts the event as running inside of its callbacks, and it drops an event of a
+		// sender whose event is running: the queue goes on after them.
+		let answered = false;
+		const answer = (succeeded: boolean) => {
+			if (answered) return;
+			answered = true;
+			setTimeout(() => done(succeeded), 0);
+		};
+		app.triggerUIEvent(stepper.event, currentPlatform.uuid, {}, () => answer(true), { stepper: name, value }, () => answer(false));
+	}
+
+	function onStepperValueSettled(name: string, value: number, succeeded: boolean) {
+		stepperBusy[name] = stepperQueue.isPending(name);
+		if (stepperQueue.isPending(name)) return;
+		if (!succeeded) {
+			// The application has reported the error; the field goes back to the value of the server.
+			forgetStepperText(name);
+			return;
+		}
+		// The accepted value stays in the field until the new declaration of the server arrives.
+		if (steppers.find((candidate) => candidate.name === name)?.value === value) {
+			forgetStepperText(name);
+			return;
+		}
+		const timer = stepperConfirmTimers.get(name);
+		if (timer !== undefined) clearTimeout(timer);
+		stepperConfirmTimers.set(name, setTimeout(() => forgetStepperText(name), STEPPER_CONFIRM_TIMEOUT_MS));
+	}
+
+	// A new declaration that names the value the field shows has confirmed it.
+	$effect(() => {
+		const declared = steppers;
+		untrack(() => {
+			for (const name of Object.keys(stepperTexts)) {
+				const stepper = declared.find((candidate) => candidate.name === name);
+				if (!stepper) forgetStepperText(name);
+				else if (!stepperQueue.isPending(name) && stepperConfirmTimers.has(name) && Number(stepperTexts[name]) === stepper.value) forgetStepperText(name);
+			}
+		});
+	});
+
+	function onStepperInput(stepper: ViewStepper, text: string) {
+		stepperTexts[stepper.name] = text;
+	}
+
+	// Takes over a typed or stepped value: it is moved into the bounds of the stepper and sent if it differs from
+	// the value of the server. A text that is no number is dropped.
+	function commitStepperValue(stepper: ViewStepper, text: string) {
+		const value = stepperValueOf(stepper, text);
+		if (value === null || (value === stepper.value && !stepperQueue.isPending(stepper.name))) {
+			forgetStepperText(stepper.name);
+			return;
+		}
+		// Leaving the field after Enter commits the same value once more.
+		if (stepperQueue.isPending(stepper.name) && stepperCommitted.get(stepper.name) === value) return;
+		stepperCommitted.set(stepper.name, value);
+		const timer = stepperConfirmTimers.get(stepper.name);
+		if (timer !== undefined) clearTimeout(timer);
+		stepperConfirmTimers.delete(stepper.name);
+		stepperTexts[stepper.name] = String(value);
+		stepperBusy[stepper.name] = true;
+		stepperQueue.change(stepper.name, value);
+	}
+
+	function onStepperKeyDown(stepper: ViewStepper, event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			commitStepperValue(stepper, stepperTexts[stepper.name] ?? String(stepper.value));
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!stepperQueue.isPending(stepper.name)) forgetStepperText(stepper.name);
+		}
+	}
+
 	let unregisterLayerViewState: (() => void) | null = null;
 
 	onMount(() => {
@@ -2076,6 +2326,9 @@
 		stopPlayback();
 		hideHoverInfo();
 		clearHover();
+		stepperQueue.dispose();
+		for (const timer of stepperConfirmTimers.values()) clearTimeout(timer);
+		stepperConfirmTimers.clear();
 		pointLoadCounter++;
 		if (platform) {
 			platform.displayed_layer = 0;
@@ -2086,56 +2339,56 @@
 	});
 </script>
 
-<svelte:window onkeydown={onWindowKeyDown} />
+<svelte:window onkeydown={onWindowKeyDown} onpointerdown={onWindowPointerDown} />
 
-<!-- Color map legend of the overlay, of the power, time and velocity display modes or of the Watts and Temperature
-     spots; the legend of spots also sets their diameter in pixels and, for Watts, their fill -->
+<!-- Color map legend of the overlay, of the power, time and velocity display modes or of the value spots at one
+     kind of positions; the legend of value spots also sets their diameter in pixels and, for circles, their fill,
+     and has the switch that makes them follow the scale of the overlay if their value set asks for that -->
 {#snippet legendPanel(kind: LegendKind)}
 	{@const legend = describeLegend(kind)}
-	{@const spotKind = isPowerSpotKind(kind) ? kind : null}
-	<div class="layerview-legend" class:layerview-spots={spotKind !== null} data-legend={kind}>
-		{#if spotKind}
-			{@const style = powerSpotStyles[spotKind]}
-			{@const name = spotKind === 'watts' ? 'Watts' : 'Temperature'}
+	{@const valueRole = isValueLegend(kind) ? kind : null}
+	{@const valueSet = valueRole ? valueSets[valueRole] : null}
+	<div class="layerview-legend" class:layerview-spots={valueRole !== null} data-legend={kind}>
+		{#if valueRole && valueSet}
+			{@const look = valueSpotLook(valueRole)}
+			{@const glow = valueSet.look === 'glow'}
 			<div class="layerview-legend-header" role="group" aria-label={`${legend.title} laser spots`}>
 				<span
 					class="layerview-spots-preview"
-					class:filled={spotKind === 'watts' && style.fill}
-					class:glow={spotKind === 'temperature'}
-					style:--spot-color={powerSpotPreviewColor(legend)}
+					class:filled={!glow && look.fill}
+					class:glow
+					style:--spot-color={valueSpotPreviewColor(legend)}
 					aria-hidden="true"
 				></span>
 				<span
 					class="layerview-legend-title"
-					title={spotKind === 'watts'
-						? `Laser spots at the ${SPOT_ROLE_DESCRIPTIONS.target}, in the color of the laser power of their sample`
-						: `Spots of light at the ${SPOT_ROLE_DESCRIPTIONS.status}, in the color of the OIE temperature (sensor 1) of their sample`}
+					title={`${glow ? 'Spots of light' : 'Laser spots'} at the ${SPOT_ROLE_DESCRIPTIONS[valueRole]}, in the color of the ${legend.valueLabel} of their sample`}
 				>{legend.title}</span>
 				<span
 					class="layerview-spots-size"
-					title={`Diameter of the ${name} spots in screen pixels (${SPOT_SIZE_MIN} to ${powerSpotSizeMax(spotKind)})`
-						+ (spotKind === 'temperature' ? '. Where many points are in view, or beyond the largest point size of the graphics card, they are drawn smaller' : '')}
+					title={`Diameter of the ${valueSet.caption} spots in screen pixels (${SPOT_SIZE_MIN} to ${valueSpotSizeMax(valueRole)})`
+						+ (glow ? '. Where many points are in view, or beyond the largest point size of the graphics card, they are drawn smaller' : '')}
 				>
 					<input
 						type="number"
 						min={SPOT_SIZE_MIN}
-						max={powerSpotSizeMax(spotKind)}
+						max={valueSpotSizeMax(valueRole)}
 						step="1"
-						value={style.size}
-						oninput={(event) => onPowerSpotSizeInput(spotKind, event)}
-						onchange={(event) => onPowerSpotSizeChange(spotKind, event)}
-						aria-label={`Diameter of the ${name} spots in pixels`}
+						value={look.size}
+						oninput={(event) => onValueSpotSizeInput(valueRole, event)}
+						onchange={(event) => onValueSpotSizeChange(valueRole, event)}
+						aria-label={`Diameter of the ${valueSet.caption} spots in pixels`}
 					/>
 					<span>px</span>
 				</span>
-				{#if spotKind === 'watts'}
+				{#if !glow}
 					<button
 						type="button"
 						class="layerview-legend-btn"
-						onclick={() => togglePowerSpotFill('watts')}
-						title="Fill the Watts spots with the color of their circle"
-						aria-label="Fill the Watts spots"
-						aria-pressed={style.fill}
+						onclick={() => toggleValueSpotFill(valueRole)}
+						title={`Fill the ${valueSet.caption} spots with the color of their circle`}
+						aria-label={`Fill the ${valueSet.caption} spots`}
+						aria-pressed={look.fill}
 					>
 						Fill
 					</button>
@@ -2143,15 +2396,32 @@
 			</div>
 		{/if}
 		<div class="layerview-legend-header">
-			{#if !spotKind}
+			{#if !valueRole}
 				<span class="layerview-legend-title">{legend.title}</span>
+			{/if}
+			{#if valueRole && valueSet && valueSet.scale === 'overlay' && overlayName}
+				<button
+					type="button"
+					class="layerview-legend-btn layerview-legend-link"
+					onclick={() => toggleValueScaleFollowsOverlay(valueRole)}
+					title={legend.scaleLocked
+						? `The ${valueSet.caption} spots take the color map and the range of the ${overlayName}. Switch off to give them a scale of their own`
+						: `The ${valueSet.caption} spots have a scale of their own. Switch on to take the color map and the range of the ${overlayName}`}
+					aria-label={`Scale of the ${overlayName}`}
+					aria-pressed={legend.scaleLocked}
+					data-scale-link={valueRole}
+				>
+					<Link2 size={12} />
+					<span>{overlayName}</span>
+				</button>
 			{/if}
 			<button
 				type="button"
 				class="layerview-legend-btn layerview-legend-preset"
-				class:wide={spotKind !== null}
+				class:wide={valueRole !== null}
 				onclick={() => toggleColorMapMenu(kind)}
-				title="Choose a color map"
+				disabled={legend.scaleLocked}
+				title={legend.scaleLocked ? `The color map is the one of the ${overlayName}` : 'Choose a color map'}
 				aria-label={`Color map: ${legend.colorMapCaption}. Click to choose`}
 				aria-expanded={colorMapMenuKind === kind}
 			>
@@ -2162,7 +2432,8 @@
 				type="button"
 				class="layerview-legend-btn"
 				onclick={() => toggleColorMapInverted(kind)}
-				title="Invert the color map"
+				disabled={legend.scaleLocked}
+				title={legend.scaleLocked ? `The color map is the one of the ${overlayName}` : 'Invert the color map'}
 				aria-label="Invert the color map"
 				aria-pressed={legend.colorMapInverted}
 			>
@@ -2205,6 +2476,8 @@
 				step="any"
 				value={formatRangeValue(legend.range.min)}
 				onchange={(event) => onLegendRangeChange(kind, 'min', event)}
+				readonly={legend.scaleLocked}
+				title={legend.scaleLocked ? `The range is the one of the ${overlayName}` : ''}
 				aria-label={`Minimum ${legend.valueLabel}`}
 			/>
 			<span class="layerview-legend-mid">{formatRangeValue((legend.range.min + legend.range.max) / 2)}</span>
@@ -2213,6 +2486,8 @@
 				step="any"
 				value={formatRangeValue(legend.range.max)}
 				onchange={(event) => onLegendRangeChange(kind, 'max', event)}
+				readonly={legend.scaleLocked}
+				title={legend.scaleLocked ? `The range is the one of the ${overlayName}` : ''}
 				aria-label={`Maximum ${legend.valueLabel}`}
 			/>
 		</div>
@@ -2355,7 +2630,7 @@
 		{/if}
 
 		<!-- Overlaid toolbar, with the platform label and the loading indicator below it -->
-		<div class="layerview-top-left">
+		<div class="layerview-top-left" class:with-steppers={steppers.length > 0}>
 			<div class="layerview-toolbar">
 				<button class="layerview-btn" onclick={resetView} title="Frame the build platform" aria-label="Zoom to platform">
 					<Square size={16} />
@@ -2472,48 +2747,85 @@
 					</button>
 				{/if}
 				{#if toolbarFixed || (pointsLoaded && primaryRole !== '')}
-					<button
-						class="layerview-btn layerview-btn-mode"
-						onclick={cycleSpotSetMode}
-						disabled={!spotSetChoosable}
-						title={spotSetButtonTitle}
-						aria-label={`Mode of the laser spots: ${spotModeCaption || 'none'}. Click to change`}
-						data-spot-display-mode={spotDisplayMode ?? ''}
-						data-spot-set={spotSetMode}
-					>
-						{#if spotModeIcon === 'laseron-target'}
-							<Crosshair size={16} />
-						{:else if spotModeIcon === 'laseron-status'}
-							<CircleDot size={16} />
-						{:else if spotModeIcon === 'laseron-both'}
-							<Target size={16} />
-						{:else if spotModeIcon === 'power-target'}
-							<Zap size={16} />
-						{:else if spotModeIcon === 'power-status'}
-							<Thermometer size={16} />
-						{:else if spotModeIcon === 'power-both'}
-							<Flame size={16} />
-						{:else}
-							<SlidersHorizontal size={16} />
-						{/if}
-						<!-- All modes of the display mode lie on top of each other, the current one visible, so that the
-						     button is as wide as the longest -->
-						<span class="layerview-mode-caption">
-							<span>Mode</span>
-							{#if spotModeCaptions.length > 0}
-								<span class="layerview-mode-states" aria-hidden="true">
-									{#each spotModeCaptions as caption (caption)}
-										<span class:current={caption === spotModeCaption}>{caption}</span>
-									{/each}
-								</span>
+					<!-- The Mode button with the menu of the modes of the display mode below it -->
+					<div class="layerview-mode-wrap">
+						<button
+							class="layerview-btn layerview-btn-mode"
+							onclick={toggleSpotModeMenu}
+							disabled={spotModeEntries.length === 0}
+							title={spotSetButtonTitle}
+							aria-label={`Mode of the laser spots: ${spotModeCaption || 'none'}. Click to choose`}
+							aria-haspopup="menu"
+							aria-expanded={spotModeMenuOpen}
+							data-spot-display-mode={spotDisplayMode ?? ''}
+							data-spot-set={spotSetMode}
+						>
+							{#if spotModeIcon === 'laseron-target'}
+								<Crosshair size={16} />
+							{:else if spotModeIcon === 'laseron-status'}
+								<CircleDot size={16} />
+							{:else if spotModeIcon === 'laseron-both'}
+								<Target size={16} />
+							{:else if spotModeIcon === 'power-both'}
+								<Layers size={16} />
+							{:else if spotModeValueSetIcon}
+								<MdiIcon icon={spotModeValueSetIcon} class="h-4 w-4" />
+							{:else}
+								<SlidersHorizontal size={16} />
 							{/if}
-						</span>
-					</button>
+							<!-- All modes of the display mode lie on top of each other, the current one visible, so that the
+							     button is as wide as the longest -->
+							<span class="layerview-mode-caption">
+								<span>Mode</span>
+								{#if spotModeCaptions.length > 0}
+									<span class="layerview-mode-states" aria-hidden="true">
+										{#each spotModeCaptions as caption (caption)}
+											<span class:current={caption === spotModeCaption}>{caption}</span>
+										{/each}
+									</span>
+								{/if}
+							</span>
+						</button>
+						{#if spotModeMenuOpen && spotModeEntries.length > 0}
+							<div
+								class="layerview-mode-menu"
+								role="menu"
+								tabindex="-1"
+								aria-label="Modes of the laser spots"
+								onkeydown={onSpotModeMenuKeyDown}
+								{@attach focusSpotModeMenu}
+							>
+								{#each spotModeEntries as entry (entry.mode)}
+									<button
+										type="button"
+										class="layerview-mode-menu-item"
+										class:selected={entry.shown}
+										role="menuitemradio"
+										aria-checked={entry.shown}
+										aria-disabled={!entry.available}
+										title={entry.available ? '' : entry.hint}
+										onclick={() => chooseSpotSetMode(entry)}
+										data-spot-mode={entry.mode}
+									>
+										<span class="layerview-mode-menu-check">
+											{#if entry.shown}<Check size={12} />{/if}
+										</span>
+										<span class="layerview-mode-menu-text">
+											<span>{entry.caption}</span>
+											{#if !entry.available && entry.hint}
+												<span class="layerview-mode-menu-hint">{entry.hint}</span>
+											{/if}
+										</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
 			</div>
 
 			<!-- Platform label and loading indicator -->
-			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingSecondaryPoints || loadingOIEPoints || loadingOverlay || (overlayMode && !overlayAvailable)}
+			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay || (overlayMode && !overlayAvailable)}
 				<div class="layerview-status">
 					{#if labelCaption || labelIcon}
 						<div class="layerview-label">
@@ -2527,7 +2839,7 @@
 							<span>{overlayName} not available for this layer</span>
 						</div>
 					{/if}
-					{#if loadingLayer || loadingPoints || loadingSecondaryPoints || loadingOIEPoints || loadingOverlay}
+					{#if loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay}
 						<div class="layerview-label">
 							<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
 							<span>Loading layer data</span>
@@ -2567,6 +2879,53 @@
 					Layer {sliderValue} / {layerCount}
 				</button>
 			{/if}
+		{/if}
+
+		<!-- Steppers that the server declares, in the top right corner: below the layer badge and left of the layer
+		     slider where the view has them -->
+		{#if steppers.length > 0}
+			<div class="layerview-top-right" class:below-layer-info={layerCount > 0}>
+				{#each steppers as stepper (stepper.name)}
+					{@const pending = stepperBusy[stepper.name] === true}
+					{@const edited = stepperTexts[stepper.name] !== undefined}
+					<div
+						class="layerview-legend layerview-stepper"
+						role="group"
+						aria-label={stepper.caption}
+						aria-busy={pending}
+						title={stepper.enabled ? stepper.hint : (stepper.disabledHint || stepper.hint)}
+						data-stepper={stepper.name}
+					>
+						<div class="layerview-legend-header layerview-stepper-row">
+							<span class="layerview-legend-title">{stepper.caption}</span>
+							<NumericStepper
+								value={stepperTexts[stepper.name] ?? String(stepper.value)}
+								min={stepper.minimum}
+								max={stepper.maximum}
+								step={stepper.step}
+								disabled={!stepper.enabled}
+								ariaLabel={stepper.caption + (stepper.unit ? ` in ${stepper.unit}` : '')}
+								class="h-6 w-20 text-foreground"
+								oninput={(text: string) => onStepperInput(stepper, text)}
+								onvaluechange={(text: string) => commitStepperValue(stepper, text)}
+								onblur={() => commitStepperValue(stepper, stepperTexts[stepper.name] ?? String(stepper.value))}
+								onkeydown={(event: KeyboardEvent) => onStepperKeyDown(stepper, event)}
+							/>
+							{#if stepper.unit}
+								<span class="layerview-stepper-unit">{stepper.unit}</span>
+							{/if}
+						</div>
+						{#if pending}
+							<div class="layerview-legend-note layerview-stepper-note">
+								<LoaderCircle class="h-3 w-3 animate-spin" />
+								<span>Updating</span>
+							</div>
+						{:else if stepper.note && !edited}
+							<div class="layerview-legend-note">{stepper.note}</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
 		{/if}
 
 		{#if coordinateSystemVisible}
@@ -2672,13 +3031,18 @@
 						<dd>{hoverPoint.laseron !== 0 ? 'On' : 'Off'}</dd>
 					{/if}
 					{#if hoverPoint.power !== null}
-						<dt>Power (raw)</dt>
-						<dd>{Math.round(hoverPoint.power).toLocaleString()}</dd>
+						{#if pointPowerValueSet}
+							<dt>{pointPowerValueSet.valueCaption}</dt>
+							<dd>{formatRangeValue(hoverPoint.power).toLocaleString()}{pointPowerValueSet.unit ? ` ${pointPowerValueSet.unit}` : ''}</dd>
+						{:else}
+							<dt>Power (raw)</dt>
+							<dd>{Math.round(hoverPoint.power).toLocaleString()}</dd>
+						{/if}
 					{/if}
-					{#if hoverPoint.temperature !== null}
-						<dt>OIE sensor 1</dt>
-						<dd>{formatRangeValue(hoverPoint.temperature).toLocaleString()}</dd>
-					{/if}
+					{#each hoverPoint.values ?? [] as value (value.caption)}
+						<dt>{value.caption}</dt>
+						<dd>{value.text}</dd>
+					{/each}
 					<dt>Velocity</dt>
 					<dd>{Math.round(hoverPoint.velocity).toLocaleString()} mm/s</dd>
 				</dl>
@@ -2944,6 +3308,10 @@
 		z-index: 10;
 		pointer-events: none;
 	}
+	/* Leave room for the steppers below the layer-info badge as well */
+	.layerview-top-left.with-steppers {
+		max-width: calc(100% - 300px);
+	}
 	.layerview-toolbar {
 		display: flex;
 		flex-wrap: wrap;
@@ -3000,6 +3368,64 @@
 	}
 	.layerview-mode-states > span.current {
 		visibility: visible;
+	}
+	/* The Mode button and the menu of its modes, which opens below it. */
+	.layerview-mode-wrap {
+		position: relative;
+		display: flex;
+	}
+	.layerview-mode-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		min-width: 100%;
+		width: max-content;
+		max-width: 280px;
+		padding: 4px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.88);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+		z-index: 12;
+	}
+	.layerview-mode-menu-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		width: 100%;
+		padding: 5px 8px 5px 4px;
+		border: none;
+		border-radius: 3px;
+		background: transparent;
+		color: white;
+		font-size: 11px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.layerview-mode-menu-item:hover:not([aria-disabled='true']),
+	.layerview-mode-menu-item:focus-visible:not([aria-disabled='true']),
+	.layerview-mode-menu-item.selected {
+		background: rgba(255, 255, 255, 0.15);
+	}
+	/* A mode the layer cannot show is listed with the reason and cannot be chosen. */
+	.layerview-mode-menu-item[aria-disabled='true'] {
+		color: rgba(255, 255, 255, 0.5);
+		cursor: default;
+	}
+	.layerview-mode-menu-check {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		width: 12px;
+		height: 14px;
+	}
+	.layerview-mode-menu-text {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+	.layerview-mode-menu-hint {
+		font-size: 10px;
 	}
 	/* A button with nothing to act on stays in its place, grey and without a reaction. */
 	.layerview-btn:disabled {
@@ -3068,6 +3494,44 @@
 		border-radius: 3px;
 		background: rgba(255, 255, 255, 0.95);
 		color: #111111;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+	/* Steppers of the server in the top right corner; with a layer badge and a layer slider, below the badge and
+	   left of the slider. */
+	.layerview-top-right {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 4px;
+		z-index: 11;
+	}
+	.layerview-top-right.below-layer-info {
+		top: 40px;
+		right: 40px;
+	}
+	.layerview-stepper {
+		min-width: 200px;
+		max-width: 250px;
+	}
+	.layerview-stepper-row {
+		margin-bottom: 0;
+	}
+	.layerview-stepper-unit {
+		color: rgba(255, 255, 255, 0.75);
+	}
+	.layerview-stepper-note {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	/* The field of the stepper in the size of the legend fields. */
+	.layerview-stepper :global([data-numeric-stepper] input) {
+		padding: 0 6px;
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
 		text-align: right;
@@ -3250,6 +3714,16 @@
 	}
 	.layerview-legend-btn[aria-pressed='true'] {
 		background-color: var(--primary, #2563eb);
+	}
+	/* The switch that makes value spots follow the scale of the overlay. */
+	.layerview-legend-link span {
+		max-width: 70px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.layerview-legend-range input:read-only {
+		opacity: 0.7;
 	}
 	.layerview-legend-preset span {
 		max-width: 110px;

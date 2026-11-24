@@ -70,6 +70,11 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		// the same samples at the other positions (null UUID = none), both set by the UI plugin.
 		this.scatterplotpositions = "";
 		this.secondaryscatterplotuuid = Common.nullUUID ();
+		// Declarations of the UI plugin, each a JSON text or "": the value sets of the scatter plot points that the
+		// display mode Power can show as spots ({"valuesets": [...]}) and the numeric steppers in the top right
+		// corner of the view ({"steppers": [...]}). The layer view component documents their members.
+		this.scatterplotvaluesets = "";
+		this.steppers = "";
 		this.highlightpartuuid = Common.nullUUID ();
 		// Changes whenever parts of the build are disabled or re-enabled; the displayed layer is reloaded then.
 		this.partstateversion = 0;
@@ -120,6 +125,10 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.scatterplotpositions = Assert.StringValue (updateJSON.scatterplotpositions);
 		if (updateJSON.secondaryscatterplotuuid !== undefined)
 			this.secondaryscatterplotuuid = Assert.OptionalUUIDValue (updateJSON.secondaryscatterplotuuid);
+		if (updateJSON.scatterplotvaluesets !== undefined)
+			this.scatterplotvaluesets = Assert.StringValue (updateJSON.scatterplotvaluesets);
+		if (updateJSON.steppers !== undefined)
+			this.steppers = Assert.StringValue (updateJSON.steppers);
 		if (updateJSON.highlightpartuuid !== undefined)
 			this.highlightpartuuid = Assert.OptionalUUIDValue (updateJSON.highlightpartuuid);
 		if (updateJSON.partstateversion !== undefined)
@@ -194,6 +203,10 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.scatterplotpositions = attrs.scatterplotpositions;
 		if (attrs.secondaryscatterplotuuid !== undefined)
 			this.secondaryscatterplotuuid = attrs.secondaryscatterplotuuid;
+		if (attrs.scatterplotvaluesets !== undefined)
+			this.scatterplotvaluesets = String (attrs.scatterplotvaluesets);
+		if (attrs.steppers !== undefined)
+			this.steppers = String (attrs.steppers);
 		if (attrs.highlightpartuuid !== undefined)
 			this.highlightpartuuid = attrs.highlightpartuuid;
 		if (attrs.partstateversion !== undefined) {

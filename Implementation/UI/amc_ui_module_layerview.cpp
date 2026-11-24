@@ -176,6 +176,17 @@ void CUIModule_LayerViewPlatformItem::populateClientVariables(CParameterHandler*
 	// the other positions and has no data channels. Both are set by the UI plugin together with the scatter plot.
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_SCATTERPLOTPOSITIONS, "Positions of the scatterplot points", "");
 	pGroup->addNewUUIDParameter(AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID, "Scatterplot UUID of the other positions", AMCCommon::CUtils::createEmptyUUID());
+	// Value sets of the scatter plot, declared by the UI plugin as a JSON object {"valuesets": [...]}: values of
+	// the samples that the client can show as spots at the target or the status positions in its display mode
+	// Power, for example the laser power or a sensor value. A value set names the positions ("target" or "status"),
+	// a caption, the data channel and the column of the scatter plot that hold the values, and the look of the
+	// spots; the layer view client documents the members. Empty: the plugin declares none.
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_SCATTERPLOTVALUESETS, "Value sets of the scatterplot points (JSON)", "");
+	// Numeric steppers in the top right corner of the layer view, declared by the UI plugin as a JSON object
+	// {"steppers": [...]}: each has a name, a caption, a value with its minimum, maximum and step, and an event.
+	// A changed value triggers the event with the platform item as its sender and the event parameters "stepper"
+	// (the name) and "value"; the plugin then declares the steppers again with the value it accepted. Empty: none.
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_STEPPERS, "Numeric steppers of the layer view (JSON)", "");
 	pGroup->addNewIntParameter(AMC_API_KEY_UI_LABELVISIBLE, "Label is visible", m_LabelVisible.evaluateIntegerValue (pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELCAPTION, "Label caption", m_LabelCaption.evaluateStringValue(pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELICON, "Label icon", m_LabelIcon.evaluateStringValue(pStateMachineData));
@@ -446,6 +457,11 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	CUIExpression secondaryScatterplotUUIDExpression;
 	secondaryScatterplotUUIDExpression.setFixedValue(AMCCommon::CUtils::createEmptyUUID());
 	registerUUIDAttribute(AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID, secondaryScatterplotUUIDExpression);
+	// Value sets of the scatter plot and steppers of the view: JSON texts that the UI plugin sets, client variables as well.
+	CUIExpression pluginDeclarationExpression;
+	pluginDeclarationExpression.setFixedValue("");
+	registerStringAttribute(AMC_API_KEY_UI_SCATTERPLOTVALUESETS, pluginDeclarationExpression);
+	registerStringAttribute(AMC_API_KEY_UI_STEPPERS, pluginDeclarationExpression);
 
 	// Build and layer selection are per-session client variables of the platform item.
 	registerProviderAttribute(AMC_API_KEY_UI_BUILDUUID, eUIFrontendDefinitionAttributeType::atUUID, eUIFrontendDefinitionAttributeScope::asSession,

@@ -667,6 +667,8 @@ export default class AMCApplication extends Common.AMCObject {
 					overlaynote:        attrs.overlaynote        || "",
 					scatterplotpositions: attrs.scatterplotpositions || "",
 					secondaryscatterplotuuid: attrs.secondaryscatterplotuuid || "00000000-0000-0000-0000-000000000000",
+					scatterplotvaluesets: attrs.scatterplotvaluesets || "",
+					steppers:           attrs.steppers           || "",
 					sizex:              parseFloat(attrs.sizex)  || 0,
 					sizey:              parseFloat(attrs.sizey)  || 0,
 					originx:            parseFloat(attrs.originx) || 0,
@@ -2533,7 +2535,9 @@ export default class AMCApplication extends Common.AMCObject {
         return streamBase + '/stream/' + uuid;
     }
 
-    triggerUIEvent(eventname, senderuuid, eventValues, executionCallback, eventParameters) {
+    // failureCallback is called where the event did not run to its end: it was not sent because the previous event
+    // of its sender is still running, the request failed, or the server reported an error.
+    triggerUIEvent(eventname, senderuuid, eventValues, executionCallback, eventParameters, failureCallback) {
 
         let requestBody = {
             "eventname": eventname,
@@ -2551,6 +2555,8 @@ export default class AMCApplication extends Common.AMCObject {
         if (pendingKey) {
             if (this.PendingEventSenders.has (pendingKey)) {
                 console.info ("[events] ignoring " + eventname + ": the previous event of this sender is still running");
+                if (failureCallback)
+                    failureCallback ();
                 return;
             }
             this.PendingEventSenders.add (pendingKey);
@@ -2566,6 +2572,8 @@ export default class AMCApplication extends Common.AMCObject {
 			// A failed event carries no actions and must not run the success callback
 			if (resultHandleEvent.data.errorcode) {
 				this.showEventError(eventname, resultHandleEvent.data.errormessage);
+				if (failureCallback)
+					failureCallback ();
 				return;
 			}
 
@@ -2579,6 +2587,8 @@ export default class AMCApplication extends Common.AMCObject {
         .catch(err => {
             console.log(err);
             this.showEventError(eventname, this.extractErrorMessage(err));
+            if (failureCallback)
+                failureCallback ();
         })
         .finally(() => {
             if (pendingKey)

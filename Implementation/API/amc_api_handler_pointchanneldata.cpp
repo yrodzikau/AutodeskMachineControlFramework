@@ -65,24 +65,18 @@ PAPIResponse CAPIHandler_PointChannelData::handleRequest(const std::string& sURI
 	if (requestType != eAPIRequestType::rtGet)
 		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
 
-	// Extract parameters from URI: "api/pointchanneldata/{uuid}/{channelname}", or "api/pointchanneldata/{uuid}"
-	// for the names of the channels and their columns.
+	// Extract parameters from URI: "api/pointchanneldata/{uuid}/{channelname}"
 	auto sParameterString = sURI.substr(getBaseURI().length());
-	if ((sParameterString.length() < 37) || (sParameterString[0] != '/'))
+	if ((sParameterString.length() < 39) || (sParameterString[0] != '/'))
 		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
 
 	std::string sScatterplotUUID = AMCCommon::CUtils::normalizeUUIDString(sParameterString.substr(1, 36));
-	bool bListChannels = (sParameterString.length() == 37) || ((sParameterString.length() == 38) && (sParameterString[37] == '/'));
+	if (sParameterString[37] != '/')
+		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
 
-	std::string sChannelName;
-	if (!bListChannels) {
-		if (sParameterString[37] != '/')
-			throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
-
-		sChannelName = sParameterString.substr(38);
-		if (sChannelName.empty())
-			throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
-	}
+	std::string sChannelName = sParameterString.substr(38);
+	if (sChannelName.empty())
+		throw ELibMCInterfaceException(LIBMC_ERROR_INVALIDPARAM);
 
 	auto pToolpathHandler = m_pSystemState->getToolpathHandlerInstance();
 	auto pScatterplot = pToolpathHandler->restoreScatterplot(sScatterplotUUID, false);
@@ -93,21 +87,6 @@ PAPIResponse CAPIHandler_PointChannelData::handleRequest(const std::string& sURI
 	writeJSONHeader(writer, AMC_API_PROTOCOL_STATUS);
 
 	auto& channelEntries = pScatterplot->getChannelEntries();
-
-	// "channels": { channel name: [column names] }, so that a client can tell which channels a scatterplot has
-	// before it downloads one of them.
-	if (bListChannels) {
-		CJSONWriterObject channelsObject(writer);
-		for (const auto& channel : channelEntries) {
-			CJSONWriterArray columnsArray(writer);
-			for (const auto& column : channel.second)
-				columnsArray.addString(column.first);
-			channelsObject.addArray(channel.first, columnsArray);
-		}
-		writer.addObject("channels", channelsObject);
-
-		return std::make_shared<CAPIStringResponse>(AMC_API_HTTP_SUCCESS, AMC_API_CONTENTTYPE, writer.saveToString());
-	}
 	auto channelIt = channelEntries.find(sChannelName);
 	if (channelIt != channelEntries.end()) {
 		auto& columnEntries = channelIt->second;

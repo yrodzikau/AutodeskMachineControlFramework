@@ -1197,65 +1197,6 @@
       }
     },
 
-    "/pointchanneldata/{scatterplotUUID}": {
-      "get": {
-        "tags": [
-          "data"
-        ],
-        "summary": "List the data channels of a scatterplot and their columns",
-        "operationId": "getPointChannelList",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "scatterplotUUID",
-            "in": "path",
-            "description": "Scatterplot UUID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation: the member channels maps every channel name to the names of its columns",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "channels": {
-                      "type": "object",
-                      "additionalProperties": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/pointchanneldata/{scatterplotUUID}/{channelName}": {
       "get": {
         "tags": [

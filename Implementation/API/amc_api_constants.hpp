@@ -339,6 +339,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AMC_API_KEY_UI_OVERLAYNOTE "overlaynote"
 #define AMC_API_KEY_UI_SCATTERPLOTPOSITIONS "scatterplotpositions"
 #define AMC_API_KEY_UI_SECONDARYSCATTERPLOTUUID "secondaryscatterplotuuid"
+#define AMC_API_KEY_UI_SCATTERPLOTVALUESETS "scatterplotvaluesets"
+#define AMC_API_KEY_UI_STEPPERS "steppers"
 #define AMC_API_KEY_UI_HEADLINE "headline"
 #define AMC_API_KEY_UI_TITLE "title"
 #define AMC_API_KEY_UI_SUBTITLE "subtitle"

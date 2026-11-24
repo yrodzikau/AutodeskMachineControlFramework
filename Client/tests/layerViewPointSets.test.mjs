@@ -283,6 +283,32 @@ test ("the value of a point is read from the channel that is asked for", () => {
 	assert.equal (viewer.getPointChannelValue ("sensor1", 3, "nosuchchannel"), null);
 });
 
+test ("a data channel can not take the name of a member of the viewer", () => {
+	const { viewer, power } = createViewer ();
+	const columnOf = (channel) => viewer.getPointChannelValue ("power", 2, channel);
+
+	// The channel names come from the server; a channel is a property of the viewer with its name.
+	for (const name of ["glInstance", "layerPointsArray", "pointSetStyles", "loadPoints", "constructor", "toString", "__proto__", ""]) {
+		const member = viewer[name];
+		assert.equal (viewer.loadPointsChannelData (name, "power", power), false, name);
+		assert.equal (viewer[name], member, name);
+		assert.equal (columnOf (name), null, name);
+		assert.equal (viewer.getPointChannelRange (name, "power", false), null, name);
+		viewer.clearPointsChannelData (name);
+		assert.equal (viewer[name], member, name);
+	}
+	assert.equal (typeof viewer.loadPoints, "function");
+
+	// Any other name is a channel, which can be loaded again and cleared.
+	assert.equal (viewer.loadPointsChannelData ("sensors", "power", power), true);
+	assert.equal (columnOf ("sensors"), 102);
+	assert.equal (viewer.loadPointsChannelData ("sensors", "other", power), true);
+	viewer.clearPointsChannelData ("sensors");
+	assert.equal (columnOf ("sensors"), null);
+	assert.equal (viewer.loadPointsChannelData ("sensors", "power", power), true);
+	assert.equal (columnOf ("laser"), 102);
+});
+
 test ("the distance between consecutive points is measured along the path", () => {
 	const line = new Float32Array ([0, 0, 1, 0, 2, 0, 3, 0, 13, 0, 14, 0, 15, 0, 16, 0]);
 
