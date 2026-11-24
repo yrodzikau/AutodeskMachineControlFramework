@@ -517,8 +517,15 @@ class WebGLLocalizedPointsElement extends WebGLElement {
 }
 
 
-// Color of a point: uColorSource 0 takes uFillColor for all points, 1 the vertex color pointColor, 2 one of two state
-// colors by the vertex attribute pointState (0: uStateColor0, 1: uStateColor1).
+// The shaders of the screen points have variants, chosen by defines, so that an element only pays for what it draws
+// and the points without any of them are drawn by the plain shader:
+// - POINT_VALUES: the color of a point is that of its vertex attribute pointValue in the color map uColorTable, which
+//   spans the values uValueMin to uValueMax;
+// - POINT_STRIDE (needs gl_VertexID, so WebGL 2): with uStride greater than 1 only every uStride-th point is drawn, the
+//   others are moved behind the far plane, and a drawn point is as opaque as uStride points on top of each other;
+// - POINT_GLOW: spots of light, see SCREENPOINTS_FRAGMENTSHADER.
+// Without POINT_VALUES, uColorSource 0 takes uFillColor for all points, 1 the vertex color pointColor, 2 one of two
+// state colors by the vertex attribute pointState (0: uStateColor0, 1: uStateColor1).
 const SCREENPOINTS_VERTEXSHADER = `
 	uniform float uPointSize;
 	uniform float uColorSource;
@@ -527,37 +534,88 @@ const SCREENPOINTS_VERTEXSHADER = `
 	uniform vec3 uStateColor1;
 	attribute vec3 pointColor;
 	attribute float pointState;
+	#ifdef POINT_VALUES
+	uniform sampler2D uColorTable;
+	uniform float uValueMin;
+	uniform float uValueMax;
+	attribute float pointValue;
+	#endif
+	#ifdef POINT_STRIDE
+	uniform int uStride;
+	#endif
 	varying vec3 vColor;
 	void main() {
+	#ifdef POINT_VALUES
+		float span = uValueMax - uValueMin;
+		float t = (span != 0.0) ? clamp((pointValue - uValueMin) / span, 0.0, 1.0) : ((pointValue >= uValueMax) ? 1.0 : 0.0);
+		vColor = texture2D(uColorTable, vec2(t, 0.5)).rgb;
+	#else
 		if (uColorSource > 1.5)
 			vColor = (pointState > 0.5) ? uStateColor1 : uStateColor0;
 		else if (uColorSource > 0.5)
 			vColor = pointColor;
 		else
 			vColor = uFillColor;
+	#endif
 		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 		gl_PointSize = uPointSize;
+	#ifdef POINT_STRIDE
+		if ((uStride > 1) && ((gl_VertexID % uStride) != 0)) {
+			gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+			gl_PointSize = 1.0;
+		}
+	#endif
 	}
 `;
 
 // Round points with a one pixel wide smooth edge: filled discs, or circles (rings uRingWidth pixels wide) if
-// uRingWidth is greater than 0.
+// uRingWidth is greater than 0. Densely recorded points lie many to a pixel, and their half transparent edges add up
+// to an opaque trail; a point that stands for uStride points (POINT_STRIDE) therefore takes the opacity that these
+// would have had together, 1 - (1 - alpha) ^ uStride, so that skipping points leaves the trail as it was.
+// POINT_GLOW draws a spot of light instead: opaque in its centre and fading out towards
+// its edge like a Gaussian. Spots of light lie deeper the farther a fragment is from their centre (by up to uGlowDepth
+// at the edge), and a depth pass of the same points comes before their color pass: where many of them overlap, as
+// along a densely recorded path, a pixel only takes the color of the spot nearest to it instead of piling all of them
+// up into an opaque band, so the path glows. Writing the depth of a fragment costs time on every point (about half
+// as much again per frame on the bench GPU), which is why only the spots of light have it in their shader.
 const SCREENPOINTS_FRAGMENTSHADER = `
 	uniform float uPointSize;
 	uniform float uRingWidth;
+	#ifdef POINT_GLOW
+	uniform float uGlowDepth;
+	#endif
+	#ifdef POINT_STRIDE
+	uniform int uStride;
+	#endif
 	varying vec3 vColor;
 	void main() {
 		float size = max(uPointSize, 1.0);
 		float radius = 0.5 * size;
 		float distance = length(gl_PointCoord - 0.5) * size;
 		float alpha = 1.0 - smoothstep(radius - 1.0, radius, distance);
+	#ifdef POINT_GLOW
+		float relative = min(distance / radius, 1.0);
+		alpha *= exp(-3.0 * relative * relative);
+	#else
 		if (uRingWidth > 0.0)
 			alpha *= smoothstep(radius - uRingWidth - 1.0, radius - uRingWidth, distance);
+	#ifdef POINT_STRIDE
+		if (uStride > 1)
+			alpha = 1.0 - pow(1.0 - alpha, float(uStride));
+	#endif
+	#endif
 		if (alpha <= 0.0)
 			discard;
 		gl_FragColor = vec4(vColor, alpha);
+	#ifdef POINT_GLOW
+		gl_FragDepth = gl_FragCoord.z + relative * uGlowDepth;
+	#endif
 	}
 `;
+
+// Depth (0..1 of the depth range of the camera) a spot of light falls back towards its edge, see
+// SCREENPOINTS_FRAGMENTSHADER. Small enough to keep it above the toolpath of the layer view, 0.006 below it.
+const SCREENPOINTS_GLOWDEPTH = 0.002;
 
 const SCREENPOINTS_GRIDRESOLUTION = 256;
 
@@ -569,26 +627,55 @@ function colorToVector3 (color) {
 	return new THREE.Vector3 (((color >> 16) & 255) / 255.0, ((color >> 8) & 255) / 255.0, (color & 255) / 255.0);
 }
 
+// Lookup textures of the color maps of point values, by the key the caller gives with the table (for example the name
+// of the color map and whether it is inverted). A color map has few variants, so the textures are kept for the page.
+const SCREENPOINTS_COLORTABLES = new Map ();
+
+function screenPointsColorTableTexture (key, table) {
+	let texture = SCREENPOINTS_COLORTABLES.get (key);
+	if (texture)
+		return texture;
+	texture = new THREE.DataTexture (table, table.length / 4, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+	texture.magFilter = THREE.LinearFilter;
+	texture.minFilter = THREE.LinearFilter;
+	texture.wrapS = THREE.ClampToEdgeWrapping;
+	texture.wrapT = THREE.ClampToEdgeWrapping;
+	texture.generateMipmaps = false;
+	texture.colorSpace = THREE.NoColorSpace;
+	texture.needsUpdate = true;
+	SCREENPOINTS_COLORTABLES.set (key, texture);
+	return texture;
+}
+
 // Points with a constant on-screen size in pixels, independent of the element scale, drawn as filled discs.
 // Colours are 0xRRGGBB values written to the framebuffer unchanged: the vertex colors if given, pointsColor otherwise.
 // pointStates (optional, one value per point, 0 or 1) with spotStyle.stateColors colors every point by its state
-// instead. spotStyle (optional, see setSpotStyle): { ringWidth: pixels, 0 draws filled discs and more draws circles
-// of that line width; stateColors: [color of state 0, color of state 1] }.
+// instead; pointValues (optional, one number per point) with spotStyle.colorTable colors every point by its value
+// in a color map. spotStyle (optional, see setSpotStyle): { ringWidth: pixels, 0 draws filled discs and more draws
+// circles of that line width; glow: true draws spots of light instead; stateColors: [color of state 0, color of
+// state 1]; colorTable: RGBA bytes of the color map from its lowest to its highest value (see colorMapLookupTable)
+// with colorTableKey naming it; valueMin and valueMax: the values the color map spans; pickRadius: pixels around a
+// point centre that pick it, null for half its size }. strideSupported: the context is WebGL 2, so setStride works.
 class WebGLScreenPointsElement extends WebGLElement {
 
-	constructor(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates) {
+	constructor(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates, pointValues, strideSupported) {
 		super();
 
 		this.pointsData = pointsData;
 		this.pointCount = Math.floor (pointsData.length / 2);
 		this.drawCount = this.pointCount;
 		this.pointPixelSize = pointPixelSize;
+		this.pickRadius = null;
+		this.strideSupported = strideSupported === true;
+		this.glow = false;
 
-		const hasStates = !!pointStates && (pointStates.length >= this.pointCount);
-		const hasVertexColors = !hasStates && !!vertexcolors;
+		const hasValues = !!pointValues && (pointValues.length >= this.pointCount);
+		const hasStates = !hasValues && !!pointStates && (pointStates.length >= this.pointCount);
+		const hasVertexColors = !hasValues && !hasStates && !!vertexcolors;
 		const positions = new Float32Array (this.pointCount * 3);
 		const colors = hasVertexColors ? new Uint8Array (this.pointCount * 3) : null;
 		const states = hasStates ? new Uint8Array (this.pointCount) : null;
+		const values = hasValues ? new Float32Array (this.pointCount) : null;
 		for (let i = 0; i < this.pointCount; i++) {
 			positions[i * 3] = pointsData[i * 2];
 			positions[i * 3 + 1] = pointsData[i * 2 + 1];
@@ -602,6 +689,8 @@ class WebGLScreenPointsElement extends WebGLElement {
 			}
 			if (states)
 				states[i] = (pointStates[i] !== 0) ? 1 : 0;
+			if (values)
+				values[i] = pointValues[i];
 		}
 
 		this.geometry = new THREE.BufferGeometry();
@@ -610,49 +699,163 @@ class WebGLScreenPointsElement extends WebGLElement {
 			this.geometry.setAttribute ('pointColor', new THREE.BufferAttribute (colors, 3, true));
 		if (states)
 			this.geometry.setAttribute ('pointState', new THREE.BufferAttribute (states, 1));
+		if (values)
+			this.geometry.setAttribute ('pointValue', new THREE.BufferAttribute (values, 1));
 		this.geometry.computeBoundingSphere ();
 		for (let start = 0; start < this.pointCount; start += SCREENPOINTS_DRAWGROUPSIZE)
 			this.geometry.addGroup (start, Math.min (SCREENPOINTS_DRAWGROUPSIZE, this.pointCount - start), 0);
 
+		// The variants of the shaders this element needs, see SCREENPOINTS_VERTEXSHADER.
+		this.defines = {};
+		if (hasValues)
+			this.defines.POINT_VALUES = "";
+		if (this.strideSupported)
+			this.defines.POINT_STRIDE = "";
+
+		// One set of uniforms for all passes of the element.
+		this.uniforms = {
+			uPointSize: { value: pointPixelSize },
+			uColorSource: { value: hasStates ? 2.0 : (hasVertexColors ? 1.0 : 0.0) },
+			uFillColor: { value: colorToVector3 (pointsColor) },
+			uStateColor0: { value: colorToVector3 (pointsColor) },
+			uStateColor1: { value: colorToVector3 (pointsColor) },
+			uColorTable: { value: null },
+			uValueMin: { value: 0.0 },
+			uValueMax: { value: 1.0 },
+			uRingWidth: { value: 0.0 },
+			uGlowDepth: { value: SCREENPOINTS_GLOWDEPTH },
+			uStride: { value: 1 }
+		};
 		this.material = new THREE.ShaderMaterial ({
-			uniforms: {
-				uPointSize: { value: pointPixelSize },
-				uColorSource: { value: hasStates ? 2.0 : (hasVertexColors ? 1.0 : 0.0) },
-				uFillColor: { value: colorToVector3 (pointsColor) },
-				uStateColor0: { value: colorToVector3 (pointsColor) },
-				uStateColor1: { value: colorToVector3 (pointsColor) },
-				uRingWidth: { value: 0.0 }
-			},
+			uniforms: this.uniforms,
+			defines: this.defines,
 			vertexShader: SCREENPOINTS_VERTEXSHADER,
 			fragmentShader: SCREENPOINTS_FRAGMENTSHADER,
 			transparent: true,
 			depthWrite: false
 		});
-		if (spotStyle)
-			this.setSpotStyle (spotStyle);
 
 		// A material array makes three.js issue one draw call per geometry group.
-		this.glelement = new THREE.Points (this.geometry, [this.material]);
-		this.glelement.frustumCulled = false;
+		this.colorPoints = new THREE.Points (this.geometry, [this.material]);
+		this.colorPoints.frustumCulled = false;
+		this.glelement = new THREE.Group ();
+		this.glelement.add (this.colorPoints);
+		// Passes of the spots of light, see setGlow.
+		this.depthPoints = null;
+		this.glowPoints = null;
+
+		if (spotStyle)
+			this.setSpotStyle (spotStyle);
 
 		this.buildSpatialGrid ();
 	}
 
 	setPointPixelSize (pointPixelSize) {
 		this.pointPixelSize = pointPixelSize;
-		this.material.uniforms.uPointSize.value = pointPixelSize;
+		this.uniforms.uPointSize.value = pointPixelSize;
 	}
 
-	// Ring width in pixels (0: filled discs) and the two state colors, see the constructor. Only changes uniforms.
+	// Draws only every stride-th point (1: all of them); needs WebGL 2 and draws all points without it. Picking
+	// still finds all points.
+	setStride (stride) {
+		this.uniforms.uStride.value = this.strideSupported ? Math.max (Math.floor (Number (stride) || 1), 1) : 1;
+	}
+
+	getStride () {
+		return this.uniforms.uStride.value;
+	}
+
+	// Spots of light (see SCREENPOINTS_FRAGMENTSHADER) have two passes of their own in the place of the color pass of
+	// the other looks: one that writes only the depth, then one for the color, both with the uniforms of the element.
+	// The depth pass is transparent like the color pass, so that three.js draws it among the transparent elements
+	// in the place of these points and not before the elements below them; it comes first because three.js draws
+	// objects of the same depth in the order they were created. Both are created when the element first draws spots
+	// of light, so the other elements do not carry them.
+	setGlow (glow) {
+		const enabled = glow === true;
+		if (enabled === this.glow)
+			return;
+		this.glow = enabled;
+
+		if (enabled && !this.glowPoints) {
+			const settings = {
+				uniforms: this.uniforms,
+				defines: Object.assign ({ POINT_GLOW: "" }, this.defines),
+				vertexShader: SCREENPOINTS_VERTEXSHADER,
+				fragmentShader: SCREENPOINTS_FRAGMENTSHADER,
+				transparent: true
+			};
+			this.depthPoints = new THREE.Points (this.geometry, [new THREE.ShaderMaterial (Object.assign ({ colorWrite: false, depthWrite: true }, settings))]);
+			this.glowPoints = new THREE.Points (this.geometry, [new THREE.ShaderMaterial (Object.assign ({ depthWrite: false }, settings))]);
+			for (const points of [this.depthPoints, this.glowPoints]) {
+				points.frustumCulled = false;
+				this.glelement.add (points);
+			}
+		}
+
+		this.colorPoints.visible = !enabled;
+		if (this.glowPoints) {
+			this.depthPoints.visible = enabled;
+			this.glowPoints.visible = enabled;
+		}
+	}
+
+	// Upper bound of the number of points inside a rectangle of the screen (world coordinates of the element), counted
+	// by the cells of the spatial grid that the rectangle touches.
+	countPointsInScreenRectangle (left, top, right, bottom) {
+		if ((this.pointCount <= 0) || !(this.scale.x !== 0) || !(this.scale.y !== 0))
+			return 0;
+		const cosine = Math.cos (-this.rotationZ);
+		const sine = Math.sin (-this.rotationZ);
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+		for (const [worldX, worldY] of [[left, top], [right, top], [left, bottom], [right, bottom]]) {
+			const dx = worldX - this.position.x;
+			const dy = worldY - this.position.y;
+			const localX = (dx * cosine - dy * sine) / this.scale.x;
+			const localY = (dx * sine + dy * cosine) / this.scale.y;
+			minX = Math.min (minX, localX);
+			maxX = Math.max (maxX, localX);
+			minY = Math.min (minY, localY);
+			maxY = Math.max (maxY, localY);
+		}
+		const cellX1 = Math.max (Math.floor ((minX - this.gridMinX) / this.gridCellSize), 0);
+		const cellX2 = Math.min (Math.floor ((maxX - this.gridMinX) / this.gridCellSize), this.gridCountX - 1);
+		const cellY1 = Math.max (Math.floor ((minY - this.gridMinY) / this.gridCellSize), 0);
+		const cellY2 = Math.min (Math.floor ((maxY - this.gridMinY) / this.gridCellSize), this.gridCountY - 1);
+		let count = 0;
+		for (let cellY = cellY1; cellY <= cellY2; cellY++) {
+			const rowStart = cellY * this.gridCountX;
+			if (cellX2 >= cellX1)
+				count += this.gridCellStart[rowStart + cellX2 + 1] - this.gridCellStart[rowStart + cellX1];
+		}
+		return count;
+	}
+
+	// Ring width in pixels (0: filled discs), glow, the two state colors, the color map and its value range, see the
+	// constructor. Only changes uniforms and, for glow, the passes that are drawn.
 	setSpotStyle (spotStyle) {
 		if (!spotStyle)
 			return;
-		const uniforms = this.material.uniforms;
+		const uniforms = this.uniforms;
 		if (spotStyle.ringWidth !== undefined)
 			uniforms.uRingWidth.value = Math.max (Number (spotStyle.ringWidth) || 0.0, 0.0);
+		if (spotStyle.glow !== undefined)
+			this.setGlow (spotStyle.glow === true);
 		if (Array.isArray (spotStyle.stateColors) && (spotStyle.stateColors.length === 2)) {
 			uniforms.uStateColor0.value = colorToVector3 (spotStyle.stateColors[0]);
 			uniforms.uStateColor1.value = colorToVector3 (spotStyle.stateColors[1]);
+		}
+		if (spotStyle.colorTable && (spotStyle.colorTable.length >= 4) && spotStyle.colorTableKey)
+			uniforms.uColorTable.value = screenPointsColorTableTexture (String (spotStyle.colorTableKey), spotStyle.colorTable);
+		const valueMin = Number (spotStyle.valueMin);
+		const valueMax = Number (spotStyle.valueMax);
+		if (Number.isFinite (valueMin) && Number.isFinite (valueMax)) {
+			uniforms.uValueMin.value = valueMin;
+			uniforms.uValueMax.value = valueMax;
+		}
+		if (spotStyle.pickRadius !== undefined) {
+			const pickRadius = Number (spotStyle.pickRadius);
+			this.pickRadius = ((spotStyle.pickRadius !== null) && Number.isFinite (pickRadius)) ? Math.max (pickRadius, 0.0) : null;
 		}
 	}
 
@@ -704,7 +907,7 @@ class WebGLScreenPointsElement extends WebGLElement {
 	}
 
 	// Returns the index of the drawn point closest to the world (screen) position within
-	// pixelTolerance plus the point radius, or -1.
+	// pixelTolerance plus the pick radius (the point radius unless the spot style sets it), or -1.
 	findNearestPoint (worldX, worldY, pixelTolerance) {
 		const hit = this.findNearestPointWithDistance (worldX, worldY, pixelTolerance);
 		return hit ? hit.index : -1;
@@ -722,7 +925,8 @@ class WebGLScreenPointsElement extends WebGLElement {
 		const localX = (dx * cosine - dy * sine) / this.scale.x;
 		const localY = (dx * sine + dy * cosine) / this.scale.y;
 
-		const toleranceLocal = (pixelTolerance + this.pointPixelSize * 0.5) / Math.abs (this.scale.x);
+		const pickRadius = (this.pickRadius !== null) ? this.pickRadius : this.pointPixelSize * 0.5;
+		const toleranceLocal = (pixelTolerance + pickRadius) / Math.abs (this.scale.x);
 		let bestDistanceSq = toleranceLocal * toleranceLocal;
 		let bestIndex = -1;
 
@@ -1704,13 +1908,14 @@ class WebGLImpl {
         return pointsElement;
     }
 
-    add2DScreenPointsGeometry(identifier, pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates) {
+    add2DScreenPointsGeometry(identifier, pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates, pointValues) {
         if (!identifier)
             return;
 
 		this.removeElement (identifier);
 
-        let pointsElement = new WebGLScreenPointsElement(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates);
+        let pointsElement = new WebGLScreenPointsElement(pointsData, zValue, pointPixelSize, pointsColor, vertexcolors, spotStyle, pointStates, pointValues,
+            this.supportsPointStride());
 
         this.addElement(identifier, pointsElement);
 
@@ -1719,6 +1924,29 @@ class WebGLImpl {
 
     getPixelRatio() {
         return this.renderer ? this.renderer.getPixelRatio() : 1.0;
+    }
+
+    // Screen points can skip points in their vertex shader (setStride), which needs WebGL 2.
+    supportsPointStride() {
+        if (this.pointStrideSupported === undefined) {
+            const context = this.renderer ? this.renderer.getContext() : null;
+            if (!context)
+                return false;
+            this.pointStrideSupported = (typeof WebGL2RenderingContext !== "undefined") && (context instanceof WebGL2RenderingContext);
+        }
+        return this.pointStrideSupported;
+    }
+
+    // Largest point diameter the graphics card draws, in device pixels.
+    getMaxPointPixelSize() {
+        if (this.maxPointPixelSize === undefined) {
+            const context = this.renderer ? this.renderer.getContext() : null;
+            if (!context)
+                return 64.0;
+            const range = context.getParameter(context.ALIASED_POINT_SIZE_RANGE);
+            this.maxPointPixelSize = (range && (range.length > 1) && (range[1] > 0)) ? range[1] : 64.0;
+        }
+        return this.maxPointPixelSize;
     }
 
     add2DLocalizedPointsGeometry(identifier, pointsData, zValue, pointsRadius, pointsColor, vertexcolors, originx, originy, quadsizex, quadsizey, quadcountx, quadcounty) {

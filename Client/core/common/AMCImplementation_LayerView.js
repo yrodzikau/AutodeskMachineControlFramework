@@ -60,15 +60,37 @@ const LAYERVIEW_COLORMAPMODES = ["time", "power", "velocity"];
 const LAYERVIEW_UNIFORMPOINTCOLOR = 0x00d0ff;
 // Recorded points with a spot style (see setPointSetStyles): diameter limits in CSS pixels, and the line width of
 // spots without fill in CSS pixels as a fraction of the diameter within limits. Spots without fill are drawn above
-// filled ones, the secondary positions above the primary ones.
+// filled ones, spots of light below them, the secondary positions above the primary ones.
 const LAYERVIEW_SPOTSIZE_MIN = 1.0;
 const LAYERVIEW_SPOTSIZE_MAX = 64.0;
+// Recorded points are sampled far more densely than the screen can show (a sample every 10 micrometers of path), so
+// where consecutive points lie closer on the screen than their look needs, only every 2nd, 4th, 8th ... of them is
+// drawn: a power of two, so that the points of a coarser step are among those of the finer one and nothing jumps
+// while zooming. How far apart the drawn points may lie depends on the look (see computePointSetMaxSpacing): a
+// fraction of the diameter for discs (LAYERVIEW_DISCSPACING_FRACTION) and for spots of light (LAYERVIEW_GLOWTHINNING),
+// the line width for circles. The distance of consecutive points is the one that LAYERVIEW_POINTSPACING_QUANTILE of
+// the consecutive samples stay below (see computePointSpacing), so that the faster stretches of a layer, like the
+// jumps, are not thinned out into dots.
+const LAYERVIEW_POINTSPACING_QUANTILE = 0.98;
+const LAYERVIEW_POINTSPACING_SAMPLES = 4096;
+const LAYERVIEW_POINTSTRIDE_MAX = 4096;
+const LAYERVIEW_DISCSPACING_FRACTION = 1.0 / 3.0;
+// Spots of light (look "glow") fade out towards their edge and may be much larger. Where they overlap, only the one
+// nearest to a pixel shows. If one pass over the drawn points would still shade more fragments than
+// LAYERVIEW_GLOWFRAGMENTBUDGET (each point covers its square of pixels; with the depth pass there are two), they are
+// drawn smaller at that zoom: large spots on millions of points would stall the GPU for seconds and make the browser
+// drop the WebGL context. Spots of light are picked within LAYERVIEW_GLOWPICKRADIUS of their centre.
+const LAYERVIEW_GLOWSIZE_MAX = 512.0;
+const LAYERVIEW_GLOWTHINNING = 16.0;
+const LAYERVIEW_GLOWFRAGMENTBUDGET = 256.0 * 1024.0 * 1024.0;
+const LAYERVIEW_GLOWPICKRADIUS = 16.0;
 const LAYERVIEW_SPOTOUTLINE_FRACTION = 1.0 / 6.0;
 const LAYERVIEW_SPOTOUTLINE_MIN = 1.0;
 const LAYERVIEW_SPOTOUTLINE_MAX = 2.0;
 const LAYERVIEW_POINTS_Z = 61.0;
 const LAYERVIEW_POINTS_SECONDARY_DZ = 0.2;
 const LAYERVIEW_POINTS_UNFILLED_DZ = 0.4;
+const LAYERVIEW_POINTS_GLOW_DZ = -0.4;
 const LAYERVIEW_LASERONCOLOR = 0xE53935;
 const LAYERVIEW_DEFAULTHATCHCOLOR = 0xCC88CC;
 const LAYERVIEW_DEFAULTCONTOURCOLOR = 0x00AA88;
@@ -210,6 +232,14 @@ class LayerViewImpl {
 		// Spot style of the points and of the secondary points, see setPointSetStyles: null draws the points as
 		// filled discs that grow with the zoom (setPointSizeCalibration) and hides the secondary points.
 		this.pointSetStyles = { primary: null, secondary: null };
+		// Diameter in CSS pixels the points and the secondary points are drawn with at the current zoom (null if not
+		// drawn), see getPointSetPixelSize.
+		this.pointSetPixelSizes = { primary: null, secondary: null };
+		// Distance between consecutive drawn points of both sets in their own units, see computePointSpacing.
+		this.pointSetSpacings = { primary: 0.0, secondary: 0.0 };
+		// True while layerPointsColorArray does not hold the colors of the display mode, because the points are drawn
+		// with a spot style and do not use them, see updateColors.
+		this.pointColorsOutdated = false;
 
 		// Overlay (scalar field over the platform, for example a heat map): its own color map and value range,
 		// applied to the overlay element whenever it is (re)loaded, see SetOverlayImage.
@@ -407,15 +437,22 @@ class LayerViewImpl {
             this.buildHighlightGeometry ();
         this.positionHighlightGeometry ();
 
-        for (const [identifier, style] of [["layerdata_points", this.pointSetStyles.primary], ["layerdata_secondarypoints", this.pointSetStyles.secondary]]) {
+        for (const [identifier, style, set] of [["layerdata_points", this.pointSetStyles.primary, "primary"], ["layerdata_secondarypoints", this.pointSetStyles.secondary, "secondary"]]) {
             var layerpointsgeometry = this.glInstance.findElement(identifier);
+            this.pointSetPixelSizes[set] = null;
             if (layerpointsgeometry) {
-                if (typeof layerpointsgeometry.setPointPixelSize === "function")
-                    layerpointsgeometry.setPointPixelSize(this.computePointSetPixelSize(style) * this.glInstance.getPixelRatio());
-                // Spots without fill are lifted above the filled ones, so their circles stay visible.
-                layerpointsgeometry.setPosition(toolpathPositionX, toolpathPositionY, (style && !style.fill) ? LAYERVIEW_POINTS_UNFILLED_DZ : 0.0);
+                // Spots without fill are lifted above the filled ones, so their circles stay visible; spots of light
+                // lie below both.
+                layerpointsgeometry.setPosition(toolpathPositionX, toolpathPositionY, LayerViewImpl.computePointSetDepthOffset(style));
                 layerpointsgeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
                 layerpointsgeometry.setRotationZ(-this.transformAngleDegrees * Math.PI / 180.0);
+                if (typeof layerpointsgeometry.setPointPixelSize === "function") {
+                    const fit = this.fitPointSet(layerpointsgeometry, style, this.pointSetSpacings[set]);
+                    layerpointsgeometry.setPointPixelSize(fit.size * this.glInstance.getPixelRatio());
+                    if (typeof layerpointsgeometry.setStride === "function")
+                        layerpointsgeometry.setStride(fit.stride);
+                    this.pointSetPixelSizes[set] = fit.size;
+                }
             }
         }
 
@@ -844,17 +881,25 @@ class LayerViewImpl {
 		this.layerPointsColorArray = colors;
 	}
 
+	// Called when the display mode, its color map or its value range have changed. Points drawn with a spot style
+	// take their colors from the style, so there is nothing to compute or to rebuild for them.
 	refreshPointColors ()
 	{
 		if ((this.layerPointsMode !== "toolpath") || !this.layerPointsArray)
 			return;
 		this.updateColors ();
-		this.updateLayerPoints ();
+		if (!this.pointColorsOutdated)
+			this.updateLayerPoints ();
 	}
 
+	// Colors of the points in the display mode. They are left out while the points are drawn with a spot style:
+	// updateLayerPoints computes them when the points are drawn without one again.
 	updateColors ()
 	{
 		this.layerPointsColorArray = null;
+		this.pointColorsOutdated = !!this.pointSetStyles.primary;
+		if (this.pointColorsOutdated)
+			return;
 
 		if (this.layerPointsMode === "toolpath") {
 			this.makeToolpathModeColors ();
@@ -923,12 +968,113 @@ class LayerViewImpl {
 		if (!style)
 			return this.computePointPixelSize ();
 		const size = Number (style.size);
-		return Number.isFinite (size) ? Math.min (Math.max (size, LAYERVIEW_SPOTSIZE_MIN), LAYERVIEW_SPOTSIZE_MAX) : LAYERVIEW_SPOTSIZE_MIN;
+		const maximum = (style.look === "glow") ? LAYERVIEW_GLOWSIZE_MAX : LAYERVIEW_SPOTSIZE_MAX;
+		return Number.isFinite (size) ? Math.min (Math.max (size, LAYERVIEW_SPOTSIZE_MIN), maximum) : LAYERVIEW_SPOTSIZE_MIN;
+	}
+
+	// Distance between consecutive points, in the units of the positions, that the given share of the consecutive
+	// samples stays below (0.5 is the median), measured on at most LAYERVIEW_POINTSPACING_SAMPLES evenly spread pairs.
+	// positions holds x and y of every sample. With indexMap (ascending sample indices, see updateLayerPoints) only its
+	// samples count, and only pairs that are consecutive samples: the step from the end of one stretch to the start of
+	// the next is no distance along a path. 0 if there is no such pair.
+	/**
+	 * @param {Float32Array | number[]} positions
+	 * @param {Uint32Array | null} [indexMap]
+	 * @param {number} [quantile]
+	 */
+	static computePointSpacing (positions, indexMap = null, quantile = LAYERVIEW_POINTSPACING_QUANTILE)
+	{
+		const count = indexMap ? indexMap.length : Math.floor (positions.length / 2);
+		const pairCount = count - 1;
+		if (pairCount < 1)
+			return 0.0;
+
+		const sampleCount = Math.min (pairCount, LAYERVIEW_POINTSPACING_SAMPLES);
+		const distances = new Float64Array (sampleCount);
+		let found = 0;
+		for (let sample = 0; sample < sampleCount; sample++) {
+			const entry = Math.floor (sample * pairCount / sampleCount);
+			const index = indexMap ? indexMap[entry] : entry;
+			if (indexMap && (indexMap[entry + 1] !== index + 1))
+				continue;
+			distances[found++] = Math.hypot (positions[index * 2 + 2] - positions[index * 2], positions[index * 2 + 3] - positions[index * 2 + 1]);
+		}
+		if (found === 0)
+			return 0.0;
+
+		const sorted = distances.subarray (0, found).sort ();
+		const share = Math.min (Math.max (Number (quantile), 0.0), 1.0);
+		return sorted[Math.min (Math.floor (found * share), found - 1)];
+	}
+
+	// Distance in CSS pixels the drawn points of a set of the given diameter may lie apart along their path without
+	// a visible difference to drawing every point: discs a third of their diameter, circles the width of their line
+	// (so that they still close up to a band), spots of light a sixteenth of their diameter.
+	computePointSetMaxSpacing (style, size)
+	{
+		if (style && (style.look === "glow"))
+			return size / LAYERVIEW_GLOWTHINNING;
+		if (style && !style.fill)
+			return LayerViewImpl.computeSpotOutlinePixels (size);
+		return size * LAYERVIEW_DISCSPACING_FRACTION;
+	}
+
+	// Stride of a point set (every stride-th point is drawn; a power of two, 1 draws all) at the current zoom, for
+	// points that lie pointSpacing apart in their own units and may lie maxSpacing CSS pixels apart on the screen.
+	computePointStride (pointSpacing, maxSpacing)
+	{
+		const spacing = Number (pointSpacing) * Math.abs (this.transform.scaling);
+		if (!(spacing > 0.0) || !(maxSpacing >= 2.0 * spacing))
+			return 1;
+		return Math.min (Math.pow (2, Math.floor (Math.log2 (maxSpacing / spacing))), LAYERVIEW_POINTSTRIDE_MAX);
+	}
+
+	// Diameter in CSS pixels and stride (every stride-th point is drawn) of the drawn points of a set at the current
+	// zoom. pointSpacing is the distance between its consecutive points, see computePointSpacing. Spots of light are
+	// drawn smaller than their style asks for where that would load the graphics card too much, see
+	// LAYERVIEW_GLOWFRAGMENTBUDGET; for them the element must have its placement already.
+	fitPointSet (element, style, pointSpacing)
+	{
+		let size = this.computePointSetPixelSize (style);
+		const strideOf = (diameter) => this.computePointStride (pointSpacing, this.computePointSetMaxSpacing (style, diameter));
+		if (!style || (style.look !== "glow"))
+			return { size: size, stride: strideOf (size) };
+
+		const pixelRatio = this.glInstance.getPixelRatio ();
+		size = Math.min (size, this.glInstance.getMaxPointPixelSize () / pixelRatio);
+		// Points whose spot reaches into the viewport; an upper bound by the cells of the spatial grid.
+		const margin = size * 0.5;
+		const visibleCount = element.countPointsInScreenRectangle (-margin, -margin,
+			this.currentSize.viewPortWidth + margin, this.currentSize.viewPortHeight + margin);
+
+		let stride = strideOf (size);
+		while ((size > LAYERVIEW_SPOTSIZE_MIN) && ((visibleCount / stride) * Math.pow (size * pixelRatio, 2) > LAYERVIEW_GLOWFRAGMENTBUDGET)) {
+			size = Math.max (size * 0.9, LAYERVIEW_SPOTSIZE_MIN);
+			stride = strideOf (size);
+		}
+		return { size: size, stride: stride };
+	}
+
+	// Diameter in CSS pixels the points (secondary: the secondary points) are drawn with at the current zoom, or null if
+	// they are not drawn. Spots of light may be drawn smaller than their style asks for, see fitPointSet.
+	getPointSetPixelSize (secondary = false)
+	{
+		return this.pointSetPixelSizes[secondary ? "secondary" : "primary"];
 	}
 
 	static computeSpotOutlinePixels (size)
 	{
 		return Math.min (Math.max (size * LAYERVIEW_SPOTOUTLINE_FRACTION, LAYERVIEW_SPOTOUTLINE_MIN), LAYERVIEW_SPOTOUTLINE_MAX);
+	}
+
+	// Depth of the points drawn with the given spot style relative to the other point sets, see LAYERVIEW_POINTS_Z.
+	static computePointSetDepthOffset (style)
+	{
+		if (!style)
+			return 0.0;
+		if (style.look === "glow")
+			return LAYERVIEW_POINTS_GLOW_DZ;
+		return style.fill ? 0.0 : LAYERVIEW_POINTS_UNFILLED_DZ;
 	}
 
 	// Uniforms of a points element for a spot style (null: filled discs in the point colors), see
@@ -938,10 +1084,20 @@ class LayerViewImpl {
 		if (!style)
 			return null;
 		const pixelRatio = this.glInstance ? this.glInstance.getPixelRatio () : 1.0;
-		return {
-			ringWidth: style.fill ? 0.0 : LayerViewImpl.computeSpotOutlinePixels (this.computePointSetPixelSize (style)) * pixelRatio,
-			stateColors: [style.offColor, style.onColor]
+		const glow = style.look === "glow";
+		const spotStyle = {
+			ringWidth: (style.fill || glow) ? 0.0 : LayerViewImpl.computeSpotOutlinePixels (this.computePointSetPixelSize (style)) * pixelRatio,
+			glow: glow,
+			stateColors: [style.offColor, style.onColor],
+			pickRadius: glow ? Math.min (this.computePointSetPixelSize (style) * 0.5, LAYERVIEW_GLOWPICKRADIUS) * pixelRatio : null
 		};
+		if (style.colorSource === "values") {
+			spotStyle.colorTableKey = style.colorMap + (style.colorMapInverted ? "|inverted" : "");
+			spotStyle.colorTable = colorMapLookupTable (style.colorMap, style.colorMapInverted);
+			spotStyle.valueMin = style.valueMin;
+			spotStyle.valueMax = style.valueMax;
+		}
+		return spotStyle;
 	}
 
 	static normalizePointSetStyle (style)
@@ -949,20 +1105,76 @@ class LayerViewImpl {
 		if (!style || (typeof style !== "object"))
 			return null;
 		const size = Number (style.size);
+		const valueMin = Number (style.valueMin);
+		const valueMax = Number (style.valueMax);
+		const colorSource = (style.colorSource === "values") ? "values" : "laserstate";
 		return {
 			visible: style.visible !== false,
+			look: (style.look === "glow") ? "glow" : "circle",
+			colorSource: colorSource,
 			onColor: (Number (style.onColor) || 0) & 0xffffff,
 			offColor: (Number (style.offColor) || 0) & 0xffffff,
+			valueChannel: (colorSource === "values") ? String (style.valueChannel || "") : "",
+			valueColumn: (colorSource === "values") ? String (style.valueColumn || "") : "",
+			colorMap: (typeof style.colorMap === "string") && style.colorMap ? style.colorMap : DEFAULT_COLORMAP,
+			colorMapInverted: style.colorMapInverted === true,
+			valueMin: Number.isFinite (valueMin) ? valueMin : 0.0,
+			valueMax: Number.isFinite (valueMax) ? valueMax : 1.0,
 			size: Number.isFinite (size) ? size : LAYERVIEW_POINTSIZE_MIN,
 			fill: style.fill === true
 		};
 	}
 
-	// Spot styles of the points (primary) and of the secondary points: { visible, onColor and offColor: 0xRRGGBB of
-	// the points recorded with the laser on and off, size: diameter in CSS pixels, fill }. Every spot is a circle in
-	// the color of its laser state, filled with the same color if fill is set. A null primary style draws the points
-	// as before (filled discs in the colors of the display mode, size from the zoom), a null secondary style hides
-	// the secondary points. Changes of color, size or fill only update the drawn elements.
+	// Values a spot style colors its points by: the column valueColumn of the data channel valueChannel, one value per
+	// point. Null if the style colors by the laser state or the column is not loaded.
+	getPointSetValues (style)
+	{
+		if (!style || (style.colorSource !== "values") || !this.layerPointsArray)
+			return null;
+		const channel = Object.prototype.hasOwnProperty.call (this, style.valueChannel) ? this[style.valueChannel] : null;
+		const values = (channel && Object.prototype.hasOwnProperty.call (channel, style.valueColumn)) ? channel[style.valueColumn] : null;
+		const pointCount = Math.floor (this.layerPointsArray.length / 2);
+		return (values && (values.length >= pointCount)) ? values : null;
+	}
+
+	// Smallest and largest value of a column of a data channel of the points, or null if the column is not loaded.
+	// With laserOnOnly, only the points recorded with the laser on count, if the points have a laser state and any
+	// of them was on.
+	getPointChannelRange (pointsChannelName, pointsColumnName, laserOnOnly)
+	{
+		const channel = Object.prototype.hasOwnProperty.call (this, pointsChannelName) ? this[pointsChannelName] : null;
+		const values = (channel && Object.prototype.hasOwnProperty.call (channel, pointsColumnName)) ? channel[pointsColumnName] : null;
+		if (!values || (values.length === 0))
+			return null;
+		const laserOn = (laserOnOnly && this.laser && this.laser.laseron && (this.laser.laseron.length >= values.length)) ? this.laser.laseron : null;
+
+		let minimum = Infinity;
+		let maximum = -Infinity;
+		for (let index = 0; index < values.length; index++) {
+			if (laserOn && (laserOn[index] === 0))
+				continue;
+			const value = values[index];
+			if (Number.isFinite (value)) {
+				if (value < minimum)
+					minimum = value;
+				if (value > maximum)
+					maximum = value;
+			}
+		}
+		if ((minimum > maximum) && laserOn)
+			return this.getPointChannelRange (pointsChannelName, pointsColumnName, false);
+		return (minimum <= maximum) ? { min: minimum, max: maximum } : null;
+	}
+
+	// Spot styles of the points (primary) and of the secondary points: { visible, size: diameter in CSS pixels, fill,
+	// look, colorSource and its colors }. A spot is a circle (look "circle"), filled with its color if fill is set, or
+	// a spot of light that fades out towards its edge (look "glow"). colorSource "laserstate" (the default) colors it
+	// by the laser state of its sample, onColor and offColor: 0xRRGGBB of the points recorded with the laser on and
+	// off; "values" by the value of its sample in the column valueColumn of the data channel valueChannel, in the
+	// color map colorMap (colorMapInverted) that spans the values valueMin to valueMax. A set whose values are not
+	// loaded is not drawn. A null primary style draws the points as before (filled discs in the colors of the display
+	// mode, size from the zoom), a null secondary style hides the secondary points. Changes of colors, color map,
+	// value range, size, fill or look only update the drawn elements.
 	setPointSetStyles (primaryStyle, secondaryStyle)
 	{
 		const styles = {
@@ -974,8 +1186,8 @@ class LayerViewImpl {
 			return;
 		this.pointSetStyles = styles;
 
-		// Visibility and the presence of a style need new elements.
-		const layout = (style) => style ? style.visible : null;
+		// Visibility, the presence of a style and the values the points are colored by need new elements.
+		const layout = (style) => style ? [style.visible, style.colorSource, style.valueChannel, style.valueColumn] : null;
 		const rebuild = (JSON.stringify (layout (styles.primary)) !== JSON.stringify (layout (previous.primary))) ||
 			(JSON.stringify (layout (styles.secondary)) !== JSON.stringify (layout (previous.secondary)));
 		if (rebuild) {
@@ -1035,16 +1247,23 @@ class LayerViewImpl {
 		this.glInstance.removeElement("layerdata_points");
 		this.glInstance.removeElement("layerdata_secondarypoints");
 		this.filteredToOriginalIndexMap = null;
+		this.pointSetSpacings = { primary: 0.0, secondary: 0.0 };
 
 		if (!this.layerPointsArray || !this.pointsVisible)
 			return;
 
 		const primaryStyle = this.pointSetStyles.primary;
 		const secondaryStyle = this.pointSetStyles.secondary;
-		const drawPrimary = !primaryStyle || primaryStyle.visible;
-		const drawSecondary = !!secondaryStyle && secondaryStyle.visible && this.hasSecondaryPoints ();
+		// A set colored by values needs them loaded.
+		const drawable = (style) => style.visible && ((style.colorSource !== "values") || !!this.getPointSetValues (style));
+		const drawPrimary = !primaryStyle || drawable (primaryStyle);
+		const drawSecondary = !!secondaryStyle && drawable (secondaryStyle) && this.hasSecondaryPoints ();
 		if (!drawPrimary && !drawSecondary)
 			return;
+
+		// Points without a spot style take the colors of the display mode, which were left out while they had one.
+		if (!primaryStyle && this.pointColorsOutdated)
+			this.updateColors ();
 
 		const pointCount = Math.floor (this.layerPointsArray.length / 2);
 		let colorsToRender = this.layerPointsColorArray;
@@ -1086,9 +1305,21 @@ class LayerViewImpl {
 			return selected;
 		};
 
-		// Laser state of the shown points for the spot styles; without it every spot takes the laser on color.
+		// Values of the shown points, in the order of indexMap.
+		const selectValues = (values) => {
+			if (!indexMap)
+				return values;
+			const selected = new Float32Array (indexMap.length);
+			for (let entry = 0; entry < indexMap.length; entry++)
+				selected[entry] = values[indexMap[entry]];
+			return selected;
+		};
+
+		// Laser state of the shown points for the spot styles that color by it; without it every spot takes the laser
+		// on color.
+		const usesLaserState = (style, drawn) => drawn && !!style && (style.colorSource === "laserstate");
 		let shownStates = null;
-		if (laserOnStates && ((primaryStyle && drawPrimary) || drawSecondary)) {
+		if (laserOnStates && (usesLaserState (primaryStyle, drawPrimary) || usesLaserState (secondaryStyle, drawSecondary))) {
 			if (indexMap) {
 				shownStates = new Uint8Array (indexMap.length);
 				for (let entry = 0; entry < indexMap.length; entry++)
@@ -1099,11 +1330,16 @@ class LayerViewImpl {
 		}
 
 		const pixelRatio = this.glInstance.getPixelRatio ();
-		// The fill lifts the element in updateTransform, see LAYERVIEW_POINTS_UNFILLED_DZ.
+		// The fill and the look move the element in updateTransform, see computePointSetDepthOffset; the distance
+		// between the drawn points decides there how many of them are skipped, see fitPointSet.
 		const addPoints = (identifier, positions, style, secondary) => {
 			const zValue = LAYERVIEW_POINTS_Z + (secondary ? LAYERVIEW_POINTS_SECONDARY_DZ : 0.0);
 			const pixelSize = this.computePointSetPixelSize (style) * pixelRatio;
-			if (style)
+			this.pointSetSpacings[secondary ? "secondary" : "primary"] = LayerViewImpl.computePointSpacing (positions, indexMap);
+			if (style && (style.colorSource === "values"))
+				this.glInstance.add2DScreenPointsGeometry (identifier, selectPoints (positions), zValue, pixelSize, style.onColor,
+					null, this.makeSpotStyle (style), null, selectValues (this.getPointSetValues (style)));
+			else if (style)
 				this.glInstance.add2DScreenPointsGeometry (identifier, selectPoints (positions), zValue, pixelSize, style.onColor,
 					null, this.makeSpotStyle (style), shownStates);
 			else
@@ -1162,10 +1398,12 @@ class LayerViewImpl {
 		return hit ? hit.index : -1;
 	}
 
-	getPointChannelValue (columnName, pointIndex)
+	// Value of a point in a column of a data channel ("laser" by default), or null if it is not loaded.
+	getPointChannelValue (columnName, pointIndex, pointsChannelName = "laser")
 	{
-		if (this.laser && this.laser[columnName] && (pointIndex >= 0) && (pointIndex < this.laser[columnName].length))
-			return this.laser[columnName][pointIndex];
+		const channel = Object.prototype.hasOwnProperty.call (this, pointsChannelName) ? this[pointsChannelName] : null;
+		if (channel && channel[columnName] && (pointIndex >= 0) && (pointIndex < channel[columnName].length))
+			return channel[columnName][pointIndex];
 		return null;
 	}
 
