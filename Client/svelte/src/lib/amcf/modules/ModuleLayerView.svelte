@@ -32,6 +32,8 @@
 	import { NumericStepper } from '$lib/components/ui/numeric-stepper/index.js';
 	import { SPOT_ROLES, SPOT_ROLE_CAPTIONS, resolveSpotModes } from '$lib/amcf/layerViewSpotModes';
 	import type { SpotDisplayMode, SpotModeEntry, SpotRole, SpotSetMode } from '$lib/amcf/layerViewSpotModes';
+	import { DEFAULT_OVERLAY_MODE, resolveOverlayModes } from '$lib/amcf/layerViewOverlayModes';
+	import type { OverlayMode, OverlayModeEntry } from '$lib/amcf/layerViewOverlayModes';
 	import { StepperEventQueue, parseSteppers, parseValueSets, stepperValueOf } from '$lib/amcf/layerViewDeclarations';
 	import type { PointValueSets, ViewStepper } from '$lib/amcf/layerViewDeclarations';
 	// @ts-ignore — core JS has no type declarations yet
@@ -326,27 +328,29 @@
 	// Overlay: a scalar field image over the platform (for example a heat map of the layer), drawn through a color
 	// map by the GPU, see WebGLScalarImageElement. The toolbar button named by platform.overlayname shows it below
 	// the toolpath and the recorded points; a legend of its own then edits the color map and the value range of the
-	// overlay. The button has three states that a click steps through: off, pixels (every pixel of the image is a
-	// sharp square when the view is zoomed in) and smooth (the view interpolates between the pixels).
+	// overlay. The button opens a menu with three modes (see layerViewOverlayModes.ts): Off, Pixels (every pixel of
+	// the image is a sharp square when the view is zoomed in) and Smooth (the view interpolates between the pixels).
+	// Its caption is the name of the overlay with the mode below it; the button is as wide as the longest mode, so
+	// that it keeps its width whatever mode is chosen.
 	let overlayName = $derived.by(() => { poll.v; return String(platform?.overlayname || '').trim(); });
 	let overlayIcon = $derived.by(() => { poll.v; return String(platform?.overlayicon || '').trim(); });
 	let overlayCaption = $derived.by(() => { poll.v; return String(platform?.overlaycaption || '').trim(); });
 	let overlayNote = $derived.by(() => { poll.v; return String(platform?.overlaynote || '').trim(); });
 	// Values of the codes 0 and 65535 of the overlay image, also the default range of its legend.
 	let overlayValueRange = $derived.by((): ColorRange => { poll.v; return readOverlayValueRange(platform); });
-	type OverlayState = 'off' | 'pixels' | 'smooth';
-	let overlayState = $state<OverlayState>('off');
-	let overlayMode = $derived(overlayState !== 'off');
-	// False if the browser cannot filter the overlay texture; the button then has the states off and pixels only.
+	// Mode chosen in the menu of the overlay button; the layer view opens with the overlay off.
+	let chosenOverlayMode = $state<OverlayMode>(DEFAULT_OVERLAY_MODE);
+	// False if the browser cannot filter the overlay texture; the menu then lists Smooth as not available.
 	let overlaySmoothingSupported = $state(false);
-	let overlayStateCaption = $derived(overlayState === 'smooth' ? 'Smooth' : (overlayState === 'pixels' ? 'Pixels' : ''));
-	let overlayButtonTitle = $derived.by(() => {
-		const name = overlayName.toLowerCase();
-		const steps = overlaySmoothingSupported ? 'off, pixels, smooth' : 'off, pixels (this browser cannot smooth the image)';
-		if (overlayState === 'off') return `Show the ${name} of the layer on the platform, below the toolpath and the recorded points. Click steps through ${steps}`;
-		if (overlayState === 'pixels') return `The ${name} is shown with every pixel as a square. Click steps through ${steps}`;
-		return `The ${name} is shown smoothed between its pixels. Click steps through ${steps}`;
-	});
+	let overlayModes = $derived(resolveOverlayModes({
+		name: overlayName,
+		mode: chosenOverlayMode,
+		smoothingSupported: overlaySmoothingSupported
+	}));
+	// Mode the overlay is drawn in.
+	let overlayState = $derived(overlayModes.mode);
+	let overlayMode = $derived(overlayModes.shown);
+	let overlayMenuOpen = $state(false);
 	// Overlay image of the current layer as the server reports it; the null UUID means none.
 	let overlayUUID = $state(NULL_UUID);
 	let overlayAvailable = $derived(isValidUUID(overlayUUID));
@@ -794,18 +798,25 @@
 	function cycleToolpathColorMode() {
 		const index = TOOLPATH_COLOR_MODES.findIndex((entry) => entry.mode === toolpathColorMode);
 		toolpathColorMode = TOOLPATH_COLOR_MODES[(index + 1) % TOOLPATH_COLOR_MODES.length].mode;
-		colorMapMenuKind = null;
-		spotColorMenu = null;
-		spotModeMenuOpen = false;
+		closeMenusExcept(null);
 		hideHoverInfo();
 		clearHover();
+	}
+
+	// At most one menu of the view is open: the menus of the overlay button and of the Mode button in the toolbar,
+	// the color map menus of the legends and the color menus of the spot panels. Opening one closes the others.
+	type ViewMenu = 'overlay' | 'spotmode' | 'colormap' | 'spotcolor';
+	function closeMenusExcept(keep: ViewMenu | null) {
+		if (keep !== 'overlay') overlayMenuOpen = false;
+		if (keep !== 'spotmode') spotModeMenuOpen = false;
+		if (keep !== 'colormap') colorMapMenuKind = null;
+		if (keep !== 'spotcolor') spotColorMenu = null;
 	}
 
 	// The Mode button opens the menu of the modes of the current display mode.
 	function toggleSpotModeMenu() {
 		spotModeMenuOpen = !spotModeMenuOpen && spotModeEntries.length > 0;
-		colorMapMenuKind = null;
-		spotColorMenu = null;
+		closeMenusExcept('spotmode');
 	}
 
 	function chooseSpotSetMode(entry: SpotModeEntry) {
@@ -816,14 +827,15 @@
 		clearHover();
 	}
 
-	// Arrow keys move through the modes that can be chosen, Escape closes the menu and returns to the button.
-	function onSpotModeMenuKeyDown(event: KeyboardEvent) {
+	// Keys in the menu of a toolbar button (Mode, overlay): arrow keys, Home and End move through the modes that can
+	// be chosen, Escape closes the menu and returns the focus to its button.
+	function onToolbarMenuKeyDown(event: KeyboardEvent, close: () => void) {
 		const menu = event.currentTarget as HTMLElement;
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopPropagation();
-			spotModeMenuOpen = false;
-			(menu.parentElement?.querySelector('.layerview-btn-mode') as HTMLElement | null)?.focus();
+			close();
+			(menu.parentElement?.querySelector('[aria-haspopup="menu"]') as HTMLElement | null)?.focus();
 			return;
 		}
 		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
@@ -837,8 +849,8 @@
 		items[next].focus();
 	}
 
-	// Puts the focus on the shown mode when the menu opens, or on the first mode that can be chosen.
-	function focusSpotModeMenu(menu: HTMLElement) {
+	// Puts the focus on the shown mode when the menu of a toolbar button opens, or on the first mode that can be chosen.
+	function focusToolbarMenu(menu: HTMLElement) {
 		const shown = menu.querySelector<HTMLElement>('[aria-checked="true"]:not([aria-disabled="true"])');
 		(shown ?? menu.querySelector<HTMLElement>('[role="menuitemradio"]:not([aria-disabled="true"])'))?.focus();
 	}
@@ -964,14 +976,12 @@
 
 	function toggleColorMapMenu(kind: LegendKind) {
 		colorMapMenuKind = colorMapMenuKind === kind ? null : kind;
-		spotColorMenu = null;
-		spotModeMenuOpen = false;
+		closeMenusExcept('colormap');
 	}
 
 	function toggleSpotColorMenu(role: SpotRole, key: SpotColorKey) {
 		spotColorMenu = isSpotColorMenuOpen(role, key) ? null : { role, key };
-		colorMapMenuKind = null;
-		spotModeMenuOpen = false;
+		closeMenusExcept('spotcolor');
 	}
 
 	function readPowerRange(data: any): ColorRange | null {
@@ -1143,8 +1153,8 @@
 			loadToolpath(currentPlatform.builduuid, currentPlatform.currentlayer);
 		}
 
-		// Recorded points and overlay of the layer: the overlay is only loaded while the overlay button is on (see
-		// cycleOverlayState), the recorded points always, since they are drawn over the overlay.
+		// Recorded points and overlay of the layer: the overlay is only loaded while its mode is Pixels or Smooth (see
+		// chooseOverlayMode), the recorded points always, since they are drawn over the overlay.
 		overlayUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
 		syncScatterPlot();
 		syncOverlay();
@@ -1227,14 +1237,20 @@
 		);
 	}
 
-	// Steps the overlay button: off, pixels, smooth, off. Between pixels and smooth only the drawing changes
-	// (see the effect on overlayState); the other steps load or remove the overlay image.
-	function cycleOverlayState() {
-		const wasShown = overlayState !== 'off';
-		if (overlayState === 'off') overlayState = 'pixels';
-		else if (overlayState === 'pixels' && overlaySmoothingSupported) overlayState = 'smooth';
-		else overlayState = 'off';
-		if (wasShown === (overlayState !== 'off')) return;
+	// The overlay button opens the menu of the overlay modes; the other menus of the view close.
+	function toggleOverlayMenu() {
+		overlayMenuOpen = !overlayMenuOpen;
+		closeMenusExcept('overlay');
+	}
+
+	// A mode chosen in the menu of the overlay button. Between Pixels and Smooth only the drawing changes (see the
+	// effect on overlayState); switching the overlay on or off loads or removes the overlay image.
+	function chooseOverlayMode(entry: OverlayModeEntry) {
+		if (!entry.available) return;
+		const wasShown = overlayMode;
+		chosenOverlayMode = entry.mode;
+		overlayMenuOpen = false;
+		if (wasShown === (entry.mode !== 'off')) return;
 		colorMapMenuKind = null;
 		syncOverlay();
 	}
@@ -2056,12 +2072,18 @@
 			zoomSelectMode = false;
 			zoomSelection = null;
 		}
-		if (event.key === 'Escape') spotModeMenuOpen = false;
+		if (event.key === 'Escape') {
+			spotModeMenuOpen = false;
+			overlayMenuOpen = false;
+		}
 	}
 
-	// A press outside of the Mode button and its menu closes the menu.
+	// A press outside of a toolbar button with a menu (Mode, overlay) and its menu closes the menu.
 	function onWindowPointerDown(event: PointerEvent) {
-		if (spotModeMenuOpen && !(event.target as HTMLElement | null)?.closest?.('.layerview-mode-wrap')) spotModeMenuOpen = false;
+		const target = event.target as HTMLElement | null;
+		const inside = (menu: ViewMenu) => !!target?.closest?.(`[data-view-menu="${menu}"]`);
+		if (spotModeMenuOpen && !inside('spotmode')) spotModeMenuOpen = false;
+		if (overlayMenuOpen && !inside('overlay')) overlayMenuOpen = false;
 	}
 
 	function onPointerDown(event: PointerEvent) {
@@ -2730,25 +2752,74 @@
 					</button>
 				{/if}
 				{#if overlayName}
-					<button
-						class="layerview-btn"
-						onclick={cycleOverlayState}
-						title={overlayButtonTitle}
-						aria-label={`${overlayName}: ${overlayState}. Click to change`}
-						aria-pressed={overlayMode}
-						data-overlay-state={overlayState}
-					>
-						{#if overlayIcon}
-							<MdiIcon icon={overlayIcon} class="h-4 w-4" />
-						{:else}
-							<Layers size={16} />
+					<!-- The overlay button with the menu of the overlay modes below it; it is highlighted while the
+					     overlay is shown -->
+					<div class="layerview-mode-wrap" data-view-menu="overlay">
+						<button
+							class="layerview-btn layerview-btn-overlay"
+							class:on={overlayMode}
+							onclick={toggleOverlayMenu}
+							title={overlayModes.title}
+							aria-label={`${overlayName}: ${overlayModes.caption}. Click to choose`}
+							aria-haspopup="menu"
+							aria-expanded={overlayMenuOpen}
+							data-overlay-state={overlayState}
+						>
+							{#if overlayIcon}
+								<MdiIcon icon={overlayIcon} class="h-4 w-4" />
+							{:else}
+								<Layers size={16} />
+							{/if}
+							<!-- All modes lie on top of each other, the current one visible, so that the button is as wide
+							     as the longest -->
+							<span class="layerview-mode-caption">
+								<span>{overlayName}</span>
+								<span class="layerview-mode-states" aria-hidden="true">
+									{#each overlayModes.captions as caption (caption)}
+										<span class:current={caption === overlayModes.caption}>{caption}</span>
+									{/each}
+								</span>
+							</span>
+						</button>
+						{#if overlayMenuOpen}
+							<div
+								class="layerview-mode-menu"
+								role="menu"
+								tabindex="-1"
+								aria-label={`Modes of the ${overlayName.toLowerCase()}`}
+								onkeydown={(event) => onToolbarMenuKeyDown(event, () => (overlayMenuOpen = false))}
+								{@attach focusToolbarMenu}
+							>
+								{#each overlayModes.entries as entry (entry.mode)}
+									<button
+										type="button"
+										class="layerview-mode-menu-item"
+										class:selected={entry.shown}
+										role="menuitemradio"
+										aria-checked={entry.shown}
+										aria-disabled={!entry.available}
+										title={entry.available ? '' : entry.hint}
+										onclick={() => chooseOverlayMode(entry)}
+										data-overlay-mode={entry.mode}
+									>
+										<span class="layerview-mode-menu-check">
+											{#if entry.shown}<Check size={12} />{/if}
+										</span>
+										<span class="layerview-mode-menu-text">
+											<span>{entry.caption}</span>
+											{#if !entry.available && entry.hint}
+												<span class="layerview-mode-menu-hint">{entry.hint}</span>
+											{/if}
+										</span>
+									</button>
+								{/each}
+							</div>
 						{/if}
-						<span>{overlayName}{#if overlayStateCaption}<br />{overlayStateCaption}{/if}</span>
-					</button>
+					</div>
 				{/if}
 				{#if toolbarFixed || (pointsLoaded && primaryRole !== '')}
 					<!-- The Mode button with the menu of the modes of the display mode below it -->
-					<div class="layerview-mode-wrap">
+					<div class="layerview-mode-wrap" data-view-menu="spotmode">
 						<button
 							class="layerview-btn layerview-btn-mode"
 							onclick={toggleSpotModeMenu}
@@ -2792,8 +2863,8 @@
 								role="menu"
 								tabindex="-1"
 								aria-label="Modes of the laser spots"
-								onkeydown={onSpotModeMenuKeyDown}
-								{@attach focusSpotModeMenu}
+								onkeydown={(event) => onToolbarMenuKeyDown(event, () => (spotModeMenuOpen = false))}
+								{@attach focusToolbarMenu}
 							>
 								{#each spotModeEntries as entry (entry.mode)}
 									<button
@@ -3343,12 +3414,15 @@
 	.layerview-btn:hover:not(:disabled) {
 		background-color: rgba(0, 0, 0, 0.85);
 	}
-	.layerview-btn[aria-pressed='true'] {
+	.layerview-btn[aria-pressed='true'],
+	.layerview-btn.on {
 		background-color: var(--primary, #2563eb);
 		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
 	}
-	/* The Mode button names its mode below its caption and is as wide as its longest mode. */
-	.layerview-btn-mode {
+	/* The Mode button and the overlay button name their mode below their caption and are as wide as their longest
+	   mode. */
+	.layerview-btn-mode,
+	.layerview-btn-overlay {
 		width: auto;
 		min-width: 64px;
 		padding: 6px 8px;
@@ -3369,7 +3443,7 @@
 	.layerview-mode-states > span.current {
 		visibility: visible;
 	}
-	/* The Mode button and the menu of its modes, which opens below it. */
+	/* A toolbar button with a menu (Mode, overlay) and the menu of its modes, which opens below it. */
 	.layerview-mode-wrap {
 		position: relative;
 		display: flex;
