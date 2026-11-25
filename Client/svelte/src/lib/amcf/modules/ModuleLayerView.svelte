@@ -34,6 +34,7 @@
 	import type { SpotDisplayMode, SpotModeEntry, SpotRole, SpotSetMode } from '$lib/amcf/layerViewSpotModes';
 	import { DEFAULT_OVERLAY_MODE, resolveOverlayModes } from '$lib/amcf/layerViewOverlayModes';
 	import type { OverlayMode, OverlayModeEntry } from '$lib/amcf/layerViewOverlayModes';
+	import { DEFAULT_OVERLAY_OPACITY, OVERLAY_OPACITY_MAX, OVERLAY_OPACITY_MIN, OVERLAY_OPACITY_STEP, clampOverlayOpacity, overlayOpacityFactor, parseOverlayOpacity } from '$lib/amcf/layerViewOverlayOpacity';
 	import { StepperEventQueue, parseSteppers, parseValueSets, stepperValueOf } from '$lib/amcf/layerViewDeclarations';
 	import type { PointValueSets, ViewStepper } from '$lib/amcf/layerViewDeclarations';
 	// @ts-ignore — core JS has no type declarations yet
@@ -360,6 +361,13 @@
 	let overlayRange = $derived(editedOverlayRange ?? overlayValueRange);
 	let overlayColorMapName = $state(DEFAULT_COLORMAP);
 	let overlayColorMapInverted = $state(false);
+	// Opacity of the overlay in percent, set in its legend (see layerViewOverlayOpacity.ts): 100 draws it as it is, 0 hides
+	// it. It applies to the overlay only and is kept across layers, builds, overlay modes and edits of the legend; the
+	// reset of the range leaves it alone. It is not stored anywhere, the layer view opens with 100 %.
+	let overlayOpacity = $state(DEFAULT_OVERLAY_OPACITY);
+	// Text typed into the field of the opacity, taken over with Enter or when the field loses the focus; null while the
+	// field shows the value in force.
+	let overlayOpacityText = $state<string | null>(null);
 
 	// Color scales of the value spots, see valueSpotLooks. Without an overlay image on the layer a value set that
 	// follows the overlay keeps its color map and takes the range of its own values.
@@ -752,6 +760,13 @@
 		untrack(() => layerViewer.setOverlaySmoothing(smoothing));
 	});
 
+	// A new opacity only changes the drawing of the overlay: no new image, no request to the server.
+	$effect(() => {
+		const opacity = overlayOpacityFactor(overlayOpacity);
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setOverlayOpacity(opacity));
+	});
+
 	// Values of the codes 0 and 65535 of the overlay image; a missing or empty range reads as 0..1.
 	// View state sent with the event of a button that names this layer view (button attribute layerview, see
 	// AMCApplication.registerLayerViewStateProvider). overlaycolortable is the table the overlay is colored with on
@@ -948,6 +963,31 @@
 			if (!valueScales[kind].followsOverlay) editedValueRanges = { ...editedValueRanges, [kind]: range };
 		}
 		else if (legendMode) setEditedRange(legendMode, range);
+	}
+
+	// The slider of the opacity: every move takes effect at once and shows in the field.
+	function onOverlayOpacitySliderInput(event: Event) {
+		overlayOpacity = clampOverlayOpacity(Number((event.target as HTMLInputElement).value));
+		overlayOpacityText = null;
+	}
+
+	// Takes over a typed or stepped text of the opacity field. A number outside of the range takes the nearest bound; a
+	// text that is no number is dropped, and the field shows the value in force again.
+	function commitOverlayOpacityText(text: string | null) {
+		const value = text === null ? null : parseOverlayOpacity(text);
+		if (value !== null) overlayOpacity = value;
+		overlayOpacityText = null;
+	}
+
+	function onOverlayOpacityKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			commitOverlayOpacityText(overlayOpacityText);
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			overlayOpacityText = null;
+		}
 	}
 
 	function resetLegendRange(kind: LegendKind) {
@@ -2513,6 +2553,42 @@
 				aria-label={`Maximum ${legend.valueLabel}`}
 			/>
 		</div>
+		{#if kind === 'overlay'}
+			<!-- Opacity of the overlay: a slider and a numeric stepper that always show the same value -->
+			<div
+				class="layerview-legend-opacity"
+				role="group"
+				aria-label={`Opacity of the ${legend.valueLabel}`}
+				title={`Opacity of the ${legend.valueLabel}: at 100 % it is drawn as it is, at 0 % it cannot be seen. The toolpath and the laser spots above it do not change`}
+				data-overlay-opacity
+			>
+				<span class="layerview-legend-opacity-label">Opacity</span>
+				<input
+					type="range"
+					class="layerview-legend-opacity-slider"
+					min={OVERLAY_OPACITY_MIN}
+					max={OVERLAY_OPACITY_MAX}
+					step={OVERLAY_OPACITY_STEP}
+					value={overlayOpacity}
+					oninput={onOverlayOpacitySliderInput}
+					aria-label={`Opacity of the ${legend.valueLabel}`}
+					aria-valuetext={`${overlayOpacity} %`}
+				/>
+				<NumericStepper
+					value={overlayOpacityText ?? String(overlayOpacity)}
+					min={OVERLAY_OPACITY_MIN}
+					max={OVERLAY_OPACITY_MAX}
+					step={OVERLAY_OPACITY_STEP}
+					ariaLabel={`Opacity of the ${legend.valueLabel} in percent`}
+					class="h-6 w-14 shrink-0 text-foreground"
+					oninput={(text: string) => (overlayOpacityText = text)}
+					onvaluechange={(text: string) => commitOverlayOpacityText(text)}
+					onblur={() => commitOverlayOpacityText(overlayOpacityText)}
+					onkeydown={onOverlayOpacityKeyDown}
+				/>
+				<span class="layerview-stepper-unit">%</span>
+			</div>
+		{/if}
 		{#if legend.note}
 			<div class="layerview-legend-note">{legend.note}</div>
 		{/if}
@@ -3604,7 +3680,8 @@
 		gap: 4px;
 	}
 	/* The field of the stepper in the size of the legend fields. */
-	.layerview-stepper :global([data-numeric-stepper] input) {
+	.layerview-stepper :global([data-numeric-stepper] input),
+	.layerview-legend-opacity :global([data-numeric-stepper] input) {
 		padding: 0 6px;
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
@@ -3877,6 +3954,24 @@
 	.layerview-legend-mid {
 		color: rgba(255, 255, 255, 0.75);
 		font-variant-numeric: tabular-nums;
+	}
+	/* Opacity of the overlay in a row of its own below the range; the slider takes the room the row leaves, so the
+	   legend keeps its width. */
+	.layerview-legend-opacity {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 5px;
+	}
+	.layerview-legend-opacity-label {
+		flex: none;
+		font-weight: 600;
+	}
+	.layerview-legend-opacity-slider {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
+		accent-color: var(--primary, #2563eb);
 	}
 	.layerview-legend-note {
 		margin-top: 4px;

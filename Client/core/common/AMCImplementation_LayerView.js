@@ -243,12 +243,13 @@ class LayerViewImpl {
 		// with a spot style and do not use them, see updateColors.
 		this.pointColorsOutdated = false;
 
-		// Overlay (scalar field over the platform, for example a heat map): its own color map and value range,
-		// applied to the overlay element whenever it is (re)loaded, see SetOverlayImage.
+		// Overlay (scalar field over the platform, for example a heat map): its own color map, value range, smoothing and
+		// opacity, applied to the overlay element whenever it is (re)loaded, see SetOverlayImage.
 		this.overlayColorMapName = DEFAULT_COLORMAP;
 		this.overlayColorMapInverted = false;
 		this.overlayRange = { min: 0.0, max: 1.0 };
 		this.overlaySmoothing = false;
+		this.overlayOpacity = 1.0;
 
 		this.gridColor = undefined;
         
@@ -2445,6 +2446,7 @@ class LayerViewImpl {
 				rangeMin: this.overlayRange.min,
 				rangeMax: this.overlayRange.max,
 				smoothing: this.overlaySmoothing,
+				opacity: this.overlayOpacity,
 				onLoaded: () => {
 					this.updateTransform ();
 					if (onLoaded)
@@ -2478,6 +2480,20 @@ class LayerViewImpl {
 		const element = this.glInstance ? this.glInstance.findElement ("overlayimage") : null;
 		if (element && (typeof element.setSmoothing === "function")) {
 			element.setSmoothing (this.overlaySmoothing);
+			this.RenderScene (true);
+		}
+	}
+
+	// Opacity of the overlay from 0 (not seen) to 1 (drawn as it is, the default), see
+	// WebGLScalarImageElement.setOpacity. Only the overlay changes: the plate shows through it, the toolpath and the
+	// points drawn above it stay as they are. Kept for the overlays of the following layers.
+	setOverlayOpacity (opacity)
+	{
+		const value = Number (opacity);
+		this.overlayOpacity = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
+		const element = this.glInstance ? this.glInstance.findElement ("overlayimage") : null;
+		if (element && (typeof element.setOpacity === "function")) {
+			element.setOpacity (this.overlayOpacity);
 			this.RenderScene (true);
 		}
 	}

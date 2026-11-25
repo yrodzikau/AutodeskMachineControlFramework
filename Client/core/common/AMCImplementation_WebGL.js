@@ -1416,6 +1416,7 @@ class WebGLScalarImageElement extends WebGLElement {
         this.smoothing = false;
         this.rangeMin = 0.0;
         this.rangeMax = 1.0;
+        this.opacity = 1.0;
         this.visible = true;
     }
 
@@ -1481,7 +1482,7 @@ class WebGLScalarImageElement extends WebGLElement {
                     smoothing: { value: this.smoothing ? 1.0 : 0.0 },
                     rangeMin: { value: this.rangeMin },
                     rangeMax: { value: this.rangeMax },
-                    opacity: { value: 1.0 }
+                    opacity: { value: this.opacity }
                 },
                 vertexShader: SCALARIMAGE_VERTEXSHADER,
                 fragmentShader: SCALARIMAGE_FRAGMENTSHADER,
@@ -1551,6 +1552,16 @@ class WebGLScalarImageElement extends WebGLElement {
         this.smoothing = (enabled === true);
         if (this.material)
             this.material.uniforms.smoothing.value = this.smoothing ? 1.0 : 0.0;
+    }
+
+    // Opacity of the whole field from 0 (not seen) to 1 (drawn as it is). It scales the alpha of the colors of the
+    // lookup table and costs one render, no new upload of the texture.
+    setOpacity (opacity)
+    {
+        const value = Number (opacity);
+        this.opacity = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
+        if (this.material)
+            this.material.uniforms.opacity.value = this.opacity;
     }
 
     setVisible (visible)
@@ -2030,8 +2041,8 @@ class WebGLImpl {
 
 	// Scalar field image over a rectangle of the scene, see WebGLScalarImageElement. options: valueMin and valueMax
 	// (values of the codes 0 and 65535), lookupTable (RGBA bytes), rangeMin and rangeMax (values mapped onto the
-	// table), smoothing, visible, onLoaded and onError callbacks. The image loads asynchronously; an element that
-	// was removed or replaced in the meantime is not added to the scene.
+	// table), smoothing, opacity (0 to 1), visible, onLoaded and onError callbacks. The image loads asynchronously; an
+	// element that was removed or replaced in the meantime is not added to the scene.
 	addScalarImageElement (identifier, url, width, height, offsetX, offsetY, zValue, options)
 	{
         if (!identifier)
@@ -2046,6 +2057,7 @@ class WebGLImpl {
             element.setLookupTable (settings.lookupTable);
         element.setValueRange (Number.isFinite (settings.rangeMin) ? settings.rangeMin : 0.0, Number.isFinite (settings.rangeMax) ? settings.rangeMax : 1.0);
         element.setSmoothing (settings.smoothing === true);
+        element.setOpacity (Number.isFinite (settings.opacity) ? settings.opacity : 1.0);
         element.setVisible (settings.visible !== false);
 
         element.load (url, width, height, offsetX, offsetY, settings.valueMin, settings.valueMax, (loadedElement) => {
