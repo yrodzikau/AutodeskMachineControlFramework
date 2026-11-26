@@ -18,6 +18,34 @@
 	let visible = $derived.by(() => { poll.v; return module.visible !== false; });
 	// layout="row" puts all entities of the form into one line.
 	let layout = $derived.by(() => { poll.v; return module.layout || 'column'; });
+	// captionposition="top" puts the caption of every field above the field, on one line, instead of into the
+	// caption column in front of it.
+	let captionTop = $derived.by(() => { poll.v; return module.captionposition === 'top'; });
+
+	// The frame of a field and its caption: the caption column (140 px) in front of the field, or the caption
+	// above the field. alignStart aligns the caption with the top of a field that is taller than one line.
+	function fieldClass (alignStart: boolean = false): string {
+		if (captionTop) return 'flex flex-col gap-1.5 min-w-0';
+		return 'grid grid-cols-[140px_1fr] gap-2 ' + (alignStart ? 'items-start' : 'items-center');
+	}
+
+	// The caption of a field. offsetClass moves a caption in the caption column down to the first line of a tall
+	// field; a caption above the field needs no offset.
+	function captionClass (offsetClass: string = ''): string {
+		if (captionTop) return 'text-sm text-muted-foreground whitespace-nowrap';
+		return 'text-sm text-muted-foreground ' + offsetClass;
+	}
+
+	// The box of a field of one line under its caption: as high as a menu (36 px), so that the switches, edits and
+	// menus of a row of fields stand on one height. A field in the caption column keeps its own height.
+	function controlRowClass (): string {
+		return captionTop ? 'h-9' : '';
+	}
+
+	// Under its caption a menu takes less padding, so that a row of narrow cells holds its longest item.
+	function triggerClass (): string {
+		return captionTop ? 'h-8 text-sm px-2 gap-1.5' : 'h-8 text-sm';
+	}
 
 	// dataObject is a plain object outside Svelte's reactivity graph. Local edits bump
 	// editTick so sibling controls sharing the value (slider + number box) redraw at once.
@@ -117,9 +145,9 @@
 {#snippet formField(entity: any)}
 	<!-- edit -->
 	{#if entity.type === 'edit'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
-			<div class="flex items-center gap-1">
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
+			<div class="flex items-center gap-1 {controlRowClass()}">
 				{#if d(entity).prefix}
 					<span class="text-xs text-muted-foreground">{d(entity).prefix}</span>
 				{/if}
@@ -140,9 +168,9 @@
 
 	<!-- switch -->
 	{:else if entity.type === 'switch'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
-			<div class="flex items-center gap-2">
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
+			<div class="flex items-center gap-2 {controlRowClass()}">
 				<Switch
 					checked={toBool(d(entity).value)}
 					onCheckedChange={(v: boolean) => onSwitchChange(entity, v)}
@@ -156,8 +184,8 @@
 
 	<!-- memo -->
 	{:else if entity.type === 'memo'}
-		<div class="grid grid-cols-[140px_1fr] items-start gap-2">
-			<Label class="text-sm text-muted-foreground pt-2">{entity.caption}</Label>
+		<div class={fieldClass(true)}>
+			<Label class={captionClass('pt-2')}>{entity.caption}</Label>
 			<textarea
 				class="flex {memoRows(entity) > 0 ? '' : 'min-h-[80px]'} w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				rows={memoRows(entity) > 0 ? memoRows(entity) : undefined}
@@ -172,15 +200,15 @@
 
 	<!-- combobox / select -->
 	{:else if entity.type === 'combobox'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
 			<Select.Root
 				type="single"
 				value={String(d(entity).value ?? '')}
 				onValueChange={(v: string) => onComboChange(entity, v)}
 				disabled={d(entity).disabled}
 			>
-			<Select.Trigger class="h-8 text-sm">
+			<Select.Trigger class={triggerClass()}>
 				{@const selectedItem = (d(entity).items || []).find((i: any) => String(typeof i === 'string' ? i : i.value) === String(d(entity).value ?? ''))}
 				{selectedItem ? (typeof selectedItem === 'string' ? selectedItem : selectedItem.text || selectedItem.value) : (d(entity).value != null && d(entity).value !== '' ? String(d(entity).value) : 'Select...')}
 			</Select.Trigger>
@@ -196,9 +224,9 @@
 
 	<!-- number -->
 	{:else if entity.type === 'number'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
-			<div class="flex items-center gap-1" style={d(entity).inputwidth ? `width:${d(entity).inputwidth}` : ''}>
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
+			<div class="flex items-center gap-1 {controlRowClass()}" style={d(entity).inputwidth ? `width:${d(entity).inputwidth}` : ''}>
 				{#if toBool(d(entity).stepbuttons)}
 					{@render stepperField(entity, 'w-full')}
 				{:else}
@@ -224,8 +252,8 @@
 
 	<!-- slider -->
 	{:else if entity.type === 'slider'}
-		<div class="grid grid-cols-[140px_1fr] items-start gap-2">
-			<Label class="text-sm text-muted-foreground pt-1">{entity.caption}</Label>
+		<div class={fieldClass(true)}>
+			<Label class={captionClass('pt-1')}>{entity.caption}</Label>
 			<div class="flex flex-col">
 				<div class="flex items-center gap-3">
 					<input
@@ -264,8 +292,8 @@
 
 	<!-- datetime -->
 	{:else if entity.type === 'datetime'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
 			<Input
 				type={d(entity).mode === 'time' ? 'time' : d(entity).mode === 'date' ? 'date' : 'datetime-local'}
 				value={d(entity).value || ''}
@@ -278,8 +306,8 @@
 
 	<!-- multiselect -->
 	{:else if entity.type === 'multiselect'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
 		<div class="flex flex-wrap gap-1 p-1 border rounded-md min-h-[32px]">
 			{#each (d(entity).items || entity.items || []) as item}
 					{@const val = typeof item === 'string' ? item : item.value}
@@ -304,8 +332,8 @@
 
 	<!-- calculated (read-only) -->
 	{:else if entity.type === 'calculated'}
-		<div class="grid grid-cols-[140px_1fr] items-center gap-2">
-			<Label class="text-sm text-muted-foreground">{entity.caption}</Label>
+		<div class={fieldClass()}>
+			<Label class={captionClass()}>{entity.caption}</Label>
 			<Badge variant="outline" class="w-fit">
 				{d(entity).value || ''}
 				{#if d(entity).unit}
@@ -420,7 +448,22 @@
 {/snippet}
 
 {#if visible}
-	{#if layout === 'row'}
+	{#if layout === 'row' && captionTop}
+		<!-- A row of fields with their captions above them: no caption column, every field stands under its
+		     caption, and the captions of the row stand on one line. -->
+		<div class="flex flex-wrap items-start gap-2 w-full">
+			{#each entities as entity (entity.uuid)}
+				{#if (entity.type === 'edit') || ((entity.type === 'number') && toBool(d(entity).stepbuttons))}
+					<div class="flex flex-col gap-1.5">
+						<Label class={captionClass()}>{entity.caption || ' '}</Label>
+						<div class="flex items-center gap-1">{@render inlineField(entity, false)}</div>
+					</div>
+				{:else}
+					{@render inlineField(entity, false)}
+				{/if}
+			{/each}
+		</div>
+	{:else if layout === 'row'}
 		<!-- The caption of the first field takes the caption column of the other forms, so that the first field
 		     starts on the same line as their fields. The other fields follow in the same line. -->
 		{@const leadsWithEdit = (entities.length > 0) && ((entities[0].type === 'edit') || ((entities[0].type === 'number') && toBool(d(entities[0]).stepbuttons)))}

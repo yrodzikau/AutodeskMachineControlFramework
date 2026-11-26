@@ -1216,6 +1216,15 @@ PUIModule_ContentForm CUIModule_ContentForm::makeFromXML(const pugi::xml_node& x
 		throw ELibMCCustomException(LIBMC_ERROR_INVALIDPARAM, "form " + sItemName + ": unknown layout '" + sLayout + "', expected column or row");
 	pForm->setLayout(sLayout);
 
+	// captionposition: "left" (default) puts the caption of every entity into the caption column in front of
+	// its field, "top" puts it above the field. It applies to every entity type of the form.
+	std::string sCaptionPosition = xmlNode.attribute("captionposition").as_string();
+	if (sCaptionPosition.empty())
+		sCaptionPosition = "left";
+	if ((sCaptionPosition != "left") && (sCaptionPosition != "top"))
+		throw ELibMCCustomException(LIBMC_ERROR_INVALIDPARAM, "form " + sItemName + ": unknown captionposition '" + sCaptionPosition + "', expected left or top");
+	pForm->setCaptionPosition(sCaptionPosition);
+
 	pUIModuleEnvironment->contentRegistry()->registerFormName(pForm->getUUID(), pForm->getName());
 
 	parseXmlFormNode(xmlNode, pForm->getItemPath(), pUIModuleEnvironment->stateMachineData(), [&pForm](PUIModule_ContentFormEntity pEntity) {
@@ -1232,7 +1241,8 @@ CUIModule_ContentForm::CUIModule_ContentForm(PStateMachineData pStateMachineData
 	  m_sName(sName),
 	  m_pStateMachineData(pStateMachineData),
 	  m_bVisible(bVisible),
-	  m_sLayout("column")
+	  m_sLayout("column"),
+	  m_sCaptionPosition("left")
 
 {
 	LibMCAssertNotNull(pStateMachineData);
@@ -1271,6 +1281,11 @@ bool CUIModule_ContentForm::IsVisible()
 void CUIModule_ContentForm::setLayout(const std::string& sLayout)
 {
 	m_sLayout = sLayout;
+}
+
+void CUIModule_ContentForm::setCaptionPosition(const std::string& sCaptionPosition)
+{
+	m_sCaptionPosition = sCaptionPosition;
 }
 
 void CUIModule_ContentForm::addEntity(PUIModule_ContentFormEntity pEntity)
@@ -1382,6 +1397,10 @@ void CUIModule_ContentForm::registerFrontendAttributes()
 	CUIExpression layoutExpr;
 	layoutExpr.setFixedValue(m_sLayout);
 	registerItemStringAttribute("layout", layoutExpr);
+
+	CUIExpression captionPositionExpr;
+	captionPositionExpr.setFixedValue(m_sCaptionPosition);
+	registerItemStringAttribute("captionposition", captionPositionExpr);
 
 	for (auto& pEntity : m_Entities) {
 		auto pChildStore = m_pItemModuleStore->addChildStore(pEntity->getUUID(), pEntity->getElementPath(), pEntity->getTypeString());

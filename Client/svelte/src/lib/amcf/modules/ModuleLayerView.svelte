@@ -35,6 +35,8 @@
 	import { DEFAULT_OVERLAY_MODE, resolveOverlayModes } from '$lib/amcf/layerViewOverlayModes';
 	import type { OverlayMode, OverlayModeEntry } from '$lib/amcf/layerViewOverlayModes';
 	import { DEFAULT_OVERLAY_OPACITY, OVERLAY_OPACITY_MAX, OVERLAY_OPACITY_MIN, OVERLAY_OPACITY_STEP, clampOverlayOpacity, overlayOpacityFactor, parseOverlayOpacity } from '$lib/amcf/layerViewOverlayOpacity';
+	import { parsePictureOverlay, pictureOverlayArea, resolvePictureOverlayModes } from '$lib/amcf/layerViewPictureOverlay';
+	import type { PictureOverlayModeEntry, PictureOverlayArea } from '$lib/amcf/layerViewPictureOverlay';
 	import { StepperEventQueue, parseSteppers, parseValueSets, stepperValueOf } from '$lib/amcf/layerViewDeclarations';
 	import type { PointValueSets, ViewStepper } from '$lib/amcf/layerViewDeclarations';
 	// @ts-ignore — core JS has no type declarations yet
@@ -369,6 +371,26 @@
 	// field shows the value in force.
 	let overlayOpacityText = $state<string | null>(null);
 
+	// Picture overlay: a PNG of the layer drawn as it is over an area of the platform, for example the camera image of
+	// the layer (see layerViewPictureOverlay.ts for the declaration in platform.imageoverlay). It lies between the
+	// platform image and the scalar overlay, so a scalar overlay with an opacity below 100 % shows it through. Its
+	// toolbar button stands between Toolpath and the scalar overlay button and opens a menu with Off and the declared
+	// modes, like the scalar overlay button. The chosen mode and the opacity of its panel are kept while the view is
+	// open; a new mode or layer only loads the picture, nothing else of the layer.
+	let pictureOverlayDeclaration = $derived.by(() => { poll.v; return String(platform?.imageoverlay ?? ''); });
+	let pictureOverlay = $derived(parsePictureOverlay(pictureOverlayDeclaration, (message) => console.warn(message)));
+	// Mode chosen in the menu; null until one is chosen, the initial mode of the declaration is in force then.
+	let chosenPictureMode = $state<string | null>(null);
+	let pictureModes = $derived(pictureOverlay ? resolvePictureOverlayModes(pictureOverlay, chosenPictureMode) : null);
+	let pictureMenuOpen = $state(false);
+	// The picture of the chosen mode is shown on this layer.
+	let pictureShown = $derived(!!pictureModes && pictureModes.shown && pictureModes.available);
+	let loadingPicture = $state(false);
+	// Opacity of the picture in percent, set in its panel; the same rules as the opacity of the scalar overlay, and
+	// independent of it.
+	let pictureOpacity = $state(DEFAULT_OVERLAY_OPACITY);
+	let pictureOpacityText = $state<string | null>(null);
+
 	// Color scales of the value spots, see valueSpotLooks. Without an overlay image on the layer a value set that
 	// follows the overlay keeps its color map and takes the range of its own values.
 	let valueScales = $derived.by((): Record<SpotRole, ValueScale> => {
@@ -399,11 +421,12 @@
 	// A layer view with an overlay button keeps the buttons of its toolbar in place: a button that has nothing to
 	// act on is disabled and grey instead of removed, so the toolbar does not move under the pointer while the
 	// overlay button is clicked through its states.
-	let toolbarFixed = $derived(overlayName !== '');
+	let toolbarFixed = $derived(overlayName !== '' || pictureOverlay !== null);
 	let laserOffPresent = $derived(pointsLoaded && pointColumns.includes('laseron'));
 	let laserOffAvailable = $derived(laserOffPresent && pointsEnabled);
-	// A hidden toolpath can always be shown again, also where there is nothing else to see.
-	let toolpathToggleAvailable = $derived(pointsShown || overlayShown || !toolpathVisible);
+	// A hidden toolpath can always be shown again, also where there is nothing else to see. A shown picture overlay is
+	// something to see as well.
+	let toolpathToggleAvailable = $derived(pointsShown || overlayShown || pictureShown || !toolpathVisible);
 
 	// Legends in the bottom left corner: one of the overlay while it is shown and one of the color map display modes
 	// of the toolpath and the recorded points, which are drawn over the overlay. The legends of the value spots of
@@ -433,7 +456,8 @@
 		...(overlayShown ? ['overlay' as const] : [])
 	]);
 	let colorMapMenuKind = $state<LegendKind | null>(null);
-	let bottomLeftVisible = $derived(shownLegends.length > 0 || shownLaserOnSpotRoles.length > 0);
+	// The panel of the picture overlay (its opacity) stands below the legends while its picture is shown.
+	let bottomLeftVisible = $derived(shownLegends.length > 0 || shownLaserOnSpotRoles.length > 0 || pictureShown);
 
 	function isValueLegend(kind: LegendKind): kind is SpotRole {
 		return kind === 'target' || kind === 'status';
@@ -767,6 +791,20 @@
 		untrack(() => layerViewer.setOverlayOpacity(opacity));
 	});
 
+	// The same for the picture overlay, independently of the scalar overlay.
+	$effect(() => {
+		const opacity = overlayOpacityFactor(pictureOpacity);
+		if (!layerViewer || !initialized) return;
+		untrack(() => layerViewer.setPictureOverlayOpacity(opacity));
+	});
+
+	// A new declaration (another layer, another mode chosen) loads the picture of the chosen mode, or removes it.
+	$effect(() => {
+		pictureModes;
+		if (!layerViewer || !initialized) return;
+		untrack(() => syncPicture());
+	});
+
 	// Values of the codes 0 and 65535 of the overlay image; a missing or empty range reads as 0..1.
 	// View state sent with the event of a button that names this layer view (button attribute layerview, see
 	// AMCApplication.registerLayerViewStateProvider). overlaycolortable is the table the overlay is colored with on
@@ -820,9 +858,10 @@
 
 	// At most one menu of the view is open: the menus of the overlay button and of the Mode button in the toolbar,
 	// the color map menus of the legends and the color menus of the spot panels. Opening one closes the others.
-	type ViewMenu = 'overlay' | 'spotmode' | 'colormap' | 'spotcolor';
+	type ViewMenu = 'overlay' | 'picture' | 'spotmode' | 'colormap' | 'spotcolor';
 	function closeMenusExcept(keep: ViewMenu | null) {
 		if (keep !== 'overlay') overlayMenuOpen = false;
+		if (keep !== 'picture') pictureMenuOpen = false;
 		if (keep !== 'spotmode') spotModeMenuOpen = false;
 		if (keep !== 'colormap') colorMapMenuKind = null;
 		if (keep !== 'spotcolor') spotColorMenu = null;
@@ -1143,6 +1182,7 @@
 				platform.displayed_build = 0;
 				platform.displayed_scatterplot = '';
 				platform.displayed_overlayimage = '';
+				platform.displayed_pictureoverlay = '';
 			} else if (autoFrame) {
 				centerOnPlatform();
 			}
@@ -1198,6 +1238,9 @@
 		overlayUUID = typeof currentPlatform.overlayimageuuid === 'string' ? currentPlatform.overlayimageuuid.toLowerCase() : NULL_UUID;
 		syncScatterPlot();
 		syncOverlay();
+		// The picture overlay follows its declaration (see the effect on pictureModes); this only catches up after a
+		// re-initialisation of the view.
+		syncPicture();
 	}
 
 	// Loads or clears the scatter plot of the layer.
@@ -1293,6 +1336,88 @@
 		if (wasShown === (entry.mode !== 'off')) return;
 		colorMapMenuKind = null;
 		syncOverlay();
+	}
+
+	// Loads or removes the picture of the picture overlay: the one of the chosen mode on this layer, over the declared
+	// area of the platform. Only the picture is loaded; the toolpath, the recorded points and the scalar overlay of the
+	// layer stay as they are.
+	function syncPicture() {
+		const currentPlatform = module.platform;
+		if (!layerViewer || !currentPlatform) return;
+
+		const overlay = pictureOverlay;
+		const state = pictureModes;
+		let wanted = '';
+		let area: PictureOverlayArea | null = null;
+		if (overlay && state && state.shown && state.available) {
+			area = pictureOverlayArea(overlay, Number(currentPlatform.sizex) || 300, Number(currentPlatform.sizey) || 300,
+				Number(currentPlatform.originx) || 0, Number(currentPlatform.originy) || 0);
+			wanted = [state.imageUUID, area.sizeX, area.sizeY, area.originX, area.originY].join('|');
+		}
+		if ((currentPlatform.displayed_pictureoverlay ?? '') === wanted) return;
+		currentPlatform.displayed_pictureoverlay = wanted;
+
+		if (!area || !state) {
+			loadingPicture = false;
+			layerViewer.SetPictureOverlayImage(null);
+			return;
+		}
+
+		const caption = overlay?.caption ?? 'picture';
+		loadingPicture = true;
+		layerViewer.SetPictureOverlayImage(
+			app.getImageURL(state.imageUUID),
+			area.sizeX,
+			area.sizeY,
+			area.originX,
+			area.originY,
+			() => {
+				if (currentPlatform.displayed_pictureoverlay === wanted) loadingPicture = false;
+			},
+			(error: any) => {
+				// Another picture has been requested in the meantime
+				if (currentPlatform.displayed_pictureoverlay !== wanted) return;
+				loadingPicture = false;
+				app.showSnackBar(`Loading the ${caption.toLowerCase()} picture failed: ${error?.message ?? error}`, 'error', 8000);
+			}
+		);
+	}
+
+	// The button of the picture overlay opens the menu of its modes; the other menus of the view close.
+	function togglePictureMenu() {
+		pictureMenuOpen = !pictureMenuOpen;
+		closeMenusExcept('picture');
+	}
+
+	// A mode chosen in the menu of the picture overlay. Every mode can be chosen; a layer without its picture says so
+	// next to the toolbar. The effect on pictureModes loads the picture.
+	function choosePictureMode(entry: PictureOverlayModeEntry) {
+		chosenPictureMode = entry.mode;
+		pictureMenuOpen = false;
+	}
+
+	// The slider of the opacity of the picture overlay: every move takes effect at once and shows in the field.
+	function onPictureOpacitySliderInput(event: Event) {
+		pictureOpacity = clampOverlayOpacity(Number((event.target as HTMLInputElement).value));
+		pictureOpacityText = null;
+	}
+
+	// Takes over a typed or stepped text of the opacity field of the picture overlay, like commitOverlayOpacityText.
+	function commitPictureOpacityText(text: string | null) {
+		const value = text === null ? null : parseOverlayOpacity(text);
+		if (value !== null) pictureOpacity = value;
+		pictureOpacityText = null;
+	}
+
+	function onPictureOpacityKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			commitPictureOpacityText(pictureOpacityText);
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			pictureOpacityText = null;
+		}
 	}
 
 	function isDisplayedToolpath(buildUUID: string, layerIndex: number): boolean {
@@ -2115,15 +2240,17 @@
 		if (event.key === 'Escape') {
 			spotModeMenuOpen = false;
 			overlayMenuOpen = false;
+			pictureMenuOpen = false;
 		}
 	}
 
-	// A press outside of a toolbar button with a menu (Mode, overlay) and its menu closes the menu.
+	// A press outside of a toolbar button with a menu (Mode, overlay, picture overlay) and its menu closes the menu.
 	function onWindowPointerDown(event: PointerEvent) {
 		const target = event.target as HTMLElement | null;
 		const inside = (menu: ViewMenu) => !!target?.closest?.(`[data-view-menu="${menu}"]`);
 		if (spotModeMenuOpen && !inside('spotmode')) spotModeMenuOpen = false;
 		if (overlayMenuOpen && !inside('overlay')) overlayMenuOpen = false;
+		if (pictureMenuOpen && !inside('picture')) pictureMenuOpen = false;
 	}
 
 	function onPointerDown(event: PointerEvent) {
@@ -2595,6 +2722,51 @@
 	</div>
 {/snippet}
 
+<!-- Panel of the picture overlay (for example Camera): its caption with the shown mode and the opacity of the picture,
+     a slider and a numeric stepper that always show the same value, like the opacity of the scalar overlay legend -->
+{#snippet picturePanel()}
+	{@const caption = pictureOverlay?.caption ?? ''}
+	<div class="layerview-legend" data-picture-panel={pictureOverlay?.name ?? ''} role="group" aria-label={`${caption} picture`}>
+		<div class="layerview-legend-header">
+			<span class="layerview-legend-title">{caption}</span>
+			<span class="layerview-picture-mode">{pictureModes?.caption ?? ''}</span>
+		</div>
+		<div
+			class="layerview-legend-opacity"
+			role="group"
+			aria-label={`Opacity of the ${caption.toLowerCase()} picture`}
+			title={`Opacity of the ${caption.toLowerCase()} picture: at 100 % it is drawn as it is, at 0 % it cannot be seen and the platform shows. The other displays above it do not change`}
+			data-picture-opacity
+		>
+			<span class="layerview-legend-opacity-label">Opacity</span>
+			<input
+				type="range"
+				class="layerview-legend-opacity-slider"
+				min={OVERLAY_OPACITY_MIN}
+				max={OVERLAY_OPACITY_MAX}
+				step={OVERLAY_OPACITY_STEP}
+				value={pictureOpacity}
+				oninput={onPictureOpacitySliderInput}
+				aria-label={`Opacity of the ${caption.toLowerCase()} picture`}
+				aria-valuetext={`${pictureOpacity} %`}
+			/>
+			<NumericStepper
+				value={pictureOpacityText ?? String(pictureOpacity)}
+				min={OVERLAY_OPACITY_MIN}
+				max={OVERLAY_OPACITY_MAX}
+				step={OVERLAY_OPACITY_STEP}
+				ariaLabel={`Opacity of the ${caption.toLowerCase()} picture in percent`}
+				class="h-6 w-14 shrink-0 text-foreground"
+				oninput={(text: string) => (pictureOpacityText = text)}
+				onvaluechange={(text: string) => commitPictureOpacityText(text)}
+				onblur={() => commitPictureOpacityText(pictureOpacityText)}
+				onkeydown={onPictureOpacityKeyDown}
+			/>
+			<span class="layerview-stepper-unit">%</span>
+		</div>
+	</div>
+{/snippet}
+
 <!-- Look of the laser spots at one kind of positions: diameter in pixels, fill and the colors of laser on and off -->
 {#snippet spotPanel(role: SpotRole)}
 	{@const style = spotStyles[role]}
@@ -2812,20 +2984,83 @@
 						<span>Laser Off</span>
 					</button>
 				{/if}
-				{#if toolbarFixed || pointsLoaded || overlayShown}
+				{#if toolbarFixed || pointsLoaded || overlayShown || pictureShown}
 					<button
 						class="layerview-btn"
 						onclick={toggleToolpath}
 						disabled={!toolpathToggleAvailable}
 						title={!toolpathToggleAvailable
 							? 'The toolpath is all there is to see on this layer'
-							: (overlayShown ? `Show or hide the toolpath above the ${overlayName.toLowerCase()}` : 'Show or hide the toolpath below the recorded points')}
+							: (overlayShown ? `Show or hide the toolpath above the ${overlayName.toLowerCase()}`
+								: (pictureShown && !pointsShown ? `Show or hide the toolpath above the ${(pictureOverlay?.caption ?? 'picture').toLowerCase()} picture` : 'Show or hide the toolpath below the recorded points'))}
 						aria-label="Toggle toolpath"
 						aria-pressed={toolpathVisible}
 					>
 						<Route size={16} />
 						<span>Toolpath</span>
 					</button>
+				{/if}
+				{#if pictureOverlay && pictureModes}
+					<!-- The button of the picture overlay (for example Camera) with the menu of its modes below it; it is
+					     highlighted while a mode other than Off is chosen -->
+					<div class="layerview-mode-wrap" data-view-menu="picture" data-picture-overlay={pictureOverlay.name}>
+						<button
+							class="layerview-btn layerview-btn-overlay"
+							class:on={pictureModes.shown}
+							onclick={togglePictureMenu}
+							title={pictureModes.title}
+							aria-label={`${pictureOverlay.caption}: ${pictureModes.caption}. Click to choose`}
+							aria-haspopup="menu"
+							aria-expanded={pictureMenuOpen}
+							data-picture-mode={pictureModes.mode}
+						>
+							{#if pictureOverlay.icon}
+								<MdiIcon icon={pictureOverlay.icon} class="h-4 w-4" />
+							{:else}
+								<Layers size={16} />
+							{/if}
+							<!-- All modes lie on top of each other, the current one visible, so that the button is as wide
+							     as the longest -->
+							<span class="layerview-mode-caption">
+								<span>{pictureOverlay.caption}</span>
+								<span class="layerview-mode-states" aria-hidden="true">
+									{#each pictureModes.captions as caption (caption)}
+										<span class:current={caption === pictureModes.caption}>{caption}</span>
+									{/each}
+								</span>
+							</span>
+						</button>
+						{#if pictureMenuOpen}
+							<div
+								class="layerview-mode-menu"
+								role="menu"
+								tabindex="-1"
+								aria-label={`Modes of the ${pictureOverlay.caption.toLowerCase()}`}
+								onkeydown={(event) => onToolbarMenuKeyDown(event, () => (pictureMenuOpen = false))}
+								{@attach focusToolbarMenu}
+							>
+								{#each pictureModes.entries as entry (entry.mode)}
+									<button
+										type="button"
+										class="layerview-mode-menu-item"
+										class:selected={entry.shown}
+										role="menuitemradio"
+										aria-checked={entry.shown}
+										title={entry.hint}
+										onclick={() => choosePictureMode(entry)}
+										data-picture-mode={entry.mode}
+									>
+										<span class="layerview-mode-menu-check">
+											{#if entry.shown}<Check size={12} />{/if}
+										</span>
+										<span class="layerview-mode-menu-text">
+											<span>{entry.caption}</span>
+										</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
 				{#if overlayName}
 					<!-- The overlay button with the menu of the overlay modes below it; it is highlighted while the
@@ -2972,7 +3207,7 @@
 			</div>
 
 			<!-- Platform label and loading indicator -->
-			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay || (overlayMode && !overlayAvailable)}
+			{#if labelCaption || labelIcon || loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay || loadingPicture || (overlayMode && !overlayAvailable) || (pictureModes && pictureModes.shown && !pictureModes.available)}
 				<div class="layerview-status">
 					{#if labelCaption || labelIcon}
 						<div class="layerview-label">
@@ -2986,7 +3221,13 @@
 							<span>{overlayName} not available for this layer</span>
 						</div>
 					{/if}
-					{#if loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay}
+					{#if pictureOverlay && pictureModes && pictureModes.shown && !pictureModes.available}
+						<div class="layerview-label" data-picture-unavailable>
+							<MdiIcon icon="mdi-alert-circle-outline" class="h-3.5 w-3.5" />
+							<span>{pictureOverlay.unavailableNote}</span>
+						</div>
+					{/if}
+					{#if loadingLayer || loadingPoints || loadingSecondaryPoints || loadingValueChannels.target || loadingValueChannels.status || loadingOverlay || loadingPicture}
 						<div class="layerview-label">
 							<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
 							<span>Loading layer data</span>
@@ -3118,6 +3359,9 @@
 				{#each shownLegends as kind (kind)}
 					{@render legendPanel(kind)}
 				{/each}
+				{#if pictureShown}
+					{@render picturePanel()}
+				{/if}
 			</div>
 		{/if}
 
@@ -3840,6 +4084,15 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* Mode shown by the panel of the picture overlay, right of its caption. */
+	.layerview-picture-mode {
+		flex: none;
+		color: rgba(255, 255, 255, 0.75);
+	}
+	/* The panel of the picture overlay has no rows below its header but the opacity. */
+	[data-picture-panel] .layerview-legend-header {
+		margin-bottom: 0;
 	}
 	.layerview-legend-btn {
 		display: inline-flex;

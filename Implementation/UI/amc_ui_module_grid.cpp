@@ -46,8 +46,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 using namespace AMC;
 
 
-CUIModule_GridColumn::CUIModule_GridColumn(float fWidth, const std::string& sUnit)
-	: m_Width (fWidth), m_sUnit (sUnit)
+CUIModule_GridColumn::CUIModule_GridColumn(float fWidth, const std::string& sUnit, float fMinWidth)
+	: m_Width (fWidth), m_sUnit (sUnit), m_MinWidth (fMinWidth)
 {
 
 }
@@ -61,6 +61,11 @@ float CUIModule_GridColumn::getWidth()
 std::string CUIModule_GridColumn::getWidthUnitString()
 {
 	return m_sUnit;
+}
+
+float CUIModule_GridColumn::getMinWidth()
+{
+	return m_MinWidth;
 }
 
 
@@ -194,6 +199,7 @@ CUIModule_Grid::CUIModule_Grid(pugi::xml_node& xmlNode, const std::string& sPath
 			CJSONWriterObject columnObject(writer);
 			columnObject.addDouble(AMC_API_KEY_UI_COLUMNWIDTH, column->getWidth());
 			columnObject.addString(AMC_API_KEY_UI_COLUMNWIDTHUNIT, column->getWidthUnitString());
+			columnObject.addDouble(AMC_API_KEY_UI_COLUMNMINWIDTH, column->getMinWidth());
 			columnsArray.addObject(columnObject);
 		}
 		object.addArray(sPropertyName, columnsArray);
@@ -231,8 +237,19 @@ CUIModule_Grid::CUIModule_Grid(pugi::xml_node& xmlNode, const std::string& sPath
 				throw ELibMCCustomException(LIBMC_ERROR_MISSINGCOLUMNUNIT, m_sName);
 			std::string sUnit = unitAttrib.as_string();
 
+			// minwidth: smallest width of a column with unit "free" in px. The column takes its share of the
+			// free space, but does not get narrower than minwidth; the page scrolls instead.
+			double columnMinWidth = 0.0;
+			auto minWidthAttrib = childNode.attribute("minwidth");
+			if (!minWidthAttrib.empty()) {
+				columnMinWidth = minWidthAttrib.as_double(-1.0);
+				if (!(columnMinWidth >= 0.0))
+					throw ELibMCCustomException(LIBMC_ERROR_INVALIDCOLUMNWIDTH, m_sName + ": minwidth must be a number of px of at least 0");
+				if ((columnMinWidth > 0.0) && (sUnit != "free"))
+					throw ELibMCCustomException(LIBMC_ERROR_INVALIDCOLUMNWIDTH, m_sName + ": minwidth needs a column with unit free");
+			}
 
-			m_Columns.push_back(std::make_shared<CUIModule_GridColumn> ((float) columnWidth, sUnit));
+			m_Columns.push_back(std::make_shared<CUIModule_GridColumn> ((float) columnWidth, sUnit, (float) columnMinWidth));
 		}
 
 		if (sChildName == "row") {

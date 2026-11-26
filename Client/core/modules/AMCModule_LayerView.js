@@ -75,6 +75,9 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 		// corner of the view ({"steppers": [...]}). The layer view component documents their members.
 		this.scatterplotvaluesets = "";
 		this.steppers = "";
+		// Picture overlay declared by the UI plugin, a JSON text or "": a toolbar button with a menu of modes, each a PNG
+		// stretched over an area of the platform (for example the camera images of the layer).
+		this.imageoverlay = "";
 		this.highlightpartuuid = Common.nullUUID ();
 		// Changes whenever parts of the build are disabled or re-enabled; the displayed layer is reloaded then.
 		this.partstateversion = 0;
@@ -129,6 +132,8 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.scatterplotvaluesets = Assert.StringValue (updateJSON.scatterplotvaluesets);
 		if (updateJSON.steppers !== undefined)
 			this.steppers = Assert.StringValue (updateJSON.steppers);
+		if (updateJSON.imageoverlay !== undefined)
+			this.imageoverlay = Assert.StringValue (updateJSON.imageoverlay);
 		if (updateJSON.highlightpartuuid !== undefined)
 			this.highlightpartuuid = Assert.OptionalUUIDValue (updateJSON.highlightpartuuid);
 		if (updateJSON.partstateversion !== undefined)
@@ -207,6 +212,8 @@ class AMCApplicationItem_LayerView_Platform extends Common.AMCApplicationItem {
 			this.scatterplotvaluesets = String (attrs.scatterplotvaluesets);
 		if (attrs.steppers !== undefined)
 			this.steppers = String (attrs.steppers);
+		if (attrs.imageoverlay !== undefined)
+			this.imageoverlay = String (attrs.imageoverlay);
 		if (attrs.highlightpartuuid !== undefined)
 			this.highlightpartuuid = attrs.highlightpartuuid;
 		if (attrs.partstateversion !== undefined) {

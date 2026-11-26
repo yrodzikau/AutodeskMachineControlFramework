@@ -616,7 +616,10 @@ IBuildJobExecutionData* CBuildJobExecution::RetrieveJobExecutionDataByIdentifier
 
 	std::unique_ptr<CBuildJobExecutionDataIterator> buildJobIterator(new CBuildJobExecutionDataIterator());
 
-	std::string sQuery = "SELECT buildjobexecutiondata.uuid, buildjobexecutiondata.executionuuid, buildjobexecutiondata.identifier, buildjobexecutiondata.name, buildjobexecutiondata.datatype, buildjobexecutiondata.timestamp, buildjobexecutiondata.storagestreamuuid, buildjobexecutiondata.useruuid, storage_streams.sha2, storage_streams.size FROM buildjobexecutiondata LEFT JOIN storage_streams ON storage_streams.uuid=storagestreamuuid WHERE executionuuid=? AND buildjobexecutiondata.identifier=? AND active=?";
+	// An identifier can be stored more than once, for example the camera image of a layer that is exposed again.
+	// The newest attachment replaces the older ones: the time stamps are ISO 8601 strings of fixed width with
+	// microseconds, so their text order is their time order.
+	std::string sQuery = "SELECT buildjobexecutiondata.uuid, buildjobexecutiondata.executionuuid, buildjobexecutiondata.identifier, buildjobexecutiondata.name, buildjobexecutiondata.datatype, buildjobexecutiondata.timestamp, buildjobexecutiondata.storagestreamuuid, buildjobexecutiondata.useruuid, storage_streams.sha2, storage_streams.size FROM buildjobexecutiondata LEFT JOIN storage_streams ON storage_streams.uuid=storagestreamuuid WHERE executionuuid=? AND buildjobexecutiondata.identifier=? AND active=? ORDER BY buildjobexecutiondata.timestamp DESC";
 	auto pStatement = m_pSQLHandler->prepareStatement(sQuery);
 	pStatement->setString(1, m_sExecutionUUID);
 	pStatement->setString(2, sIdentifier);

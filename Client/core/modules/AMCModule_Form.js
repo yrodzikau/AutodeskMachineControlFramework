@@ -87,6 +87,8 @@ export default class AMCApplicationModule_Form extends Common.AMCApplicationModu
 		this.entities = Array.isArray(moduleJSON.entities) ? moduleJSON.entities : [];
 		// "column" or empty: one entity per line; "row": all entities in one line.
 		this.layout = (typeof moduleJSON.layout === "string") ? moduleJSON.layout : "";
+		// "left" or empty: the caption stands in front of the field; "top": the caption stands above the field.
+		this.captionposition = (typeof moduleJSON.captionposition === "string") ? moduleJSON.captionposition : "";
 
 		// Dirty-state tracking and server-side error map
 		this.serverErrors = {};
@@ -228,9 +230,11 @@ export default class AMCApplicationModule_Form extends Common.AMCApplicationModu
 				this.caption = v2Entry.attributes.caption;
 		}
 
-		// The layout is an attribute of the form item, which the content leaf wraps as submodules[0].
+		// The layout and the caption position are attributes of the form item, which the content leaf wraps as submodules[0].
 		if (v2Entry.submodules && v2Entry.submodules.length > 0 && v2Entry.submodules[0].attributes && (typeof v2Entry.submodules[0].attributes.layout === "string"))
 			this.layout = v2Entry.submodules[0].attributes.layout;
+		if (v2Entry.submodules && v2Entry.submodules.length > 0 && v2Entry.submodules[0].attributes && (typeof v2Entry.submodules[0].attributes.captionposition === "string"))
+			this.captionposition = v2Entry.submodules[0].attributes.captionposition;
 
 		// ContentLeaf wraps the Form item as submodules[0].
 		// The individual form entities are one level deeper: submodules[0].submodules.

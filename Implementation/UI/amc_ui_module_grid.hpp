@@ -71,11 +71,15 @@ namespace AMC {
 	private:
 		float m_Width;
 		std::string m_sUnit;
+		// Smallest width of a column with unit "free" in px, 0 for none: the column does not shrink below it,
+		// and a page whose grid would get narrower scrolls horizontally instead.
+		float m_MinWidth;
 	public:
-		CUIModule_GridColumn(float fWidth, const std::string & sUnit);
+		CUIModule_GridColumn(float fWidth, const std::string & sUnit, float fMinWidth);
 
 		float getWidth();
 		std::string getWidthUnitString();
+		float getMinWidth();
 
 		static std::string gridPositionToString(eUIModule_GridColumnPosition ePosition);
 		static eUIModule_GridColumnPosition stringToGridPosition(const std::string& sString);

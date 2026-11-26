@@ -669,6 +669,7 @@ export default class AMCApplication extends Common.AMCObject {
 					secondaryscatterplotuuid: attrs.secondaryscatterplotuuid || "00000000-0000-0000-0000-000000000000",
 					scatterplotvaluesets: attrs.scatterplotvaluesets || "",
 					steppers:           attrs.steppers           || "",
+					imageoverlay:       attrs.imageoverlay       || "",
 					sizex:              parseFloat(attrs.sizex)  || 0,
 					sizey:              parseFloat(attrs.sizey)  || 0,
 					originx:            parseFloat(attrs.originx) || 0,
@@ -727,8 +728,9 @@ export default class AMCApplication extends Common.AMCObject {
 				formSubs = subs[0].submodules || [];
 				formAttrs = subs[0].attributes || {};
 			}
-			// The layout is an attribute of the form item, one level below the content leaf.
+			// The layout and the caption position are attributes of the form item, one level below the content leaf.
 			legacy.layout = (typeof formAttrs.layout === "string") ? formAttrs.layout : "";
+			legacy.captionposition = (typeof formAttrs.captionposition === "string") ? formAttrs.captionposition : "";
 		legacy.entities = formSubs.map(sub => {
 			let a = sub.attributes || {};
 			let entity = {

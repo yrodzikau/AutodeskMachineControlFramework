@@ -250,6 +250,8 @@ class LayerViewImpl {
 		this.overlayRange = { min: 0.0, max: 1.0 };
 		this.overlaySmoothing = false;
 		this.overlayOpacity = 1.0;
+		// Picture overlay (for example the camera image of the layer), see SetPictureOverlayImage.
+		this.pictureOverlayOpacity = 1.0;
 
 		this.gridColor = undefined;
         
@@ -466,11 +468,14 @@ class LayerViewImpl {
         }
 
         // The overlay image covers the platform rectangle, so it follows the build plate and not the toolpath
-        // (which is shifted by the origin and may be rotated and translated).
-        var overlaygeometry = this.glInstance.findElement("overlayimage");
-        if (overlaygeometry) {
-            overlaygeometry.setPositionXY(this.transform.x, this.transform.y);
-            overlaygeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
+        // (which is shifted by the origin and may be rotated and translated). The picture overlay is placed in
+        // platform coordinates as well, see SetPictureOverlayImage.
+        for (const identifier of ["overlayimage", "pictureoverlay"]) {
+            var overlaygeometry = this.glInstance.findElement(identifier);
+            if (overlaygeometry) {
+                overlaygeometry.setPositionXY(this.transform.x, this.transform.y);
+                overlaygeometry.setScaleXY(this.transform.scaling,  - this.transform.scaling);
+            }
         }
 		
 		this.renderNeedsUpdate = true;
@@ -2457,6 +2462,49 @@ class LayerViewImpl {
 			this.updateTransform ();
 		} else {
 			this.glInstance.removeElement ("overlayimage");
+			this.RenderScene (true);
+		}
+	}
+
+	// Picture laid over the platform, for example the camera image of the layer: a PNG drawn as it is (no color map),
+	// stretched over the rectangle of sizeX x sizeY mm whose lower left corner is (originX, originY) in toolpath
+	// coordinates, the 3mf coordinates without the rotation and the translation of the toolpath. The platform origin
+	// places it on the build plate like the toolpath. It lies between the plate (z 35) and the scalar overlay (z 36),
+	// is interpolated between its pixels when magnified, and keeps the opacity of setPictureOverlayOpacity. A null url
+	// removes it. onLoaded and onError are optional.
+	SetPictureOverlayImage (url, sizeX, sizeY, originX, originY, onLoaded, onError) {
+		if (!this.glInstance)
+			return;
+
+		if (url) {
+			this.glInstance.addImageElement ("pictureoverlay", url, sizeX, sizeY, originX + this.origin.x, originY + this.origin.y, 35.5, {
+				smoothing: true,
+				opacity: this.pictureOverlayOpacity,
+				onLoaded: () => {
+					this.updateTransform ();
+					this.RenderScene (true);
+					if (onLoaded)
+						onLoaded ();
+				},
+				onError: onError
+			});
+			this.updateTransform ();
+		} else {
+			this.glInstance.removeElement ("pictureoverlay");
+			this.RenderScene (true);
+		}
+	}
+
+	// Opacity of the picture overlay from 0 (not seen) to 1 (drawn as it is, the default). Only the picture changes:
+	// the plate shows through it; the scalar overlay, the toolpath and the points drawn above it stay as they are. Kept
+	// for the pictures of the following layers.
+	setPictureOverlayOpacity (opacity)
+	{
+		const value = Number (opacity);
+		this.pictureOverlayOpacity = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
+		const element = this.glInstance ? this.glInstance.findElement ("pictureoverlay") : null;
+		if (element && (typeof element.setOpacity === "function")) {
+			element.setOpacity (this.pictureOverlayOpacity);
 			this.RenderScene (true);
 		}
 	}

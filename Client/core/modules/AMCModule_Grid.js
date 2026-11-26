@@ -163,7 +163,13 @@ export default class AMCApplicationModule_Grid extends Common.AMCApplicationModu
 			if (columnObject.unit === "px") {
 				columnString = columnString + columnObject.width + "px ";
 			} else if (columnObject.unit === "free") {
-				columnString = columnString + columnObject.width + "fr ";
+				// minwidth (px): the column does not shrink below it; the page scrolls instead.
+				let minWidth = parseFloat (columnObject.minwidth) || 0;
+				if (minWidth > 0) {
+					columnString = columnString + "minmax(" + minWidth + "px, " + columnObject.width + "fr) ";
+				} else {
+					columnString = columnString + columnObject.width + "fr ";
+				}
 			} else if (columnObject.unit === "pt") {
 				columnString = columnString + columnObject.width + "pt ";
 			} else {

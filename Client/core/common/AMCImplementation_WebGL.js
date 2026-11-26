@@ -1573,30 +1573,39 @@ class WebGLScalarImageElement extends WebGLElement {
 
 }
 
-// Raster image stretched over a rectangle of the scene, for example a heat map laid over the build plate.
-// The texture is loaded asynchronously; until then the element has no glelement, like an SVG before its load.
+// Raster image stretched over a rectangle of the scene, for example a camera image of the layer laid over the build
+// plate. The texture is loaded asynchronously; until then the element has no glelement, like an SVG before its load.
+// Smoothing interpolates between the pixels of the magnified image (and filters a reduced one through mipmaps);
+// without it every pixel of a magnified image is a sharp square. The opacity scales the whole image.
 class WebGLImageElement extends WebGLElement {
 
     constructor ()
 	{
         super();
 		this.glelement = null;
+		this.material = null;
+		this.smoothing = false;
+		this.opacity = 1.0;
+		this.visible = true;
 	}
 
-	loadTexture (url, width, height, offsetX, offsetY, onLoaded)
+	loadTexture (url, width, height, offsetX, offsetY, onLoaded, onError)
 	{
         const loader = new THREE.TextureLoader();
         loader.load(url, (texture) => {
             // A PNG holds sRGB colours and the renderer outputs sRGB, so the colours stay as rendered.
             texture.colorSpace = THREE.SRGBColorSpace;
-            texture.minFilter = THREE.LinearFilter;
-            texture.magFilter = THREE.NearestFilter;
-            texture.generateMipmaps = false;
+            texture.magFilter = this.smoothing ? THREE.LinearFilter : THREE.NearestFilter;
+            // A smoothed image is reduced through mipmaps, so that a large picture does not flicker when zoomed out.
+            texture.minFilter = this.smoothing ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+            texture.generateMipmaps = this.smoothing;
 
-            // transparent: the PNG carries an alpha channel, the build plate stays visible under the image.
+            // transparent: the PNG may carry an alpha channel and the opacity may be below 1, the build plate stays
+            // visible under the image.
             const material = new THREE.MeshBasicMaterial({
                 map: texture,
                 transparent: true,
+                opacity: this.opacity,
                 depthWrite: false,
                 side: THREE.DoubleSide
             });
@@ -1609,15 +1618,44 @@ class WebGLImageElement extends WebGLElement {
 
             const group = new THREE.Group();
             group.add(mesh);
+            group.visible = this.visible;
             this.glelement = group;
+            this.material = material;
             this.updateGLPosition();
+
+            const image = texture.image;
+            console.debug("[WebGL] image " + ((image && (image.naturalWidth || image.width)) || 0) + " x " + ((image && (image.naturalHeight || image.height)) || 0)
+                + " over " + width + " x " + height + (this.smoothing ? ", linear filtering" : ", nearest filtering"));
 
             if (onLoaded)
                 onLoaded(this);
         }, undefined, (error) => {
-            console.error("Could not load the overlay image " + url, error);
+            console.error("Could not load the image " + url, error);
+            if (onError)
+                onError((error instanceof Error) ? error : new Error("the image could not be loaded"));
         });
 	}
+
+    setSmoothing (enabled)
+    {
+        this.smoothing = (enabled === true);
+    }
+
+    // Opacity of the whole image from 0 (not seen) to 1 (drawn as it is). It costs one render, no new upload.
+    setOpacity (opacity)
+    {
+        const value = Number (opacity);
+        this.opacity = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
+        if (this.material)
+            this.material.opacity = this.opacity;
+    }
+
+    setVisible (visible)
+    {
+        this.visible = (visible !== false);
+        if (this.glelement)
+            this.glelement.visible = this.visible;
+    }
 
 }
 
@@ -2006,14 +2044,21 @@ class WebGLImpl {
 	// Raster image over a rectangle of the scene (lower left corner at offsetX/offsetY, width x height in the local
 	// units of the element), for example a heat map over the build plate. The texture loads asynchronously; an
 	// element that was removed or replaced in the meantime is not added to the scene.
-	addImageElement (identifier, url, width, height, offsetX, offsetY, zValue)
+	// Raster image over a rectangle of the scene, see WebGLImageElement. options (all optional): smoothing, opacity (0
+	// to 1), visible, onLoaded and onError callbacks. The image loads asynchronously; an element that was removed or
+	// replaced in the meantime is not added to the scene.
+	addImageElement (identifier, url, width, height, offsetX, offsetY, zValue, options)
 	{
         if (!identifier)
             return;
 
+        const settings = options || {};
         let imageElement = new WebGLImageElement ();
         this.addElement(identifier, imageElement);
         imageElement.setPosition (0, 0, zValue);
+        imageElement.setSmoothing (settings.smoothing === true);
+        imageElement.setOpacity (Number.isFinite (settings.opacity) ? settings.opacity : 1.0);
+        imageElement.setVisible (settings.visible !== false);
 
         imageElement.loadTexture (url, width, height, offsetX, offsetY, (element) => {
             if (this.renderElements.get(identifier) !== element) {
@@ -2028,6 +2073,11 @@ class WebGLImpl {
             }
 
             this.renderScene ();
+            if (settings.onLoaded)
+                settings.onLoaded (element);
+        }, (error) => {
+            if (settings.onError)
+                settings.onError (error);
         });
 
         return imageElement;

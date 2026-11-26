@@ -187,6 +187,13 @@ void CUIModule_LayerViewPlatformItem::populateClientVariables(CParameterHandler*
 	// A changed value triggers the event with the platform item as its sender and the event parameters "stepper"
 	// (the name) and "value"; the plugin then declares the steppers again with the value it accepted. Empty: none.
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_STEPPERS, "Numeric steppers of the layer view (JSON)", "");
+	// Picture overlay of the layer, declared by the UI plugin as a JSON object, for example the camera images of a
+	// layer: a toolbar button with a caption and an icon whose menu offers Off and the modes of the declaration; each
+	// mode names a PNG (the UUID of a storage stream, served by /api/image) that the client stretches over an area of
+	// the platform given in toolpath coordinates (sizex, sizey and the lower left corner originx, originy in mm) and
+	// draws between the platform image and the scalar overlay. The layer view client documents the members. Empty:
+	// the plugin declares no picture overlay.
+	pGroup->addNewStringParameter(AMC_API_KEY_UI_IMAGEOVERLAY, "Picture overlay of the layer view (JSON)", "");
 	pGroup->addNewIntParameter(AMC_API_KEY_UI_LABELVISIBLE, "Label is visible", m_LabelVisible.evaluateIntegerValue (pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELCAPTION, "Label caption", m_LabelCaption.evaluateStringValue(pStateMachineData));
 	pGroup->addNewStringParameter(AMC_API_KEY_UI_LABELICON, "Label icon", m_LabelIcon.evaluateStringValue(pStateMachineData));
@@ -462,6 +469,7 @@ CUIModule_LayerView::CUIModule_LayerView(pugi::xml_node& xmlNode, const std::str
 	pluginDeclarationExpression.setFixedValue("");
 	registerStringAttribute(AMC_API_KEY_UI_SCATTERPLOTVALUESETS, pluginDeclarationExpression);
 	registerStringAttribute(AMC_API_KEY_UI_STEPPERS, pluginDeclarationExpression);
+	registerStringAttribute(AMC_API_KEY_UI_IMAGEOVERLAY, pluginDeclarationExpression);
 
 	// Build and layer selection are per-session client variables of the platform item.
 	registerProviderAttribute(AMC_API_KEY_UI_BUILDUUID, eUIFrontendDefinitionAttributeType::atUUID, eUIFrontendDefinitionAttributeScope::asSession,

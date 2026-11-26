@@ -385,6 +385,9 @@ namespace AMC {
 		bool m_bVisible;
 		// "column": one entity per line (default), "row": all entities in one line.
 		std::string m_sLayout;
+		// "left": the caption of every entity stands in the caption column in front of its field (default),
+		// "top": the caption stands above the field.
+		std::string m_sCaptionPosition;
 
 		PStateMachineData m_pStateMachineData;
 
@@ -403,6 +406,8 @@ namespace AMC {
 		bool IsVisible();
 
 		void setLayout(const std::string& sLayout);
+
+		void setCaptionPosition(const std::string& sCaptionPosition);
 
 		bool hasEntityWithName(const std::string& sName);
 		PUIModule_ContentFormEntity findEntityByName(const std::string& sName);
