@@ -1238,7 +1238,17 @@ class WebGLGridElement extends WebGLElement {
         group.add(this.lineElement3.glelement);
 
         this.glelement = group;
-	
+
+    }
+
+    // Hides the lines without removing the element, so its position and scale keep following the view.
+    /**
+     * @param {boolean} visible
+     */
+    setVisible (visible)
+    {
+        if (this.glelement)
+            this.glelement.visible = (visible !== false);
     }
 
 }

@@ -28,6 +28,7 @@
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Check from '@lucide/svelte/icons/check';
 	import Link2 from '@lucide/svelte/icons/link-2';
+	import Grid3x3 from '@lucide/svelte/icons/grid-3x3';
 	import MdiIcon from '$lib/amcf/MdiIcon.svelte';
 	import { NumericStepper } from '$lib/components/ui/numeric-stepper/index.js';
 	import { SPOT_ROLES, SPOT_ROLE_CAPTIONS, resolveSpotModes } from '$lib/amcf/layerViewSpotModes';
@@ -1908,6 +1909,15 @@
 	} : null);
 	// Live machine/build-plate coordinates under the cursor (mm), shown bottom-right.
 	let mousePosition = $state<{ x: number; y: number } | null>(null);
+	// Grid button right of the readout: shows or hides the grid of the view. Starts shown with every opening of the view
+	// and is kept only while it is open.
+	let gridVisible = $state(true);
+
+	$effect(() => {
+		const visible = gridVisible;
+		if (!layerViewer) return;
+		untrack(() => layerViewer.setGridVisible(visible));
+	});
 
 	// "Properties" hover inspector: when enabled, hovering a hatch/polyline shows
 	// a popup with that segment's laser power, speed, profile, etc.
@@ -3367,12 +3377,24 @@
 			</div>
 		{/if}
 
-		<!-- Live cursor position readout (machine coordinates, mm) -->
-		{#if mousePosition}
-			<div class="layerview-mouse-pos" class:above-time-slider={showTimeSlider && timelineDuration > 0}>
-				X: {mousePosition.x.toFixed(2)} &middot; Y: {mousePosition.y.toFixed(2)} mm
-			</div>
-		{/if}
+		<!-- Live cursor position readout (machine coordinates, mm) and the grid button right of it. The button lies
+		     outside of the canvas like the toolbar, so the readout hides while the pointer is over the button. -->
+		<div class="layerview-bottom-right" class:above-time-slider={showTimeSlider && timelineDuration > 0}>
+			{#if mousePosition}
+				<div class="layerview-mouse-pos">
+					X: {mousePosition.x.toFixed(2)} &middot; Y: {mousePosition.y.toFixed(2)} mm
+				</div>
+			{/if}
+			<button
+				class="layerview-btn layerview-grid-btn"
+				onclick={() => (gridVisible = !gridVisible)}
+				title="Show or hide the grid"
+				aria-label="Toggle grid"
+				aria-pressed={gridVisible}
+			>
+				<Grid3x3 size={16} />
+			</button>
+		</div>
 
 		<!-- Info about the point or toolpath segment under the mouse -->
 		{#if hoverInfo.visible && !propertiesMode}
@@ -4233,22 +4255,45 @@
 		color: rgba(255, 255, 255, 0.75);
 		font-size: 10px;
 	}
-	.layerview-mouse-pos {
+	/* Cursor position readout with the grid button right of it. The row is anchored at its right edge and the button
+	   comes last, so the button keeps its place while the readout appears, hides or changes its width; the readout
+	   grows to the left with its text. Only the button takes the pointer. */
+	.layerview-bottom-right {
+		/* Height of the readout and of the square grid button. */
+		--layerview-readout-height: 24px;
 		position: absolute;
 		/* Shifted left so it clears the vertical layer slider on the right edge. */
 		right: 40px;
 		bottom: 8px;
+		display: flex;
+		align-items: flex-start;
+		gap: 4px;
+		pointer-events: none;
+		z-index: 10;
+	}
+	.layerview-bottom-right.above-time-slider {
+		bottom: 48px;
+	}
+	.layerview-grid-btn {
+		flex: none;
+		box-sizing: border-box;
+		width: var(--layerview-readout-height);
+		height: var(--layerview-readout-height);
+		padding: 0;
+		pointer-events: auto;
+	}
+	.layerview-mouse-pos {
+		flex: none;
+		box-sizing: border-box;
+		height: var(--layerview-readout-height);
 		padding: 4px 10px;
 		border-radius: 4px;
 		background: rgba(0, 0, 0, 0.65);
 		color: white;
 		font-size: 11px;
+		line-height: calc(var(--layerview-readout-height) - 8px);
 		font-variant-numeric: tabular-nums;
-		pointer-events: none;
-		z-index: 10;
-	}
-	.layerview-mouse-pos.above-time-slider {
-		bottom: 48px;
+		white-space: nowrap;
 	}
 	.layerview-time-wrap {
 		position: absolute;

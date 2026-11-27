@@ -138,6 +138,8 @@ class LayerViewImpl {
 
         this.glInstance = glInstance;
         this.gridEnabled = !(options && (options.grid === false));
+        // Whether the grid is drawn, see setGridVisible; survives the rebuilds of the grid on resize and color changes.
+        this.gridVisible = true;
 
         this.currentSize = {
             gridWidth: 0,
@@ -310,9 +312,30 @@ class LayerViewImpl {
         if (this.currentSize.gridWidth <= 0 || this.currentSize.gridHeight <= 0) return;
         this.glInstance.removeElement("grid");
         if (!this.gridEnabled) return;
-        this.glInstance.add2DGridGeometry("grid", this.currentSize.gridWidth, this.currentSize.gridHeight, 50, 5, this.gridColor);
+        const gridElement = this.glInstance.add2DGridGeometry("grid", this.currentSize.gridWidth, this.currentSize.gridHeight, 50, 5, this.gridColor);
+        if (gridElement)
+            gridElement.setVisible(this.gridVisible);
         this.updateTransform();
         this.renderNeedsUpdate = true;
+    }
+
+    // Shows or hides the grid. The grid element stays in the scene while hidden, because its level of detail also
+    // sets the line scale level of the toolpath and the points (see updateTransform), and nothing else is rebuilt.
+    /**
+     * @param {boolean} visible
+     */
+    setGridVisible(visible) {
+        const gridVisible = (visible !== false);
+        if (gridVisible === this.gridVisible)
+            return;
+        this.gridVisible = gridVisible;
+
+        if (!this.glInstance)
+            return;
+        const gridElement = this.glInstance.findElement("grid");
+        if (gridElement && (typeof gridElement.setVisible === "function"))
+            gridElement.setVisible(gridVisible);
+        this.RenderScene(true);
     }
 
     updateSize(width, height) {
@@ -350,7 +373,9 @@ class LayerViewImpl {
         if (!this.gridEnabled)
             return;
 
-        this.glInstance.add2DGridGeometry("grid", width, height, 50, 5, this.gridColor);
+        const gridElement = this.glInstance.add2DGridGeometry("grid", width, height, 50, 5, this.gridColor);
+        if (gridElement)
+            gridElement.setVisible(this.gridVisible);
 		this.updateTransform ();
 		
 		this.renderNeedsUpdate = true;
