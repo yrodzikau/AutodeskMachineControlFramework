@@ -4068,6 +4068,13 @@ public:
 	virtual bool HasAttachmentIdentifier(const std::string & sIdentifier) = 0;
 
 	/**
+	* IBuildExecution::ListAttachments - Lists the attachments of the build execution whose identifier starts with a prefix, with one query. An identifier that is stored more than once is listed once, with its newest attachment, the one that LoadStreamByIdentifier returns.
+	* @param[in] sIdentifierPrefix - Start of the identifiers to list, case sensitive. An empty prefix lists every attachment.
+	* @return Object with the array attachments, newest attachment first. Every entry has the string members identifier, name, uuid (of the attachment), streamuuid (of the storage stream, as /api/image serves it) and timestamp (when the attachment was stored, ISO 8601 UTC) and the integer member size (in bytes). The streams themselves are not opened.
+	*/
+	virtual IJSONObject * ListAttachments(const std::string & sIdentifierPrefix) = 0;
+
+	/**
 	* IBuildExecution::AddBinaryData - Adds binary data to store with the build execution.
 	* @param[in] sIdentifier - Unique identifier of the attached data. Fails if ther already exists a binary data with the equal identifier.
 	* @param[in] sName - Name of the attache data

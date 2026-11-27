@@ -42,6 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "amc_ui_module_glscene.hpp"
 #include "amc_ui_module_graphic.hpp"
 #include "amc_ui_module_layerview.hpp"
+#include "amc_ui_module_imagecorrection.hpp"
 #include "amc_ui_module_logs.hpp"
 
 using namespace AMC;
@@ -73,6 +74,9 @@ PUIModule CUIModuleFactory::createModule(pugi::xml_node& xmlNode, const std::str
 	if (sType == CUIModule_LayerView::getStaticType())
 		return std::make_shared<CUIModule_LayerView>(xmlNode, sPath, pUIModuleEnvironment);
 
+	if (sType == CUIModule_ImageCorrection::getStaticType())
+		return std::make_shared<CUIModule_ImageCorrection>(xmlNode, sPath, pUIModuleEnvironment);
+
 	if (CUIModule_ContentLeaf::isSupportedModuleType(sType))
 		return std::make_shared<CUIModule_ContentLeaf>(xmlNode, sPath, pUIModuleEnvironment);
 
@@ -102,6 +106,9 @@ bool CUIModuleFactory::moduleTypeIsRegistered(const std::string& sType)
 		return true;
 
 	if (sType == CUIModule_LayerView::getStaticType())
+		return true;
+
+	if (sType == CUIModule_ImageCorrection::getStaticType())
 		return true;
 
 	if (CUIModule_ContentLeaf::isSupportedModuleType(sType))

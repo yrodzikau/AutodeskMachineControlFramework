@@ -21,6 +21,7 @@
 	import ModuleChart from './modules/ModuleChart.svelte';
 	import ModuleVideoStream from './modules/ModuleVideoStream.svelte';
 	import ModuleLayerView from './modules/ModuleLayerView.svelte';
+	import ModuleImageCorrection from './modules/ModuleImageCorrection.svelte';
 	import ModuleGLScene from './modules/ModuleGLScene.svelte';
 	import ModuleGraphic from './modules/ModuleGraphic.svelte';
 	import ModuleWorkflow from './modules/ModuleWorkflow.svelte';
@@ -56,6 +57,7 @@
 		chart: ModuleChart,
 		videostream: ModuleVideoStream,
 		layerview: ModuleLayerView,
+		imagecorrection: ModuleImageCorrection,
 		glscene: ModuleGLScene,
 		graphic: ModuleGraphic,
 		workflow: ModuleWorkflow,

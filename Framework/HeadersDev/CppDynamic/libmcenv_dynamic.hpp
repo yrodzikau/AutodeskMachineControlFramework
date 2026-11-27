@@ -2689,6 +2689,7 @@ public:
 	inline LibMCEnv_uint64 GetElapsedTimeInMicroseconds();
 	inline bool HasAttachment(const std::string & sDataUUID);
 	inline bool HasAttachmentIdentifier(const std::string & sIdentifier);
+	inline PJSONObject ListAttachments(const std::string & sIdentifierPrefix);
 	inline std::string AddBinaryData(const std::string & sIdentifier, const std::string & sName, const std::string & sMIMEType, const std::string & sUserUUID, const CInputVector<LibMCEnv_uint8> & ContentBuffer);
 	inline std::string AttachTempStream(const std::string & sIdentifier, const std::string & sName, const std::string & sUserUUID, classParam<CBaseTempStreamWriter> pStreamWriterInstance);
 	inline PStreamReader LoadStreamByIdentifier(const std::string & sIdentifier);
@@ -5341,6 +5342,7 @@ public:
 		pWrapperTable->m_BuildExecution_GetElapsedTimeInMicroseconds = nullptr;
 		pWrapperTable->m_BuildExecution_HasAttachment = nullptr;
 		pWrapperTable->m_BuildExecution_HasAttachmentIdentifier = nullptr;
+		pWrapperTable->m_BuildExecution_ListAttachments = nullptr;
 		pWrapperTable->m_BuildExecution_AddBinaryData = nullptr;
 		pWrapperTable->m_BuildExecution_AttachTempStream = nullptr;
 		pWrapperTable->m_BuildExecution_LoadStreamByIdentifier = nullptr;
@@ -10491,6 +10493,15 @@ public:
 		dlerror();
 		#endif // _WIN32
 		if (pWrapperTable->m_BuildExecution_HasAttachmentIdentifier == nullptr)
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
+		#ifdef _WIN32
+		pWrapperTable->m_BuildExecution_ListAttachments = (PLibMCEnvBuildExecution_ListAttachmentsPtr) GetProcAddress(hLibrary, "libmcenv_buildexecution_listattachments");
+		#else // _WIN32
+		pWrapperTable->m_BuildExecution_ListAttachments = (PLibMCEnvBuildExecution_ListAttachmentsPtr) dlsym(hLibrary, "libmcenv_buildexecution_listattachments");
+		dlerror();
+		#endif // _WIN32
+		if (pWrapperTable->m_BuildExecution_ListAttachments == nullptr)
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
 		#ifdef _WIN32
@@ -21161,6 +21172,10 @@ public:
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildExecution_HasAttachmentIdentifier == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
 		
+		eLookupError = (*pLookup)("libmcenv_buildexecution_listattachments", (void**)&(pWrapperTable->m_BuildExecution_ListAttachments));
+		if ( (eLookupError != 0) || (pWrapperTable->m_BuildExecution_ListAttachments == nullptr) )
+			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
+		
 		eLookupError = (*pLookup)("libmcenv_buildexecution_addbinarydata", (void**)&(pWrapperTable->m_BuildExecution_AddBinaryData));
 		if ( (eLookupError != 0) || (pWrapperTable->m_BuildExecution_AddBinaryData == nullptr) )
 			return LIBMCENV_ERROR_COULDNOTFINDLIBRARYEXPORT;
@@ -31110,6 +31125,22 @@ public:
 		CheckError(m_pWrapper->m_WrapperTable.m_BuildExecution_HasAttachmentIdentifier(m_pHandle, sIdentifier.c_str(), &resultDataExists));
 		
 		return resultDataExists;
+	}
+	
+	/**
+	* CBuildExecution::ListAttachments - Lists the attachments of the build execution whose identifier starts with a prefix, with one query. An identifier that is stored more than once is listed once, with its newest attachment, the one that LoadStreamByIdentifier returns.
+	* @param[in] sIdentifierPrefix - Start of the identifiers to list, case sensitive. An empty prefix lists every attachment.
+	* @return Object with the array attachments, newest attachment first. Every entry has the string members identifier, name, uuid (of the attachment), streamuuid (of the storage stream, as /api/image serves it) and timestamp (when the attachment was stored, ISO 8601 UTC) and the integer member size (in bytes). The streams themselves are not opened.
+	*/
+	PJSONObject CBuildExecution::ListAttachments(const std::string & sIdentifierPrefix)
+	{
+		LibMCEnvHandle hAttachmentList = nullptr;
+		CheckError(m_pWrapper->m_WrapperTable.m_BuildExecution_ListAttachments(m_pHandle, sIdentifierPrefix.c_str(), &hAttachmentList));
+		
+		if (!hAttachmentList) {
+			CheckError(LIBMCENV_ERROR_INVALIDPARAM);
+		}
+		return std::make_shared<CJSONObject>(m_pWrapper, hAttachmentList);
 	}
 	
 	/**

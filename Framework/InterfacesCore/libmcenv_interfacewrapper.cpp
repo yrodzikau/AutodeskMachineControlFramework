@@ -13999,6 +13999,37 @@ LibMCEnvResult libmcenv_buildexecution_hasattachmentidentifier(LibMCEnv_BuildExe
 	}
 }
 
+LibMCEnvResult libmcenv_buildexecution_listattachments(LibMCEnv_BuildExecution pBuildExecution, const char * pIdentifierPrefix, LibMCEnv_JSONObject * pAttachmentList)
+{
+	IBase* pIBaseClass = (IBase *)pBuildExecution;
+
+	try {
+		if (pIdentifierPrefix == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		if (pAttachmentList == nullptr)
+			throw ELibMCEnvInterfaceException (LIBMCENV_ERROR_INVALIDPARAM);
+		std::string sIdentifierPrefix(pIdentifierPrefix);
+		IBase* pBaseAttachmentList(nullptr);
+		IBuildExecution* pIBuildExecution = dynamic_cast<IBuildExecution*>(pIBaseClass);
+		if (!pIBuildExecution)
+			throw ELibMCEnvInterfaceException(LIBMCENV_ERROR_INVALIDCAST);
+		
+		pBaseAttachmentList = pIBuildExecution->ListAttachments(sIdentifierPrefix);
+
+		*pAttachmentList = (IBase*)(pBaseAttachmentList);
+		return LIBMCENV_SUCCESS;
+	}
+	catch (ELibMCEnvInterfaceException & Exception) {
+		return handleLibMCEnvException(pIBaseClass, Exception);
+	}
+	catch (std::exception & StdException) {
+		return handleStdException(pIBaseClass, StdException);
+	}
+	catch (...) {
+		return handleUnhandledException(pIBaseClass);
+	}
+}
+
 LibMCEnvResult libmcenv_buildexecution_addbinarydata(LibMCEnv_BuildExecution pBuildExecution, const char * pIdentifier, const char * pName, const char * pMIMEType, const char * pUserUUID, LibMCEnv_uint64 nContentBufferSize, const LibMCEnv_uint8 * pContentBuffer, const LibMCEnv_uint32 nDataUUIDBufferSize, LibMCEnv_uint32* pDataUUIDNeededChars, char * pDataUUIDBuffer)
 {
 	IBase* pIBaseClass = (IBase *)pBuildExecution;
@@ -47731,6 +47762,8 @@ LibMCEnvResult LibMCEnv::Impl::LibMCEnv_GetProcAddress (const char * pProcName, 
 		*ppProcAddress = (void*) &libmcenv_buildexecution_hasattachment;
 	if (sProcName == "libmcenv_buildexecution_hasattachmentidentifier") 
 		*ppProcAddress = (void*) &libmcenv_buildexecution_hasattachmentidentifier;
+	if (sProcName == "libmcenv_buildexecution_listattachments") 
+		*ppProcAddress = (void*) &libmcenv_buildexecution_listattachments;
 	if (sProcName == "libmcenv_buildexecution_addbinarydata") 
 		*ppProcAddress = (void*) &libmcenv_buildexecution_addbinarydata;
 	if (sProcName == "libmcenv_buildexecution_attachtempstream") 

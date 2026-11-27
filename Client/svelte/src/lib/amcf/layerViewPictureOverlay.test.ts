@@ -125,3 +125,15 @@ test('without an area the picture covers the platform', () => {
 	const declared = parsePictureOverlay(declaration({ sizex: 200, sizey: 100, originx: -50, originy: 10 }));
 	assert.deepEqual(pictureOverlayArea(declared, 300, 300, 150, 150), { sizeX: 200, sizeY: 100, originX: -50, originY: 10 });
 });
+
+test('the correction of the pictures is optional, invalid corners are ignored', () => {
+	assert.equal(parsePictureOverlay(declaration()).correction, null);
+	const corners = { topleftx: 0.1, toplefty: 0.2, toprightx: 0.8, toprighty: 0.15, bottomrightx: 0.95, bottomrighty: 0.9, bottomleftx: 0.05, bottomlefty: 0.7 };
+	assert.deepEqual(parsePictureOverlay(declaration({ correction: corners })).correction, corners);
+
+	const warnings = [];
+	const crossing = { ...corners, toprightx: 0.95, toprighty: 0.9, bottomrightx: 0.8, bottomrighty: 0.15 };
+	const overlay = parsePictureOverlay(declaration({ correction: crossing }), (message) => warnings.push(message));
+	assert.deepEqual(overlay.correction, { topleftx: 0, toplefty: 0, toprightx: 1, toprighty: 0, bottomrightx: 1, bottomrighty: 1, bottomleftx: 0, bottomlefty: 1 });
+	assert.equal(warnings.length, 1);
+});

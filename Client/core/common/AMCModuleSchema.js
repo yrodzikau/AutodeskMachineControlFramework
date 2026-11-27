@@ -59,6 +59,10 @@ const MODULE_SCHEMAS = {
 		required: ['uuid', 'type'],
 		optional: ['caption', 'visible', 'items', 'cardstyle', 'title', 'subtitle'],
 	},
+	imagecorrection: {
+		required: ['uuid', 'type'],
+		optional: ['caption', 'visible', 'attributes'],
+	},
 	graphic: {
 		required: ['uuid', 'type'],
 		optional: ['caption', 'visible', 'viewminx', 'viewminy', 'viewmaxx', 'viewmaxy', 'showgrid', 'items'],

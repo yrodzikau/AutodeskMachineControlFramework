@@ -42,6 +42,7 @@ import AMCApplicationModule_Grid from "../modules/AMCModule_Grid.js"
 import AMCApplicationModule_Tabs from "../modules/AMCModule_Tabs.js"
 import AMCApplicationModule_Logs from "../modules/AMCModule_Logs.js"
 import AMCApplicationModule_LayerView from "../modules/AMCModule_LayerView.js"
+import AMCApplicationModule_ImageCorrection from "../modules/AMCModule_ImageCorrection.js"
 import AMCApplicationModule_Custom from "../modules/AMCModule_Custom.js"
 import AMCApplicationModule_ParameterList from "../modules/AMCModule_ParameterList.js"
 import AMCApplicationModule_StatusList from "../modules/AMCModule_StatusList.js"
@@ -694,6 +695,10 @@ export default class AMCApplication extends Common.AMCObject {
 				legacy.items = [];
 			}
 
+		} else if (moduleType === "imagecorrection") {
+			// All data of the image correction module are attributes, see AMCModule_ImageCorrection.
+			legacy.attributes = Object.assign({}, attrs);
+
 		} else if (moduleType === "logs") {
 			legacy.items = [];
 			legacy.entries = [];
@@ -886,6 +891,9 @@ export default class AMCApplication extends Common.AMCObject {
 
 		if (def.type === "layerview") 
 			return new AMCApplicationModule_LayerView (page, def);
+
+		if (def.type === "imagecorrection")
+			return new AMCApplicationModule_ImageCorrection (page, def);
 
 		if (def.type === "custom") 
 			return new AMCApplicationModule_Custom (page, def);

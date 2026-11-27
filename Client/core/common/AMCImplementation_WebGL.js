@@ -1573,10 +1573,89 @@ class WebGLScalarImageElement extends WebGLElement {
 
 }
 
+// The four corners of a picture of an image, as fractions of its width and height from its top left corner (x to the
+// right, y down): the members topleftx, toplefty, toprightx, toprighty, bottomrightx, bottomrighty, bottomleftx and
+// bottomlefty. These are the corners of the full image.
+export const FULL_IMAGE_CORNERS = Object.freeze ({
+    topleftx: 0.0, toplefty: 0.0, toprightx: 1.0, toprighty: 0.0,
+    bottomrightx: 1.0, bottomrighty: 1.0, bottomleftx: 0.0, bottomlefty: 1.0
+});
+
+// Perspective (projective) transform of the unit square onto the quadrilateral of corners (see FULL_IMAGE_CORNERS):
+// (s, t) with s to the right and t down, (0, 0) the top left and (1, 1) the bottom right corner of the square, maps to
+// the image point x = (a s + b t + c) / (g s + h t + 1), y = (d s + e t + f) / (g s + h t + 1). Every corner of the
+// square goes to the corner of the same name, straight lines stay straight (Heckbert, Fundamentals of Texture Mapping
+// and Image Warping, 1989). Returns the rows { u: [a, b, c], v: [d, e, f], w: [g, h, 1] }, or null if the corners are
+// no numbers or the quadrilateral is degenerate.
+export function computeQuadHomography (corners)
+{
+    if (!corners)
+        return null;
+
+    const x0 = Number (corners.topleftx), y0 = Number (corners.toplefty);
+    const x1 = Number (corners.toprightx), y1 = Number (corners.toprighty);
+    const x2 = Number (corners.bottomrightx), y2 = Number (corners.bottomrighty);
+    const x3 = Number (corners.bottomleftx), y3 = Number (corners.bottomlefty);
+    if (![x0, y0, x1, y1, x2, y2, x3, y3].every (Number.isFinite))
+        return null;
+
+    const sumX = x0 - x1 + x2 - x3;
+    const sumY = y0 - y1 + y2 - y3;
+    let g = 0.0, h = 0.0;
+    if ((Math.abs (sumX) > 1e-12) || (Math.abs (sumY) > 1e-12)) {
+        const dx1 = x1 - x2, dx2 = x3 - x2;
+        const dy1 = y1 - y2, dy2 = y3 - y2;
+        const determinant = dx1 * dy2 - dx2 * dy1;
+        if (Math.abs (determinant) < 1e-15)
+            return null;
+        g = (sumX * dy2 - dx2 * sumY) / determinant;
+        h = (dx1 * sumY - sumX * dy1) / determinant;
+    }
+
+    return {
+        u: [x1 - x0 + g * x1, x3 - x0 + h * x3, x0],
+        v: [y1 - y0 + g * y1, y3 - y0 + h * y3, y0],
+        w: [g, h, 1.0]
+    };
+}
+
+const WARPEDIMAGE_VERTEXSHADER = `
+    varying vec2 vUv;
+    void main () {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4 (position, 1.0);
+    }
+`;
+
+// The plane is the target rectangle: vUv (0, 0) is its lower left and (1, 1) its upper right corner. The homography
+// takes the point of the rectangle (s to the right, t down) to the point of the image (x to the right, y down); the
+// texture holds row 0 of the image at v = 1 (flipY of the loader). The texture is sRGB and decoded on sampling, the
+// output is encoded again, like MeshBasicMaterial does, so that a picture looks the same in both.
+const WARPEDIMAGE_FRAGMENTSHADER = `
+    uniform sampler2D map;
+    uniform float opacity;
+    uniform vec3 homographyU;
+    uniform vec3 homographyV;
+    uniform vec3 homographyW;
+    varying vec2 vUv;
+    void main () {
+        vec3 target = vec3 (vUv.x, 1.0 - vUv.y, 1.0);
+        float w = dot (homographyW, target);
+        vec2 imagePoint = vec2 (dot (homographyU, target), dot (homographyV, target)) / w;
+        vec4 texel = texture2D (map, vec2 (imagePoint.x, 1.0 - imagePoint.y));
+        gl_FragColor = vec4 (texel.rgb, texel.a * opacity);
+        #include <colorspace_fragment>
+    }
+`;
+
 // Raster image stretched over a rectangle of the scene, for example a camera image of the layer laid over the build
 // plate. The texture is loaded asynchronously; until then the element has no glelement, like an SVG before its load.
 // Smoothing interpolates between the pixels of the magnified image (and filters a reduced one through mipmaps);
 // without it every pixel of a magnified image is a sharp square. The opacity scales the whole image.
+// With corners (see FULL_IMAGE_CORNERS) the element is a corrected picture: the quadrilateral of the image between
+// the corners is drawn with perspective correction over the rectangle, the top left corner onto the top left corner
+// of the rectangle and so on; the parts of the image outside of it are not drawn. setCorners moves the corners of a
+// loaded picture without a new upload. Without corners the whole image is stretched over the rectangle.
 class WebGLImageElement extends WebGLElement {
 
     constructor ()
@@ -1587,7 +1666,35 @@ class WebGLImageElement extends WebGLElement {
 		this.smoothing = false;
 		this.opacity = 1.0;
 		this.visible = true;
+		// null: the whole image, no perspective correction. Chosen before the load, see setCorners.
+		this.corners = null;
 	}
+
+    // Makes the element a corrected picture (before loadTexture) or moves the corners of a corrected picture. Corners
+    // that are no quadrilateral are ignored, the previous ones stay. A loaded picture without corrections stays one.
+    // Returns true if the corners were taken.
+    setCorners (corners)
+    {
+        const homography = computeQuadHomography (corners);
+        if (!homography)
+            return false;
+
+        if (this.glelement && !this.isCorrected ())
+            return false;
+
+        this.corners = Object.assign ({}, corners);
+        if (this.material && this.material.uniforms) {
+            this.material.uniforms.homographyU.value.fromArray (homography.u);
+            this.material.uniforms.homographyV.value.fromArray (homography.v);
+            this.material.uniforms.homographyW.value.fromArray (homography.w);
+        }
+        return true;
+    }
+
+    isCorrected ()
+    {
+        return this.corners !== null;
+    }
 
 	loadTexture (url, width, height, offsetX, offsetY, onLoaded, onError)
 	{
@@ -1602,13 +1709,32 @@ class WebGLImageElement extends WebGLElement {
 
             // transparent: the PNG may carry an alpha channel and the opacity may be below 1, the build plate stays
             // visible under the image.
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                transparent: true,
-                opacity: this.opacity,
-                depthWrite: false,
-                side: THREE.DoubleSide
-            });
+            let material;
+            const homography = this.isCorrected () ? computeQuadHomography (this.corners) : null;
+            if (homography) {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        map: { value: texture },
+                        opacity: { value: this.opacity },
+                        homographyU: { value: new THREE.Vector3 ().fromArray (homography.u) },
+                        homographyV: { value: new THREE.Vector3 ().fromArray (homography.v) },
+                        homographyW: { value: new THREE.Vector3 ().fromArray (homography.w) }
+                    },
+                    vertexShader: WARPEDIMAGE_VERTEXSHADER,
+                    fragmentShader: WARPEDIMAGE_FRAGMENTSHADER,
+                    transparent: true,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+            } else {
+                material = new THREE.MeshBasicMaterial({
+                    map: texture,
+                    transparent: true,
+                    opacity: this.opacity,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+            }
             const geometry = new THREE.PlaneGeometry(width, height);
             const mesh = new THREE.Mesh(geometry, material);
             // PlaneGeometry is centred on its origin; move it so that its lower left corner is the given offset.
@@ -1625,7 +1751,7 @@ class WebGLImageElement extends WebGLElement {
 
             const image = texture.image;
             console.debug("[WebGL] image " + ((image && (image.naturalWidth || image.width)) || 0) + " x " + ((image && (image.naturalHeight || image.height)) || 0)
-                + " over " + width + " x " + height + (this.smoothing ? ", linear filtering" : ", nearest filtering"));
+                + " over " + width + " x " + height + (this.smoothing ? ", linear filtering" : ", nearest filtering") + (homography ? ", perspective correction" : ""));
 
             if (onLoaded)
                 onLoaded(this);
@@ -1646,8 +1772,12 @@ class WebGLImageElement extends WebGLElement {
     {
         const value = Number (opacity);
         this.opacity = Number.isFinite (value) ? Math.min (Math.max (value, 0.0), 1.0) : 1.0;
-        if (this.material)
-            this.material.opacity = this.opacity;
+        if (this.material) {
+            if (this.material.uniforms)
+                this.material.uniforms.opacity.value = this.opacity;
+            else
+                this.material.opacity = this.opacity;
+        }
     }
 
     setVisible (visible)
@@ -2045,8 +2175,10 @@ class WebGLImpl {
 	// units of the element), for example a heat map over the build plate. The texture loads asynchronously; an
 	// element that was removed or replaced in the meantime is not added to the scene.
 	// Raster image over a rectangle of the scene, see WebGLImageElement. options (all optional): smoothing, opacity (0
-	// to 1), visible, onLoaded and onError callbacks. The image loads asynchronously; an element that was removed or
-	// replaced in the meantime is not added to the scene.
+	// to 1), visible, corners (perspective correction of the quadrilateral of the image between them onto the
+	// rectangle, see FULL_IMAGE_CORNERS; corners that are no quadrilateral stretch the whole image), onLoaded and onError
+	// callbacks. The image loads asynchronously; an element that was removed or replaced in the meantime is not added to
+	// the scene.
 	addImageElement (identifier, url, width, height, offsetX, offsetY, zValue, options)
 	{
         if (!identifier)
@@ -2059,6 +2191,8 @@ class WebGLImpl {
         imageElement.setSmoothing (settings.smoothing === true);
         imageElement.setOpacity (Number.isFinite (settings.opacity) ? settings.opacity : 1.0);
         imageElement.setVisible (settings.visible !== false);
+        if (settings.corners && !imageElement.setCorners (settings.corners))
+            console.warn ("[WebGL] the corners of the image " + url + " are no quadrilateral, the whole image is drawn", settings.corners);
 
         imageElement.loadTexture (url, width, height, offsetX, offsetY, (element) => {
             if (this.renderElements.get(identifier) !== element) {

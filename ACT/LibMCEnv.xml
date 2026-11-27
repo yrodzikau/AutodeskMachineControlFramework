@@ -3110,7 +3110,12 @@
 			<param name="Identifier" type="string" pass="in" description="Identifier of the attachment to query." />
 			<param name="DataExists" type="bool" pass="return" description="Returns true if the data exists." />
 		</method>
-		
+
+		<method name="ListAttachments" description="Lists the attachments of the build execution whose identifier starts with a prefix, with one query. An identifier that is stored more than once is listed once, with its newest attachment, the one that LoadStreamByIdentifier returns.">
+			<param name="IdentifierPrefix" type="string" pass="in" description="Start of the identifiers to list, case sensitive. An empty prefix lists every attachment." />
+			<param name="AttachmentList" type="class" class="JSONObject" pass="return" description="Object with the array attachments, newest attachment first. Every entry has the string members identifier, name, uuid (of the attachment), streamuuid (of the storage stream, as /api/image serves it) and timestamp (when the attachment was stored, ISO 8601 UTC) and the integer member size (in bytes). The streams themselves are not opened." />
+		</method>
+
 		<method name="AddBinaryData" description="Adds binary data to store with the build execution.">
 			<param name="Identifier" type="string" pass="in" description="Unique identifier of the attached data. Fails if ther already exists a binary data with the equal identifier." />
 			<param name="Name" type="string" pass="in" description="Name of the attache data" />

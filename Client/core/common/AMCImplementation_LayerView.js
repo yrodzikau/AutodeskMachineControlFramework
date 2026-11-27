@@ -133,9 +133,11 @@ const LAYERVIEW_GRIDMESH_VIEWPORTFACTOR = Math.ceil (1.0 / LAYERVIEW_GRIDLOD_LOW
 
 class LayerViewImpl {
 
-    constructor(glInstance) {
+    // options (optional): grid (false draws no grid, for a view that only shows the platform and its pictures).
+    constructor(glInstance, options) {
 
         this.glInstance = glInstance;
+        this.gridEnabled = !(options && (options.grid === false));
 
         this.currentSize = {
             gridWidth: 0,
@@ -307,6 +309,7 @@ class LayerViewImpl {
         if (!this.glInstance) return;
         if (this.currentSize.gridWidth <= 0 || this.currentSize.gridHeight <= 0) return;
         this.glInstance.removeElement("grid");
+        if (!this.gridEnabled) return;
         this.glInstance.add2DGridGeometry("grid", this.currentSize.gridWidth, this.currentSize.gridHeight, 50, 5, this.gridColor);
         this.updateTransform();
         this.renderNeedsUpdate = true;
@@ -344,6 +347,8 @@ class LayerViewImpl {
             return;
 
         this.glInstance.removeElement("grid");
+        if (!this.gridEnabled)
+            return;
 
         this.glInstance.add2DGridGeometry("grid", width, height, 50, 5, this.gridColor);
 		this.updateTransform ();
@@ -2471,8 +2476,11 @@ class LayerViewImpl {
 	// coordinates, the 3mf coordinates without the rotation and the translation of the toolpath. The platform origin
 	// places it on the build plate like the toolpath. It lies between the plate (z 35) and the scalar overlay (z 36),
 	// is interpolated between its pixels when magnified, and keeps the opacity of setPictureOverlayOpacity. A null url
-	// removes it. onLoaded and onError are optional.
-	SetPictureOverlayImage (url, sizeX, sizeY, originX, originY, onLoaded, onError) {
+	// removes it. onLoaded and onError are optional. corners (optional, see FULL_IMAGE_CORNERS of the WebGL
+	// implementation) select the quadrilateral of the image that is drawn with perspective correction over the
+	// rectangle, its top left corner onto the top left corner of the rectangle (the corner with the largest y) and so
+	// on; without corners the whole image is stretched over the rectangle. setPictureOverlayCorners moves them.
+	SetPictureOverlayImage (url, sizeX, sizeY, originX, originY, onLoaded, onError, corners) {
 		if (!this.glInstance)
 			return;
 
@@ -2480,6 +2488,7 @@ class LayerViewImpl {
 			this.glInstance.addImageElement ("pictureoverlay", url, sizeX, sizeY, originX + this.origin.x, originY + this.origin.y, 35.5, {
 				smoothing: true,
 				opacity: this.pictureOverlayOpacity,
+				corners: corners || null,
 				onLoaded: () => {
 					this.updateTransform ();
 					this.RenderScene (true);
@@ -2498,6 +2507,18 @@ class LayerViewImpl {
 	// Opacity of the picture overlay from 0 (not seen) to 1 (drawn as it is, the default). Only the picture changes:
 	// the plate shows through it; the scalar overlay, the toolpath and the points drawn above it stay as they are. Kept
 	// for the pictures of the following layers.
+	// Moves the corners of the picture overlay (see SetPictureOverlayImage) without loading it again; only a picture
+	// that was loaded with corners takes them. Returns true if it did.
+	setPictureOverlayCorners (corners)
+	{
+		const element = this.glInstance ? this.glInstance.findElement ("pictureoverlay") : null;
+		if (!element || (typeof element.setCorners !== "function") || !element.setCorners (corners))
+			return false;
+
+		this.RenderScene (true);
+		return true;
+	}
+
 	setPictureOverlayOpacity (opacity)
 	{
 		const value = Number (opacity);

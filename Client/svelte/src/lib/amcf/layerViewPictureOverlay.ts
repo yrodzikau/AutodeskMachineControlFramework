@@ -13,10 +13,16 @@
  *                   platform if missing)
  *   modes           [{ name, caption, hint, imageuuid }]: the pictures the menu offers besides Off; imageuuid is the
  *                   storage stream of the PNG (served by /api/image) or the null UUID if the layer has none
+ *   correction      corners of the quadrilateral of the pictures that is drawn with perspective correction over the
+ *                   area, as fractions of the picture (see imageCorrection.ts), optional: without them the whole
+ *                   picture is stretched over the area; invalid corners are ignored like missing ones
  * The button opens a menu with Off and the modes and names the chosen mode below its caption, like the button of the
  * scalar overlay. The chosen mode is kept when the layer changes. This module works out the declaration, the menu
  * and the texts of the button; it draws nothing.
  */
+
+import { parseOptionalCorners } from './imageCorrection.ts';
+import type { ImageCorners } from './imageCorrection.ts';
 
 export const PICTURE_OVERLAY_OFF = 'off';
 export const PICTURE_OVERLAY_OFF_CAPTION = 'Off';
@@ -47,6 +53,8 @@ export interface PictureOverlay {
 	unavailableNote: string;
 	// null: the area of the platform.
 	area: PictureOverlayArea | null;
+	// null: the whole picture without perspective correction.
+	correction: ImageCorners | null;
 	modes: PictureOverlayModeDeclaration[];
 }
 
@@ -149,6 +157,7 @@ export function parsePictureOverlay(declaration: string, warn: (message: string)
 		initialMode: names.has(initialMode) ? initialMode : PICTURE_OVERLAY_OFF,
 		unavailableNote: textMember(object, 'unavailablenote') || `${caption} not available for this layer`,
 		area,
+		correction: parseOptionalCorners(object.correction, (message) => warn(`[LayerView] picture overlay correction ignored: ${message}`)),
 		modes
 	};
 }

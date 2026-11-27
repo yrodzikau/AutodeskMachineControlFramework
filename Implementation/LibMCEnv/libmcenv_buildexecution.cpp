@@ -46,9 +46,12 @@ Abstract: This is a stub class definition of CBuildExecution
 #include "libmcenv_datatablereader.hpp"
 #include "libmcenv_journalhandler_historic.hpp"
 #include "libmcenv_journalhandler_current.hpp"
+#include "libmcenv_jsonobject.hpp"
 
 #include "common_utils.hpp"
 #include "common_chrono.hpp"
+
+#include <set>
 
 using namespace LibMCEnv::Impl;
 
@@ -258,6 +261,49 @@ bool CBuildExecution::HasAttachmentIdentifier(const std::string& sIdentifier)
 {
 	std::lock_guard <std::mutex> lockGuard(m_Mutex);
 	return m_pExecution->HasJobExecutionDataIdentifier(sIdentifier);
+}
+
+IJSONObject* CBuildExecution::ListAttachments(const std::string& sIdentifierPrefix)
+{
+	auto pDocument = std::make_shared<rapidjson::Document>();
+	pDocument->SetObject();
+	auto& allocator = pDocument->GetAllocator();
+
+	rapidjson::Value attachmentsArray(rapidjson::kArrayType);
+
+	{
+		std::lock_guard <std::mutex> lockGuard(m_Mutex);
+
+		// One query for all attachments of the execution, newest first. The first entry of an identifier is the
+		// attachment that RetrieveJobExecutionDataByIdentifier, and so LoadStreamByIdentifier, returns.
+		auto pIterator = m_pExecution->ListJobExecutionData();
+		std::set<std::string> listedIdentifiers;
+		while (pIterator->MoveNext()) {
+			auto pData = pIterator->GetCurrentJobExecutionData();
+			std::string sIdentifier = pData->GetIdentifier();
+			if (sIdentifier.compare(0, sIdentifierPrefix.length(), sIdentifierPrefix) != 0)
+				continue;
+			if (!listedIdentifiers.insert(sIdentifier).second)
+				continue;
+
+			auto addString = [&allocator](rapidjson::Value& object, const char* pszName, const std::string& sValue) {
+				object.AddMember(rapidjson::Value(pszName, allocator), rapidjson::Value(sValue.c_str(), (rapidjson::SizeType)sValue.length(), allocator), allocator);
+			};
+
+			rapidjson::Value entry(rapidjson::kObjectType);
+			addString(entry, "identifier", sIdentifier);
+			addString(entry, "name", pData->GetName());
+			addString(entry, "uuid", pData->GetDataUUID());
+			// Only what the query returned: the MIME type would open every storage stream.
+			addString(entry, "streamuuid", pData->GetStorageStreamUUID());
+			addString(entry, "timestamp", pData->GetTimeStamp());
+			entry.AddMember("size", rapidjson::Value((int64_t)pData->GetStorageStreamSize()), allocator);
+			attachmentsArray.PushBack(entry, allocator);
+		}
+	}
+
+	pDocument->AddMember("attachments", attachmentsArray, allocator);
+	return new CJSONObject(pDocument, pDocument.get());
 }
 
 

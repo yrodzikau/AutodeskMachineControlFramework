@@ -4927,6 +4927,16 @@ typedef LibMCEnvResult (*PLibMCEnvBuildExecution_HasAttachmentPtr) (LibMCEnv_Bui
 typedef LibMCEnvResult (*PLibMCEnvBuildExecution_HasAttachmentIdentifierPtr) (LibMCEnv_BuildExecution pBuildExecution, const char * pIdentifier, bool * pDataExists);
 
 /**
+* Lists the attachments of the build execution whose identifier starts with a prefix, with one query. An identifier that is stored more than once is listed once, with its newest attachment, the one that LoadStreamByIdentifier returns.
+*
+* @param[in] pBuildExecution - BuildExecution instance.
+* @param[in] pIdentifierPrefix - Start of the identifiers to list, case sensitive. An empty prefix lists every attachment.
+* @param[out] pAttachmentList - Object with the array attachments, newest attachment first. Every entry has the string members identifier, name, uuid (of the attachment), streamuuid (of the storage stream, as /api/image serves it) and timestamp (when the attachment was stored, ISO 8601 UTC) and the integer member size (in bytes). The streams themselves are not opened.
+* @return error code or 0 (success)
+*/
+typedef LibMCEnvResult (*PLibMCEnvBuildExecution_ListAttachmentsPtr) (LibMCEnv_BuildExecution pBuildExecution, const char * pIdentifierPrefix, LibMCEnv_JSONObject * pAttachmentList);
+
+/**
 * Adds binary data to store with the build execution.
 *
 * @param[in] pBuildExecution - BuildExecution instance.
@@ -15901,6 +15911,7 @@ typedef struct {
 	PLibMCEnvBuildExecution_GetElapsedTimeInMicrosecondsPtr m_BuildExecution_GetElapsedTimeInMicroseconds;
 	PLibMCEnvBuildExecution_HasAttachmentPtr m_BuildExecution_HasAttachment;
 	PLibMCEnvBuildExecution_HasAttachmentIdentifierPtr m_BuildExecution_HasAttachmentIdentifier;
+	PLibMCEnvBuildExecution_ListAttachmentsPtr m_BuildExecution_ListAttachments;
 	PLibMCEnvBuildExecution_AddBinaryDataPtr m_BuildExecution_AddBinaryData;
 	PLibMCEnvBuildExecution_AttachTempStreamPtr m_BuildExecution_AttachTempStream;
 	PLibMCEnvBuildExecution_LoadStreamByIdentifierPtr m_BuildExecution_LoadStreamByIdentifier;

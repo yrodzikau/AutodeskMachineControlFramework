@@ -126,6 +126,8 @@ public:
 
 	bool HasAttachmentIdentifier(const std::string& sIdentifier) override;
 
+	IJSONObject* ListAttachments(const std::string& sIdentifierPrefix) override;
+
 	std::string AddBinaryData(const std::string& sIdentifier, const std::string& sName, const std::string& sMIMEType, const std::string& sUserUUID, const LibMCEnv_uint64 nContentBufferSize, const LibMCEnv_uint8* pContentBuffer) override;
 
 	std::string AttachTempStream(const std::string& sIdentifier, const std::string& sName, const std::string& sUserUUID, IBaseTempStreamWriter* pStreamWriterInstance) override;

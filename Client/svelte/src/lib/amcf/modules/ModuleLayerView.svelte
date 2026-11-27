@@ -1339,7 +1339,8 @@
 	}
 
 	// Loads or removes the picture of the picture overlay: the one of the chosen mode on this layer, over the declared
-	// area of the platform. Only the picture is loaded; the toolpath, the recorded points and the scalar overlay of the
+	// area of the platform, with the perspective correction of the declaration (the same drawing as the preview of the
+	// image correction page). Only the picture is loaded; the toolpath, the recorded points and the scalar overlay of the
 	// layer stay as they are.
 	function syncPicture() {
 		const currentPlatform = module.platform;
@@ -1352,7 +1353,7 @@
 		if (overlay && state && state.shown && state.available) {
 			area = pictureOverlayArea(overlay, Number(currentPlatform.sizex) || 300, Number(currentPlatform.sizey) || 300,
 				Number(currentPlatform.originx) || 0, Number(currentPlatform.originy) || 0);
-			wanted = [state.imageUUID, area.sizeX, area.sizeY, area.originX, area.originY].join('|');
+			wanted = [state.imageUUID, area.sizeX, area.sizeY, area.originX, area.originY, JSON.stringify(overlay.correction)].join('|');
 		}
 		if ((currentPlatform.displayed_pictureoverlay ?? '') === wanted) return;
 		currentPlatform.displayed_pictureoverlay = wanted;
@@ -1379,7 +1380,8 @@
 				if (currentPlatform.displayed_pictureoverlay !== wanted) return;
 				loadingPicture = false;
 				app.showSnackBar(`Loading the ${caption.toLowerCase()} picture failed: ${error?.message ?? error}`, 'error', 8000);
-			}
+			},
+			overlay?.correction ?? null
 		);
 	}
 
